@@ -1,0 +1,80 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-teacher') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
+      <h1 class="text-xl font-bold text-gray-900">Teacher Dashboard</h1>
+      <p class="text-sm text-gray-500">Welcome back, <%= currentUser.name %>!</p>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-6 mb-8">
+        <% [
+          {label:'My Tests',    value: stats.testCount,      icon:'📝', color:'emerald'},
+          {label:'Questions',   value: stats.questionCount,  icon:'❓', color:'blue'},
+          {label:'Attempts',    value: stats.studentsTested, icon:'👨‍🎓', color:'purple'},
+        ].forEach(card => { %>
+        <div class="card-hover bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <div class="text-3xl mb-3"><%= card.icon %></div>
+          <p class="text-3xl font-bold text-gray-900"><%= card.value %></p>
+          <p class="text-sm text-gray-500 mt-1"><%= card.label %></p>
+        </div>
+        <% }) %>
+      </div>
+
+      <!-- Recent Tests -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+          <h3 class="font-semibold text-gray-900">My Recent Tests</h3>
+          <a href="/teacher/tests/create" class="text-sm bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors">+ New Test</a>
+        </div>
+        <% if (recentTests.length === 0) { %>
+        <div class="px-6 py-12 text-center text-gray-400">
+          <p>No tests created yet. <a href="/teacher/tests/create" class="text-emerald-600 hover:underline font-medium">Create your first test →</a></p>
+        </div>
+        <% } else { %>
+        <div class="divide-y divide-gray-50">
+          <% recentTests.forEach(test => { %>
+          <div class="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-xl flex-shrink-0">📝</div>
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-gray-900 truncate"><%= test.title %></p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                <%= test.duration %> mins · <%= test.negativeMarking > 0 ? `-${test.negativeMarking} negative` : 'No negative marking' %>
+                · Groups: <%= test.groups.map(g => g.name).join(', ') || 'None' %>
+              </p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs px-2.5 py-1 rounded-full font-medium
+                <%= test.status === 'published' ? 'bg-green-100 text-green-700' : test.status === 'draft' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-700' %>">
+                <%= test.status %>
+              </span>
+              <a href="/teacher/tests/<%= test.id %>" class="text-sm text-emerald-600 hover:underline font-medium">View →</a>
+            </div>
+          </div>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <% [
+          {href:'/teacher/tests/create', label:'Create Test',    icon:'📝', color:'emerald'},
+          {href:'/teacher/questions',    label:'Add Question',   icon:'❓', color:'blue'},
+          {href:'/teacher/performance',  label:'View Results',   icon:'📊', color:'purple'},
+          {href:'/teacher/tests',        label:'All Tests',      icon:'📋', color:'orange'},
+        ].forEach(a => { %>
+        <a href="<%= a.href %>" class="card-hover bg-white border border-gray-100 rounded-2xl p-5 text-center shadow-sm block">
+          <div class="text-2xl mb-2"><%= a.icon %></div>
+          <p class="text-sm font-semibold text-gray-800"><%= a.label %></p>
+        </a>
+        <% }) %>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

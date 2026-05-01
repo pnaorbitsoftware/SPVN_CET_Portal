@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= typeof title !== 'undefined' ? title : 'CET Exam Portal' %> — <%= process.env.COLLEGE_SHORT_NAME %></title>
+  <link rel="icon" href="/favicon.ico" />
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary:  { DEFAULT: '#1e3a5f', 50:'#eff6ff', 100:'#dbeafe', 500:'#3b82f6', 600:'#2563eb', 700:'#1d4ed8', 800:'#1e3a5f', 900:'#172554' },
+            accent:   { DEFAULT: '#f97316', 500:'#f97316', 600:'#ea580c' },
+            success:  { DEFAULT: '#16a34a' },
+            warning:  { DEFAULT: '#d97706' },
+            danger:   { DEFAULT: '#dc2626' },
+          },
+          fontFamily: {
+            sans: ['"DM Sans"', 'sans-serif'],
+            display: ['"Playfair Display"', 'serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <!-- Custom styles -->
+  <style>
+    body { font-family: 'DM Sans', sans-serif; }
+    .sidebar-link.active { background: rgba(255,255,255,0.15); border-left: 3px solid #f97316; }
+    .card-hover { transition: all 0.2s ease; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    .palette-btn { width:36px; height:36px; font-size:12px; }
+    .q-not-visited    { background:#e5e7eb; color:#374151; }
+    .q-not-answered   { background:#ef4444; color:#fff; }
+    .q-answered       { background:#16a34a; color:#fff; }
+    .q-marked         { background:#a855f7; color:#fff; }
+    .q-answered-marked{ background:#8b5cf6; color:#fff; }
+    @keyframes pulse-ring { 0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)} }
+    .timer-warning { animation: pulse-ring 1s infinite; }
+    .flash-msg { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+  </style>
+</head>
+<body class="h-full bg-gray-50 text-gray-800">

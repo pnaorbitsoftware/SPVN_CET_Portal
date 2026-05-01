@@ -1,0 +1,52 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-student') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b px-8 py-4">
+      <h1 class="text-xl font-bold">My Tests</h1>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+      <% if (tests.length === 0) { %>
+      <div class="text-center py-20 text-gray-400"><div class="text-6xl mb-4">📝</div><p>No tests assigned yet.</p></div>
+      <% } else { %>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <% tests.forEach(test => {
+          const result = resultMap[test.id];
+          const isDone = result && ['submitted','auto_submitted'].includes(result.status);
+          const pct = isDone ? ((result.score/result.totalMarks)*100).toFixed(1) : null;
+        %>
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 card-hover flex flex-col">
+          <div class="flex justify-between items-start mb-3">
+            <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-xl">📝</div>
+            <% if (isDone) { %>
+              <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-green-100 text-green-700">Completed</span>
+            <% } else { %>
+              <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-amber-100 text-amber-700">Pending</span>
+            <% } %>
+          </div>
+          <h3 class="font-bold text-gray-900 mb-1 flex-1"><%= test.title %></h3>
+          <div class="grid grid-cols-2 gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl p-3 mb-4">
+            <span>⏱ <%= test.duration %> mins</span>
+            <span>📊 <%= test.totalMarks %> marks</span>
+          </div>
+          <% if (isDone) { %>
+          <div class="flex items-center justify-between mb-3">
+            <span class="font-bold text-2xl <%= pct>=60?'text-green-600':pct>=40?'text-yellow-600':'text-red-500' %>"><%= pct %>%</span>
+            <span class="text-sm text-gray-500">Rank #<%= result.rank||'—' %></span>
+          </div>
+          <div class="flex gap-2">
+            <a href="/results/<%= result.id %>" class="flex-1 text-center text-sm font-semibold bg-indigo-600 text-white py-2 rounded-xl hover:bg-indigo-700 transition-colors">View Result</a>
+            <a href="/results/leaderboard/<%= test.id %>" class="px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-sm">🏆</a>
+          </div>
+          <% } else { %>
+          <a href="/exam/<%= test.id %>/instructions" class="w-full text-center font-semibold bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 transition-colors text-sm">Start Exam →</a>
+          <% } %>
+        </div>
+        <% }) %>
+      </div>
+      <% } %>
+    </div>
+  </main>
+</div>
+</body></html>

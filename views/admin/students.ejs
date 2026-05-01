@@ -1,0 +1,162 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
+      <h1 class="text-xl font-bold text-gray-900">Manage Students</h1>
+      <p class="text-sm text-gray-500">Create and manage student accounts</p>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+
+      <!-- Action bar -->
+      <div class="flex flex-col sm:flex-row gap-3 mb-6">
+        <button onclick="document.getElementById('addModal').classList.remove('hidden')"
+          class="flex items-center gap-2 bg-primary-800 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-primary-900 transition-colors shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Add Student
+        </button>
+        <button onclick="document.getElementById('importModal').classList.remove('hidden')"
+          class="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-emerald-700 transition-colors shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Bulk Import CSV
+        </button>
+      </div>
+
+      <!-- Students Table -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
+          <h3 class="font-semibold text-gray-900">All Students (<%= students.length %>)</h3>
+          <input type="text" placeholder="Search students..." onkeyup="filterTable(this.value)"
+            class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 w-56" />
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="studentsTable">
+            <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
+              <tr>
+                <th class="px-6 py-3 text-left">#</th>
+                <th class="px-6 py-3 text-left">Name</th>
+                <th class="px-6 py-3 text-left">Roll No</th>
+                <th class="px-6 py-3 text-left">Email</th>
+                <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Joined</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <% students.forEach((s, i) => { %>
+              <tr class="hover:bg-gray-50 transition-colors student-row">
+                <td class="px-6 py-4 text-gray-400"><%= i + 1 %></td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                      <%= s.name.charAt(0).toUpperCase() %>
+                    </div>
+                    <span class="font-medium text-gray-900"><%= s.name %></span>
+                  </div>
+                </td>
+                <td class="px-6 py-4 font-mono text-gray-700"><%= s.rollNo %></td>
+                <td class="px-6 py-4 text-gray-500"><%= s.email || '—' %></td>
+                <td class="px-6 py-4">
+                  <% if (s.isFirstLogin) { %>
+                  <span class="bg-amber-100 text-amber-700 text-xs px-2.5 py-1 rounded-full font-medium">First Login</span>
+                  <% } else { %>
+                  <span class="bg-green-100 text-green-700 text-xs px-2.5 py-1 rounded-full font-medium">Active</span>
+                  <% } %>
+                </td>
+                <td class="px-6 py-4 text-gray-400"><%= new Date(s.createdAt).toLocaleDateString('en-IN') %></td>
+              </tr>
+              <% }) %>
+              <% if (students.length === 0) { %>
+              <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">No students found. Add your first student!</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add Student Modal -->
+<div id="addModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+      <h3 class="font-bold text-lg text-gray-900">Add New Student</h3>
+      <button onclick="document.getElementById('addModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+    </div>
+    <form action="/admin/students" method="POST" class="p-6 space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="col-span-2">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Full Name *</label>
+          <input type="text" name="name" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Student full name" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Roll Number *</label>
+          <input type="text" name="rollNo" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="e.g. 2024CE001" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
+          <input type="text" name="phone" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Phone number" />
+        </div>
+        <div class="col-span-2">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
+          <input type="email" name="email" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="student@example.com" />
+        </div>
+        <div class="col-span-2">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Assign to Group</label>
+          <select name="groupId" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            <option value="">— No Group —</option>
+            <% groups.forEach(g => { %>
+            <option value="<%= g.id %>"><%= g.name %></option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+      <div class="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+        💡 Default password will be auto-generated as <strong>CET@XXXX</strong> (last 4 digits of roll number)
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="flex-1 bg-primary-800 text-white font-semibold py-3 rounded-xl hover:bg-primary-900 transition-colors">Create Student</button>
+        <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk Import Modal -->
+<div id="importModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+      <h3 class="font-bold text-lg text-gray-900">Bulk Import Students</h3>
+      <button onclick="document.getElementById('importModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+    </div>
+    <form action="/admin/students/bulk-import" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+      <div class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
+        <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <label class="cursor-pointer">
+          <span class="text-primary-600 font-medium hover:underline">Choose CSV/Excel file</span>
+          <input type="file" name="csvFile" accept=".csv,.xlsx,.xls" required class="sr-only" />
+        </label>
+        <p class="text-xs text-gray-400 mt-2">Supports .csv, .xlsx, .xls</p>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-3 text-xs text-gray-600">
+        <p class="font-semibold mb-1">Required columns:</p>
+        <p class="font-mono">name, rollNo, email (optional)</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" class="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 transition-colors">Import</button>
+        <button type="button" onclick="document.getElementById('importModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function filterTable(q) {
+  document.querySelectorAll('.student-row').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

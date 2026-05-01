@@ -1,0 +1,37 @@
+<%- include('../partials/head') %>
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div class="bg-gradient-to-r from-yellow-500 to-amber-500 p-8 text-white text-center">
+        <div class="text-5xl mb-2">🏆</div>
+        <h1 class="text-2xl font-bold">Leaderboard</h1>
+        <p class="text-white/80 text-sm mt-1"><%= test.title %></p>
+      </div>
+      <div class="divide-y divide-gray-100">
+        <% results.forEach((r, i) => { const pct = ((r.score/r.totalMarks)*100).toFixed(1) %>
+        <div class="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors <%= r.student && currentUser && r.studentId===currentUser.id?'bg-indigo-50':'' %>">
+          <div class="w-10 text-center flex-shrink-0">
+            <% if(i===0){%><span class="text-2xl">🥇</span><%}else if(i===1){%><span class="text-2xl">🥈</span><%}else if(i===2){%><span class="text-2xl">🥉</span><%}else{%><span class="text-sm font-bold text-gray-400">#<%= i+1 %></span><%}%>
+          </div>
+          <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-sm flex-shrink-0">
+            <%= r.student?.name.charAt(0).toUpperCase() %>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-gray-900 text-sm"><%= r.student?.name %></p>
+            <p class="text-xs text-gray-400"><%= r.student?.rollNo %></p>
+          </div>
+          <div class="text-right">
+            <p class="font-bold text-gray-900"><%= r.score %>/<%= r.totalMarks %></p>
+            <p class="text-xs text-gray-500"><%= pct %>%</p>
+          </div>
+        </div>
+        <% }) %>
+        <% if (!results.length) { %><p class="px-6 py-12 text-center text-gray-400">No submissions yet.</p><% } %>
+      </div>
+    </div>
+    <div class="mt-4 text-center">
+      <a href="/student/tests" class="text-indigo-600 hover:underline text-sm font-medium">← Back to Tests</a>
+    </div>
+  </div>
+</div>
+</body></html>

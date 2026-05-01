@@ -1,0 +1,119 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
+      <h1 class="text-xl font-bold text-gray-900">Groups / Batches</h1>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+      <div class="flex gap-3 mb-6">
+        <button onclick="document.getElementById('createGroupModal').classList.remove('hidden')"
+          class="flex items-center gap-2 bg-primary-800 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-primary-900 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Create Group
+        </button>
+        <button onclick="document.getElementById('assignModal').classList.remove('hidden')"
+          class="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-indigo-700 transition-colors">
+          Assign Member
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <% groups.forEach(g => { %>
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 card-hover">
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-gray-900 text-lg"><%= g.name %></h3>
+              <p class="text-sm text-gray-500 mt-0.5"><%= g.description || 'No description' %></p>
+            </div>
+            <span class="bg-primary-100 text-primary-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+              AY <%= g.academicYear %>
+            </span>
+          </div>
+          <div class="flex items-center gap-4 text-sm text-gray-600 mb-4">
+            <span>👨‍🎓 <strong><%= g.members ? g.members.filter(m => m.GroupMember?.role === 'student').length : 0 %></strong> Students</span>
+            <span>👨‍🏫 <strong><%= g.members ? g.members.filter(m => m.GroupMember?.role === 'teacher').length : 0 %></strong> Teachers</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <% if (g.members && g.members.length > 0) { %>
+              <% g.members.slice(0,5).forEach(m => { %>
+              <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs" title="<%= m.name %>">
+                <%= m.name.charAt(0).toUpperCase() %>
+              </div>
+              <% }) %>
+              <% if (g.members.length > 5) { %>
+              <div class="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-semibold">
+                +<%= g.members.length - 5 %>
+              </div>
+              <% } %>
+            <% } else { %>
+            <p class="text-xs text-gray-400">No members yet</p>
+            <% } %>
+          </div>
+        </div>
+        <% }) %>
+        <% if (groups.length === 0) { %>
+        <div class="col-span-3 text-center py-16 text-gray-400">
+          <svg class="w-16 h-16 mx-auto mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>
+          <p class="font-medium">No groups created yet.</p>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Create Group Modal -->
+<div id="createGroupModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b"><h3 class="font-bold text-lg">Create Group</h3><button onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="text-gray-400 text-xl">✕</button></div>
+    <form action="/admin/groups" method="POST" class="p-6 space-y-4">
+      <div><label class="block text-sm font-semibold mb-1.5">Group Name *</label><input type="text" name="name" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="e.g. FE-A 2024, PCM Batch-1" /></div>
+      <div><label class="block text-sm font-semibold mb-1.5">Description</label><textarea name="description" rows="2" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Optional description"></textarea></div>
+      <div><label class="block text-sm font-semibold mb-1.5">Academic Year</label><input type="text" name="academicYear" value="<%= process.env.ACADEMIC_YEAR %>" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" /></div>
+      <div class="flex gap-3"><button type="submit" class="flex-1 bg-primary-800 text-white font-semibold py-3 rounded-xl hover:bg-primary-900">Create</button><button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Assign Member Modal -->
+<div id="assignModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b"><h3 class="font-bold text-lg">Assign Member to Group</h3><button onclick="document.getElementById('assignModal').classList.add('hidden')" class="text-gray-400 text-xl">✕</button></div>
+    <form action="/admin/groups/assign-member" method="POST" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1.5">Group *</label>
+        <select name="groupId" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <option value="">Select group</option>
+          <% groups.forEach(g => { %><option value="<%= g.id %>"><%= g.name %></option><% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1.5">Role *</label>
+        <select name="role" id="roleSelect" onchange="updateMemberList(this.value)" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <option value="student">Student</option>
+          <option value="teacher">Teacher</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1.5">Member *</label>
+        <select name="userId" required id="memberSelect" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <% students.forEach(s => { %><option value="<%= s.id %>" data-role="student"><%= s.name %> (<%= s.rollNo %>)</option><% }) %>
+          <% teachers.forEach(t => { %><option value="<%= t.id %>" data-role="teacher" style="display:none"><%= t.name %></option><% }) %>
+        </select>
+      </div>
+      <div class="flex gap-3"><button type="submit" class="flex-1 bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700">Assign</button><button type="button" onclick="document.getElementById('assignModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function updateMemberList(role) {
+  document.querySelectorAll('#memberSelect option').forEach(opt => {
+    opt.style.display = opt.dataset.role === role ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

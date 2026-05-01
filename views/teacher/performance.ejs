@@ -1,0 +1,62 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-teacher') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
+      <h1 class="text-xl font-bold text-gray-900">Student Performance</h1>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b flex items-center justify-between">
+          <h3 class="font-semibold text-gray-900">All Results (<%= results.length %>)</h3>
+          <input type="text" placeholder="Search..." onkeyup="filterRows(this.value)" class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr>
+                <th class="px-6 py-3 text-left">Student</th>
+                <th class="px-6 py-3 text-left">Test</th>
+                <th class="px-6 py-3 text-left">Score</th>
+                <th class="px-6 py-3 text-left">Percentage</th>
+                <th class="px-6 py-3 text-left">Rank</th>
+                <th class="px-6 py-3 text-left">Date</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50" id="perfTable">
+              <% results.forEach(r => { %>
+              <% const pct = r.totalMarks > 0 ? ((r.score/r.totalMarks)*100).toFixed(1) : 0 %>
+              <tr class="hover:bg-gray-50 transition-colors perf-row">
+                <td class="px-6 py-4"><p class="font-medium"><%= r.student?.name %></p><p class="text-xs text-gray-400"><%= r.student?.rollNo %></p></td>
+                <td class="px-6 py-4 max-w-xs truncate text-gray-600"><%= r.test?.title %></td>
+                <td class="px-6 py-4 font-bold"><%= r.score %>/<%= r.test?.totalMarks %></td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-gray-100 rounded-full h-2 w-20">
+                      <div class="h-2 rounded-full <%= pct>=60?'bg-green-500':pct>=40?'bg-yellow-500':'bg-red-500' %>" style="width:<%= pct %>%"></div>
+                    </div>
+                    <span class="font-semibold text-sm <%= pct>=60?'text-green-600':pct>=40?'text-yellow-600':'text-red-500' %>"><%= pct %>%</span>
+                  </div>
+                </td>
+                <td class="px-6 py-4 text-gray-600">#<%= r.rank || '—' %></td>
+                <td class="px-6 py-4 text-gray-400 text-xs"><%= r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-IN') : '—' %></td>
+              </tr>
+              <% }) %>
+              <% if (results.length === 0) { %><tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">No results yet.</td></tr><% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+function filterRows(q) {
+  document.querySelectorAll('.perf-row').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

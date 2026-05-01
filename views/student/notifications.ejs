@@ -1,0 +1,28 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-student') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b px-8 py-4"><h1 class="text-xl font-bold">Notifications</h1></header>
+    <div class="p-8 max-w-2xl">
+      <% if (!notifications.length) { %>
+      <div class="text-center py-20 text-gray-400"><div class="text-5xl mb-3">🔔</div><p>No notifications.</p></div>
+      <% } else { %>
+      <div class="space-y-3">
+        <% notifications.forEach(n => { %>
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-xl flex-shrink-0">
+            <%= n.type==='exam'?'📝':n.type==='success'?'✅':n.type==='warning'?'⚠️':'ℹ️' %>
+          </div>
+          <div class="flex-1">
+            <p class="font-semibold text-gray-900"><%= n.title %></p>
+            <p class="text-sm text-gray-600 mt-1"><%= n.message %></p>
+            <p class="text-xs text-gray-400 mt-2"><%= new Date(n.createdAt).toLocaleString('en-IN') %></p>
+          </div>
+        </div>
+        <% }) %>
+      </div>
+      <% } %>
+    </div>
+  </main>
+</div>
+</body></html>

@@ -1,0 +1,67 @@
+<%- include('../partials/head') %>
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-3xl mx-auto space-y-6">
+    <!-- Score Card -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div class="bg-gradient-to-r <%= percentage>=60?'from-green-600 to-emerald-600':percentage>=40?'from-yellow-500 to-amber-500':'from-red-600 to-rose-600' %> p-8 text-white text-center">
+        <p class="text-white/70 text-sm mb-2"><%= result.test.title %></p>
+        <div class="text-7xl font-bold mb-2"><%= percentage %>%</div>
+        <p class="text-2xl font-semibold"><%= result.score %> / <%= result.totalMarks %> Marks</p>
+        <p class="text-white/70 mt-1">
+          <%= result.status === 'auto_submitted' ? '⚡ Auto-submitted' : '✅ Submitted' %>
+        </p>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
+        <% [
+          {icon:'🥇',label:'Rank',value:'#'+(result.rank||'—')},
+          {icon:'✅',label:'Correct',value:result.correctAnswers},
+          {icon:'❌',label:'Wrong',value:result.wrongAnswers},
+          {icon:'⏭',label:'Skipped',value:result.skippedAnswers},
+        ].forEach(s => { %>
+        <div class="p-5 text-center">
+          <p class="text-2xl mb-1"><%= s.icon %></p>
+          <p class="text-xl font-bold text-gray-900"><%= s.value %></p>
+          <p class="text-xs text-gray-500"><%= s.label %></p>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Details -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-bold text-gray-900 mb-4">Performance Summary</h3>
+      <div class="space-y-3">
+        <% const metrics = [
+          ['Student', result.student.name],
+          ['Roll No', result.student.rollNo],
+          ['Percentile', (result.percentile||0).toFixed(1)+'%'],
+          ['Time Taken', Math.floor(result.timeTaken/60)+' min '+result.timeTaken%60+' sec'],
+          ['Out of Attempted', totalAttempted+' students'],
+          ['Submitted', result.submittedAt ? new Date(result.submittedAt).toLocaleString('en-IN') : '—'],
+        ] %>
+        <% metrics.forEach(([k,v]) => { %>
+        <div class="flex justify-between py-2 border-b border-gray-50 text-sm">
+          <span class="text-gray-500"><%= k %></span>
+          <span class="font-semibold text-gray-900"><%= v %></span>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-3 justify-center">
+      <a href="/results/<%= result.id %>/pdf" class="flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-red-700 transition-colors">
+        📄 Download PDF
+      </a>
+      <a href="/results/leaderboard/<%= result.testId %>" class="flex items-center gap-2 bg-primary-800 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-900 transition-colors">
+        🏆 Leaderboard
+      </a>
+      <% if (currentUser.role === 'student') { %>
+      <a href="/student/tests" class="flex items-center gap-2 bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-colors">
+        ← Back to Tests
+      </a>
+      <% } %>
+    </div>
+  </div>
+</div>
+</body></html>
