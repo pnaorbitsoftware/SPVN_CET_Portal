@@ -1,7 +1,8 @@
 // seeders/seed.js
 // Sample seed data for XYZ College CET Exam System
 
-require('dotenv').config({ path: '../.env' });
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { sequelize } = require('../config/database');
 const { User, Group, Question, Test, TestQuestion, GroupMember, TestGroup } = require('../models');
 const bcrypt = require('bcryptjs');
