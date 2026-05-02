@@ -1,69 +1,92 @@
 <%- include('../partials/head') %>
 <style>
-  body { overflow: hidden; }
-  .option-label input:checked + div { border-color: #4f46e5; background: #eef2ff; }
-  .option-label:hover div { border-color: #a5b4fc; background: #f5f3ff; }
-  #timer.urgent { background: #fee2e2; color: #dc2626; }
-  #timer.warning { background: #fef9c3; color: #d97706; }
-  .palette-btn { width:34px; height:34px; font-size:11px; font-weight:600; border-radius:6px; cursor:pointer; transition:all 0.15s; }
+  body{overflow:hidden}
+  .option-label input:checked+div{border-color:#4f46e5;background:#eef2ff}
+  .option-label:hover div{border-color:#a5b4fc;background:#f5f3ff}
+  #timer.urgent{background:#fee2e2;color:#dc2626;animation:pulse 1s infinite}
+  #timer.warning{background:#fef9c3;color:#d97706}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  .palette-btn{width:34px;height:34px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;transition:all .15s}
+  #violationBar{transition:all .3s}
+  .q-image{max-width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;margin:10px 0}
 </style>
 
-<div class="h-screen flex flex-col bg-gray-100 select-none" id="examContainer">
+<div class="h-screen flex flex-col bg-gray-100" id="examContainer">
   <!-- Top bar -->
-  <div class="bg-primary-800 text-white px-4 py-2.5 flex items-center justify-between flex-shrink-0">
+  <div class="bg-primary-800 text-white px-4 py-2.5 flex items-center justify-between flex-shrink-0 select-none">
     <div class="flex items-center gap-3">
       <span class="font-bold text-sm hidden sm:block"><%= process.env.COLLEGE_SHORT_NAME %></span>
-      <span class="text-white/50 hidden sm:block">|</span>
+      <span class="text-white/40 hidden sm:block">|</span>
       <span class="text-sm font-medium truncate max-w-xs"><%= test.title %></span>
     </div>
     <div class="flex items-center gap-4">
-      <div id="timer" class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-1.5 font-mono font-bold text-sm transition-colors" data-remaining="<%= remaining %>" data-testid="<%= test.id %>">
+      <!-- Violation counter -->
+      <div id="violationBar" class="<%= violations > 0 ? 'flex' : 'hidden' %> items-center gap-1.5 bg-red-500/80 rounded-lg px-3 py-1.5 text-xs font-bold" title="Violations detected">
+        ⚠ <span id="violationCount"><%= violations %></span> Violation<span id="violPlural"><%= violations!==1?'s':'' %></span>
+      </div>
+      <!-- Fullscreen toggle -->
+      <button onclick="toggleFullscreen()" id="fsBtn" class="text-white/70 hover:text-white text-xs flex items-center gap-1 transition-colors" title="Toggle fullscreen">
+        <svg id="fsIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        <span class="hidden sm:inline">Fullscreen</span>
+      </button>
+      <!-- Timer -->
+      <div id="timer" class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-1.5 font-mono font-bold text-sm" data-remaining="<%= remaining %>">
         ⏱ <span id="timerDisplay">--:--:--</span>
       </div>
-      <div class="text-xs text-white/70 hidden md:block">
-        <%= currentUser.name %> · Roll: <%= currentUser.rollNo %>
-      </div>
+      <div class="text-xs text-white/60 hidden md:block"><%= currentUser.name %> · <%= currentUser.rollNo %></div>
     </div>
   </div>
 
-  <!-- Main exam area -->
+  <!-- Violation warning banner (hidden by default) -->
+  <div id="warnBanner" class="hidden bg-red-600 text-white text-center text-sm font-semibold py-2 px-4 flex-shrink-0">
+    ⚠ Warning: Switching tabs or leaving fullscreen will be recorded and reported to your teacher!
+  </div>
+
   <div class="flex flex-1 overflow-hidden">
-    <!-- Left: Question panel -->
+    <!-- Question panel -->
     <div class="flex-1 flex flex-col overflow-hidden bg-white">
       <!-- Question header -->
-      <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+      <div class="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
         <div class="flex items-center gap-3">
           <span class="bg-primary-800 text-white text-xs font-bold px-3 py-1 rounded-full">Q <%= questionNumber %> / <%= totalQuestions %></span>
-          <span class="text-xs text-gray-500 hidden sm:block"><%= question.subject %> · <%= question.difficulty %> · <%= question.marks %> mark(s)</span>
+          <span class="text-xs text-gray-500 hidden sm:block"><%= question.subject %><% if(question.topic){%> › <%= question.topic %><% } %> · <%= question.difficulty %> · <%= question.marks %> mark(s)</span>
         </div>
         <div class="flex items-center gap-2">
+          <!-- Per-question timer display -->
+          <span class="text-xs text-gray-400 hidden sm:block">Time on this Q: <span id="qTimer" class="font-mono font-semibold text-gray-600">0s</span></span>
           <button id="markReviewBtn" onclick="toggleMark()"
-            class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors <%= isMarked ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-300 text-gray-600 hover:bg-purple-50 hover:border-purple-300' %>">
-            🔖 <%= isMarked ? 'Marked' : 'Mark for Review' %>
+            class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors <%= isMarked?'bg-purple-600 text-white border-purple-600':'border-gray-300 text-gray-600 hover:bg-purple-50' %>">
+            🔖 <%= isMarked?'Marked':'Mark for Review' %>
           </button>
-          <button onclick="clearAnswer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
-            Clear
-          </button>
+          <button onclick="clearAnswer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Clear</button>
         </div>
       </div>
 
-      <!-- Question text -->
-      <div class="flex-1 overflow-y-auto px-6 py-6">
-        <p class="text-base font-medium text-gray-900 leading-relaxed mb-6"><%= question.question %></p>
+      <!-- Question content -->
+      <div class="flex-1 overflow-y-auto px-6 py-5">
+        <p class="text-base font-medium text-gray-900 leading-relaxed mb-2"><%= question.question %></p>
+        <% if (question.questionImage) { %>
+        <img src="<%= question.questionImage %>" alt="Question image" class="q-image" />
+        <% } %>
 
         <!-- Options -->
-        <div class="space-y-3" id="optionsContainer">
+        <div class="space-y-3 mt-4" id="optionsContainer">
           <% options.forEach(opt => { %>
           <label class="option-label flex items-start gap-3 cursor-pointer">
             <input type="radio" name="answer" value="<%= opt.key %>" class="sr-only"
-              <%= selectedAnswer === opt.key ? 'checked' : '' %>
+              <%= selectedAnswer===opt.key?'checked':'' %>
               onchange="saveAnswer('<%= opt.key %>')" />
-            <div class="flex-1 flex items-start gap-3 border-2 border-gray-200 rounded-xl p-4 transition-all <%= selectedAnswer === opt.key ? 'border-indigo-500 bg-indigo-50' : '' %>">
-              <span class="w-7 h-7 rounded-full border-2 border-current flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5
-                <%= selectedAnswer === opt.key ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-400 text-gray-600' %>">
-                <%= opt.key %>
-              </span>
-              <span class="text-sm text-gray-800 leading-relaxed"><%= opt.value %></span>
+            <div class="flex-1 flex flex-col border-2 border-gray-200 rounded-xl p-4 transition-all <%= selectedAnswer===opt.key?'border-indigo-500 bg-indigo-50':'' %>">
+              <div class="flex items-start gap-3">
+                <span class="w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5
+                  <%= selectedAnswer===opt.key?'bg-indigo-600 border-indigo-600 text-white':'border-gray-400 text-gray-600' %>">
+                  <%= opt.key %>
+                </span>
+                <span class="text-sm text-gray-800 leading-relaxed"><%= opt.value %></span>
+              </div>
+              <% if (opt.image) { %>
+              <img src="<%= opt.image %>" alt="Option <%= opt.key %>" class="q-image mt-2 ml-10" />
+              <% } %>
             </div>
           </label>
           <% }) %>
@@ -71,124 +94,116 @@
       </div>
 
       <!-- Navigation -->
-      <div class="border-t border-gray-200 px-6 py-4 flex items-center justify-between bg-white flex-shrink-0">
+      <div class="border-t px-6 py-4 flex items-center justify-between bg-white flex-shrink-0">
         <% if (questionNumber > 1) { %>
-        <a href="/exam/<%= test.id %>/question/<%= questionNumber - 1 %>" class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          ← Previous
-        </a>
-        <% } else { %>
-        <div></div>
-        <% } %>
+        <a href="/exam/<%= test.id %>/question/<%= questionNumber-1 %>" onclick="saveCurrentBeforeNav(event, this.href)"
+          class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">← Prev</a>
+        <% } else { %><div></div><% } %>
 
-        <button onclick="submitConfirm()" class="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          Submit Exam
-        </button>
+        <button onclick="submitConfirm()" class="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Submit Exam</button>
 
         <% if (questionNumber < totalQuestions) { %>
-        <a href="/exam/<%= test.id %>/question/<%= questionNumber + 1 %>" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          Save & Next →
-        </a>
+        <a href="/exam/<%= test.id %>/question/<%= questionNumber+1 %>" onclick="saveCurrentBeforeNav(event, this.href)"
+          class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Save & Next →</a>
         <% } else { %>
-        <button onclick="submitConfirm()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          ✅ Finish
-        </button>
+        <button onclick="submitConfirm()" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">✅ Finish</button>
         <% } %>
       </div>
     </div>
 
-    <!-- Right: Palette panel -->
-    <div class="w-64 bg-white border-l border-gray-200 flex flex-col overflow-hidden flex-shrink-0 hidden md:flex">
-      <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <p class="text-xs font-bold text-gray-700 uppercase tracking-wider">Question Palette</p>
-        <div class="flex gap-2 mt-2 text-xs">
+    <!-- Palette panel -->
+    <div class="w-60 bg-white border-l border-gray-200 flex flex-col flex-shrink-0 hidden md:flex overflow-hidden">
+      <div class="px-4 py-3 border-b bg-gray-50">
+        <p class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Question Palette</p>
+        <div class="grid grid-cols-2 gap-1 text-xs">
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span>Answered</span>
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span>Not ans.</span>
-        </div>
-        <div class="flex gap-2 mt-1 text-xs">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span>Not Ans.</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-500 inline-block"></span>Marked</span>
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-300 inline-block"></span>Not visited</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-300 inline-block"></span>Not Visited</span>
         </div>
       </div>
       <div class="flex-1 overflow-y-auto p-3">
         <div class="flex flex-wrap gap-1.5">
           <% paletteStatus.forEach(p => { %>
           <a href="/exam/<%= test.id %>/question/<%= p.num %>"
+            onclick="saveCurrentBeforeNav(event, this.href)"
             class="palette-btn flex items-center justify-center text-white
               <%= p.status==='answered'?'q-answered':p.status==='marked'?'q-marked':p.status==='answered-marked'?'q-answered-marked':p.status==='not-answered'?'q-not-answered':'q-not-visited' %>
-              <%= p.num === questionNumber ? 'ring-2 ring-offset-1 ring-gray-700 scale-110' : '' %>">
+              <%= p.num===questionNumber?'ring-2 ring-offset-1 ring-gray-700 scale-110':'' %>">
             <%= p.num %>
           </a>
           <% }) %>
         </div>
       </div>
-      <!-- Summary -->
-      <div class="border-t border-gray-100 p-4 text-xs text-gray-600 space-y-1.5">
-        <% const answered = paletteStatus.filter(p=>p.status==='answered'||p.status==='answered-marked').length %>
-        <% const marked = paletteStatus.filter(p=>p.status==='marked'||p.status==='answered-marked').length %>
+      <div class="border-t p-4 text-xs text-gray-600 space-y-1.5">
+        <% const answered=paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %>
+        <% const marked=paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %>
         <div class="flex justify-between"><span>✅ Answered</span><span class="font-bold text-green-600"><%= answered %></span></div>
-        <div class="flex justify-between"><span>❌ Not Answered</span><span class="font-bold text-red-500"><%= totalQuestions - answered %></span></div>
+        <div class="flex justify-between"><span>❌ Not Answered</span><span class="font-bold text-red-500"><%= totalQuestions-answered %></span></div>
         <div class="flex justify-between"><span>🔖 Marked</span><span class="font-bold text-purple-600"><%= marked %></span></div>
-        <div class="flex justify-between border-t border-gray-100 pt-1.5"><span>Total</span><span class="font-bold"><%= totalQuestions %></span></div>
+        <div class="flex justify-between border-t pt-1.5"><span>Total</span><span class="font-bold"><%= totalQuestions %></span></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Submit confirmation modal -->
+<!-- Submit modal -->
 <div id="submitModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
     <div class="text-5xl mb-4">📋</div>
-    <h3 class="text-xl font-bold text-gray-900 mb-2">Submit Exam?</h3>
-    <p class="text-gray-500 text-sm mb-6">Once submitted, you cannot change your answers.</p>
-    <div class="grid grid-cols-3 gap-4 bg-gray-50 rounded-xl p-4 mb-6 text-sm">
-      <div><p class="text-2xl font-bold text-green-600" id="modalAnswered">-</p><p class="text-xs text-gray-500">Answered</p></div>
-      <div><p class="text-2xl font-bold text-red-500" id="modalUnanswered">-</p><p class="text-xs text-gray-500">Unanswered</p></div>
-      <div><p class="text-2xl font-bold text-purple-600" id="modalMarked">-</p><p class="text-xs text-gray-500">Marked</p></div>
+    <h3 class="text-xl font-bold mb-2">Submit Exam?</h3>
+    <p class="text-gray-500 text-sm mb-5">Once submitted, you cannot change your answers.</p>
+    <div class="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 mb-5 text-sm">
+      <div><p class="text-2xl font-bold text-green-600"><%= paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Answered</p></div>
+      <div><p class="text-2xl font-bold text-red-500"><%= totalQuestions - paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Unanswered</p></div>
+      <div><p class="text-2xl font-bold text-purple-600"><%= paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Marked</p></div>
     </div>
     <div class="flex gap-3">
       <form action="/exam/<%= test.id %>/submit" method="POST" class="flex-1">
-        <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700 transition-colors">Yes, Submit</button>
+        <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700">Yes, Submit</button>
       </form>
-      <button onclick="document.getElementById('submitModal').classList.add('hidden')" class="flex-1 border-2 border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+      <button onclick="document.getElementById('submitModal').classList.add('hidden')" class="flex-1 border-2 border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button>
     </div>
   </div>
 </div>
 
-<!-- Hidden auto-submit form -->
 <form id="autoSubmitForm" action="/exam/<%= test.id %>/submit" method="POST" style="display:none">
   <input type="hidden" name="auto" value="true">
 </form>
 
 <script>
 const TEST_ID = '<%= test.id %>';
-const RESULT_ID = '<%= resultId %>';
+const QUESTION_ID = '<%= question.id %>';
 let remainingSeconds = <%= remaining %>;
 let markedForReview = <%= isMarked %>;
-let currentAnswer = '<%= selectedAnswer || '' %>';
+let currentAnswer = '<%= selectedAnswer || "" %>';
 let saveTimer = null;
+let qStartTime = Date.now();
+let qElapsed = 0;
+let violations = <%= violations %>;
 
-// ── Timer ─────────────────────────────────────────────────────────────────────
-function formatTime(s) {
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-}
-
+// ── TIMER ─────────────────────────────────────────────────────────────────────
+const fmt = s => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 const timerEl = document.getElementById('timer');
 const timerDisplay = document.getElementById('timerDisplay');
+timerDisplay.textContent = fmt(remainingSeconds);
 
 const countdown = setInterval(() => {
   remainingSeconds--;
-  timerDisplay.textContent = formatTime(remainingSeconds);
-  if (remainingSeconds <= 300) { timerEl.className = timerEl.className.replace('warning','') + ' urgent timer-warning'; }
+  timerDisplay.textContent = fmt(remainingSeconds);
+  if (remainingSeconds <= 0) { clearInterval(countdown); document.getElementById('autoSubmitForm').submit(); }
+  else if (remainingSeconds <= 300) { timerEl.className = timerEl.className + ' urgent'; }
   else if (remainingSeconds <= 600) { timerEl.classList.add('warning'); }
-  if (remainingSeconds <= 0) {
-    clearInterval(countdown);
-    document.getElementById('autoSubmitForm').submit();
-  }
 }, 1000);
-timerDisplay.textContent = formatTime(remainingSeconds);
 
-// ── Save Answer (AJAX) ────────────────────────────────────────────────────────
+// ── PER-QUESTION TIMER ────────────────────────────────────────────────────────
+const qTimerEl = document.getElementById('qTimer');
+const qInterval = setInterval(() => {
+  qElapsed = Math.floor((Date.now() - qStartTime) / 1000);
+  qTimerEl.textContent = qElapsed > 60 ? `${Math.floor(qElapsed/60)}m ${qElapsed%60}s` : `${qElapsed}s`;
+}, 1000);
+
+// ── SAVE ANSWER ───────────────────────────────────────────────────────────────
 function saveAnswer(ans) {
   currentAnswer = ans;
   clearTimeout(saveTimer);
@@ -196,22 +211,18 @@ function saveAnswer(ans) {
     fetch(`/exam/${TEST_ID}/save-answer`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ questionId: '<%= question.id %>', answer: ans, markForReview: String(markedForReview) })
+      body: JSON.stringify({ questionId: QUESTION_ID, answer: ans, markForReview: markedForReview, timeSpent: qElapsed })
     }).catch(console.error);
-  }, 300);
+  }, 400);
 }
 
 function clearAnswer() {
   currentAnswer = '';
   document.querySelectorAll('input[name="answer"]').forEach(r => r.checked = false);
-  document.querySelectorAll('.option-label > div').forEach(d => {
-    d.classList.remove('border-indigo-500','bg-indigo-50');
-    d.classList.add('border-gray-200');
-  });
+  document.querySelectorAll('.option-label > div').forEach(d => { d.className = d.className.replace('border-indigo-500','border-gray-200').replace('bg-indigo-50',''); });
   fetch(`/exam/${TEST_ID}/save-answer`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ questionId: '<%= question.id %>', answer: '', markForReview: String(markedForReview) })
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ questionId: QUESTION_ID, answer:'', markForReview: markedForReview, timeSpent: qElapsed })
   }).catch(console.error);
 }
 
@@ -223,21 +234,88 @@ function toggleMark() {
     ? 'text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors bg-purple-600 text-white border-purple-600'
     : 'text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors border-gray-300 text-gray-600 hover:bg-purple-50';
   fetch(`/exam/${TEST_ID}/save-answer`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ questionId: '<%= question.id %>', answer: currentAnswer, markForReview: String(markedForReview) })
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
   }).catch(console.error);
 }
 
+function saveCurrentBeforeNav(e, href) {
+  e.preventDefault();
+  clearInterval(qInterval);
+  fetch(`/exam/${TEST_ID}/save-answer`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
+  }).finally(() => window.location.href = href);
+}
+
+// ── FULLSCREEN ────────────────────────────────────────────────────────────────
+function enterFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+function exitFullscreen() {
+  if (document.exitFullscreen) document.exitFullscreen();
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+}
+function toggleFullscreen() {
+  if (!document.fullscreenElement) enterFullscreen(); else exitFullscreen();
+}
+// Auto-enter fullscreen on load
+window.addEventListener('load', () => { setTimeout(enterFullscreen, 500); });
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    reportViolation('fullscreenExit');
+    showWarnBanner('⚠ Fullscreen exited! Please re-enter fullscreen to continue. Click the fullscreen button.');
+  }
+});
+
+// ── ANTI-CHEAT: TAB SWITCH / FOCUS LOSS ──────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    reportViolation('tabSwitch');
+  }
+});
+
+window.addEventListener('blur', () => { reportViolation('focusLoss'); });
+
+// ── RIGHT-CLICK & COPY-PASTE DISABLE ─────────────────────────────────────────
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('copy',  e => e.preventDefault());
+document.addEventListener('cut',   e => e.preventDefault());
+document.addEventListener('paste', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  // Disable F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S
+  if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key==='I') || (e.ctrlKey && e.key==='u') || (e.ctrlKey && e.key==='s')) {
+    e.preventDefault();
+  }
+});
+
+function reportViolation(type) {
+  violations++;
+  document.getElementById('violationCount').textContent = violations;
+  document.getElementById('violPlural').textContent = violations!==1?'s':'';
+  document.getElementById('violationBar').classList.remove('hidden');
+  document.getElementById('violationBar').classList.add('flex');
+  fetch(`/exam/${TEST_ID}/report-violation`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ type })
+  }).catch(console.error);
+}
+
+function showWarnBanner(msg) {
+  const banner = document.getElementById('warnBanner');
+  banner.textContent = msg;
+  banner.classList.remove('hidden');
+  setTimeout(() => banner.classList.add('hidden'), 4000);
+}
+
 function submitConfirm() {
-  const answered = document.querySelectorAll('.q-answered, .q-answered-marked').length || 0;
-  document.getElementById('modalAnswered').textContent = '<%= paletteStatus.filter(p=>p.status==="answered"||p.status==="answered-marked").length %>';
-  document.getElementById('modalUnanswered').textContent = '<%= totalQuestions - paletteStatus.filter(p=>p.status==="answered"||p.status==="answered-marked").length %>';
-  document.getElementById('modalMarked').textContent = '<%= paletteStatus.filter(p=>p.status==="marked"||p.status==="answered-marked").length %>';
   document.getElementById('submitModal').classList.remove('hidden');
 }
 
-// Prevent accidental navigation
-window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
+// Prevent accidental back navigation
+window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue=''; });
 </script>
 </body></html>
