@@ -1,35 +1,29 @@
 <%- include('../partials/head') %>
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-admin') %>
-
-  <!-- Main content -->
   <main class="ml-64 flex-1 overflow-y-auto">
-    <!-- Top bar -->
     <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
       <div>
         <h1 class="text-xl font-bold text-gray-900">Admin Dashboard</h1>
         <p class="text-sm text-gray-500"><%= process.env.COLLEGE_NAME %> · AY <%= process.env.ACADEMIC_YEAR %></p>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="text-sm text-gray-500"><%= new Date().toLocaleDateString('en-IN', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) %></span>
-      </div>
+      <span class="text-sm text-gray-500"><%= new Date().toLocaleDateString('en-IN', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) %></span>
     </header>
-
     <div class="p-8">
       <%- include('../partials/flash') %>
 
-      <!-- Stats cards -->
+      <!-- Stats -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <% [
-          {label:'Total Students', value: stats.studentCount, icon:'👨‍🎓', color:'blue',  link:'/admin/students'},
-          {label:'Total Teachers', value: stats.teacherCount, icon:'👨‍🏫', color:'green', link:'/admin/teachers'},
-          {label:'Total Tests',    value: stats.testCount,    icon:'📝',   color:'purple',link:'#'},
-          {label:'Active Groups',  value: stats.groupCount,   icon:'👥',   color:'orange',link:'/admin/groups'},
+          {label:'Total Students', value: stats.studentCount,  icon:'👨‍🎓', color:'blue',   link:'/admin/students'},
+          {label:'Total Tests',    value: stats.testCount,     icon:'📝',   color:'purple', link:'/admin/tests'},
+          {label:'Questions',      value: stats.questionCount, icon:'❓',   color:'green',  link:'/admin/questions'},
+          {label:'Active Groups',  value: stats.groupCount,    icon:'👥',   color:'orange', link:'/admin/groups'},
         ].forEach(card => { %>
         <a href="<%= card.link %>" class="card-hover bg-white rounded-2xl p-6 border border-gray-100 shadow-sm block">
           <div class="flex items-center justify-between mb-4">
             <span class="text-3xl"><%= card.icon %></span>
-            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-<%= card.color %>-100 text-<%= card.color %>-700">View all</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-<%= card.color %>-100 text-<%= card.color %>-700">View</span>
           </div>
           <p class="text-3xl font-bold text-gray-900"><%= card.value %></p>
           <p class="text-sm text-gray-500 mt-1"><%= card.label %></p>
@@ -45,7 +39,7 @@
             <a href="/admin/results" class="text-sm text-primary-600 hover:underline">View all</a>
           </div>
           <div class="divide-y divide-gray-50">
-            <% if (recentResults.length === 0) { %>
+            <% if (!recentResults || recentResults.length === 0) { %>
             <p class="px-6 py-8 text-sm text-gray-400 text-center">No results yet.</p>
             <% } else { recentResults.forEach(r => { %>
             <div class="flex items-center gap-4 px-6 py-3.5 hover:bg-gray-50 transition-colors">
@@ -65,28 +59,27 @@
           </div>
         </div>
 
-        <!-- Recent Users -->
+        <!-- Recent Students -->
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div class="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-            <h3 class="font-semibold text-gray-900">Recently Added Users</h3>
+            <h3 class="font-semibold text-gray-900">Recently Added Students</h3>
+            <a href="/admin/students" class="text-sm text-primary-600 hover:underline">View all</a>
           </div>
           <div class="divide-y divide-gray-50">
-            <% recentUsers.forEach(u => { %>
+            <% if (!recentUsers || recentUsers.length === 0) { %>
+            <p class="px-6 py-8 text-sm text-gray-400 text-center">No students yet.</p>
+            <% } else { recentUsers.forEach(u => { %>
             <div class="flex items-center gap-4 px-6 py-3.5 hover:bg-gray-50 transition-colors">
-              <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0
-                <%= u.role === 'teacher' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700' %>">
+              <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm flex-shrink-0">
                 <%= u.name.charAt(0).toUpperCase() %>
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-gray-900 truncate"><%= u.name %></p>
                 <p class="text-xs text-gray-500"><%= u.rollNo || u.email || '—' %></p>
               </div>
-              <span class="text-xs px-2.5 py-1 rounded-full font-medium
-                <%= u.role === 'teacher' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700' %>">
-                <%= u.role %>
-              </span>
+              <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-indigo-100 text-indigo-700">Student</span>
             </div>
-            <% }) %>
+            <% }) } %>
           </div>
         </div>
       </div>
@@ -96,10 +89,10 @@
         <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <% [
-            {href:'/admin/teachers',label:'Add Teacher',icon:'👨‍🏫'},
-            {href:'/admin/students',label:'Add Student',icon:'👨‍🎓'},
-            {href:'/admin/groups',  label:'Create Group',icon:'👥'},
-            {href:'/admin/results', label:'View Reports',icon:'📊'},
+            {href:'/admin/subjects',   label:'Manage Subjects', icon:'📚'},
+            {href:'/admin/students',   label:'Add Student',     icon:'👨‍🎓'},
+            {href:'/admin/tests/create',label:'Create Test',    icon:'📝'},
+            {href:'/admin/results',    label:'View Reports',    icon:'📊'},
           ].forEach(a => { %>
           <a href="<%= a.href %>" class="bg-white/10 hover:bg-white/20 rounded-xl p-4 text-center transition-colors backdrop-blur-sm">
             <div class="text-2xl mb-1"><%= a.icon %></div>

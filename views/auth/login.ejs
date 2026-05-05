@@ -58,8 +58,8 @@
           <!-- Role selector -->
           <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">Login As</label>
-            <div class="grid grid-cols-3 gap-2" id="roleSelector">
-              <% [['admin','Admin','🔑'],['teacher','Teacher','📚'],['student','Student','🎓']].forEach(([val,label,icon]) => { %>
+            <div class="grid grid-cols-2 gap-2" id="roleSelector">
+              <% [['admin','Admin','🔑'],['student','Student','🎓']].forEach(([val,label,icon]) => { %>
               <label class="cursor-pointer">
                 <input type="radio" name="role" value="<%= val %>" class="sr-only peer" <%= val === 'student' ? 'checked' : '' %>>
                 <div class="peer-checked:bg-primary-800 peer-checked:text-white peer-checked:border-primary-800 border-2 border-gray-200 rounded-xl p-3 text-center transition-all hover:border-primary-300">

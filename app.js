@@ -38,7 +38,6 @@ app.use(attachUser); // injects currentUser + flash into res.locals
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/auth',    require('./routes/auth'));
 app.use('/admin',   require('./routes/admin'));
-app.use('/teacher', require('./routes/teacher'));
 app.use('/student', require('./routes/student'));
 app.use('/exam',    require('./routes/exam'));
 app.use('/results', require('./routes/results'));

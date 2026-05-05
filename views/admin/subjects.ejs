@@ -1,0 +1,95 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
+      <h1 class="text-xl font-bold text-gray-900">Manage Subjects</h1>
+      <p class="text-sm text-gray-500">Add or remove subjects used for questions and tests</p>
+    </header>
+    <div class="p-8">
+      <%- include('../partials/flash') %>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Add Subject -->
+        <div class="lg:col-span-1">
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Add New Subject</h3>
+            <form action="/admin/subjects" method="POST" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Subject Name</label>
+                <input type="text" name="name" required placeholder="e.g. Computer Science"
+                  class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"/>
+              </div>
+              <button type="submit" class="w-full bg-primary-800 hover:bg-primary-900 text-white font-medium py-2.5 rounded-xl text-sm transition-colors">
+                + Add Subject
+              </button>
+            </form>
+          </div>
+
+          <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <p class="font-semibold mb-1">⚠️ Note</p>
+            <p>Subjects with existing questions cannot be deleted. Remove or reassign questions first.</p>
+          </div>
+        </div>
+
+        <!-- Subject List -->
+        <div class="lg:col-span-2">
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
+              <h3 class="font-semibold text-gray-900">All Subjects (<%= subjects.length %>)</h3>
+              <a href="/admin/questions" class="text-sm text-primary-600 hover:underline">View Questions →</a>
+            </div>
+            <div class="divide-y divide-gray-50">
+              <% if (subjects.length === 0) { %>
+              <p class="px-6 py-10 text-sm text-gray-400 text-center">No subjects yet. Add your first subject.</p>
+              <% } else { subjects.forEach(subject => { %>
+              <div class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex items-center gap-4">
+                  <div class="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-sm">
+                    <%= subject.charAt(0) %>
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-900"><%= subject %></p>
+                    <p class="text-xs text-gray-400"><%= subjectStats[subject] || 0 %> question(s)</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <a href="/admin/questions?subject=<%= encodeURIComponent(subject) %>"
+                    class="text-xs text-primary-600 hover:underline">View Questions</a>
+                  <a href="/admin/tests/create?subject=<%= encodeURIComponent(subject) %>"
+                    class="text-xs text-emerald-600 hover:underline">Create Test</a>
+                  <% if ((subjectStats[subject] || 0) === 0) { %>
+                  <form action="/admin/subjects/delete" method="POST"
+                    onsubmit="return confirm('Delete subject <%= subject %>?')">
+                    <input type="hidden" name="name" value="<%= subject %>">
+                    <button type="submit" class="text-xs text-red-500 hover:text-red-700 font-medium">Delete</button>
+                  </form>
+                  <% } else { %>
+                  <span class="text-xs text-gray-300 cursor-not-allowed">Delete</span>
+                  <% } %>
+                </div>
+              </div>
+              <% }) } %>
+            </div>
+          </div>
+
+          <!-- Subject-wise stats -->
+          <% if (subjects.length > 0) { %>
+          <div class="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+            <% subjects.forEach(subject => { %>
+            <a href="/admin/questions?subject=<%= encodeURIComponent(subject) %>"
+              class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+              <p class="font-semibold text-gray-900 text-sm truncate"><%= subject %></p>
+              <p class="text-2xl font-bold text-primary-700 mt-1"><%= subjectStats[subject] || 0 %></p>
+              <p class="text-xs text-gray-400">questions</p>
+            </a>
+            <% }) %>
+          </div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
