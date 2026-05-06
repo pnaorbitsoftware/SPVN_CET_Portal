@@ -1,62 +1,71 @@
 <%- include('../partials/head') %>
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-admin') %>
-  <main class="ml-64 flex-1 overflow-y-auto">
-    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
-      <h1 class="text-xl font-bold text-gray-900">Groups / Batches</h1>
-    </header>
-    <div class="p-8">
-      <%- include('../partials/flash') %>
-      <div class="flex gap-3 mb-6">
-        <button onclick="document.getElementById('createGroupModal').classList.remove('hidden')"
-          class="flex items-center gap-2 bg-primary-800 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-primary-900 transition-colors">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          Create Group
-        </button>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="flex-1">
+        <h1 class="text-lg font-bold text-slate-900">Groups &amp; Batches</h1>
+        <p class="text-xs text-slate-400"><%= groups.length %> active groups</p>
+      </div>
+      <div class="flex items-center gap-2.5">
         <button onclick="document.getElementById('assignModal').classList.remove('hidden')"
-          class="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-indigo-700 transition-colors">
-          Assign Member
+          class="flex items-center gap-1.5 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+          <span class="hidden sm:inline">Assign Member</span>
+        </button>
+        <button onclick="document.getElementById('createGroupModal').classList.remove('hidden')"
+          class="flex items-center gap-1.5 bg-navy-950 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-navy-900 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          <span class="hidden sm:inline">Create Group</span>
         </button>
       </div>
+    </header>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        <% groups.forEach(g => { %>
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 card-hover">
+    <div class="p-5 lg:p-8">
+      <%- include('../partials/flash') %>
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+        <% groups.forEach(g => {
+          const studentCount = g.members ? g.members.filter(m => m.GroupMember?.role === 'student').length : 0;
+        %>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5 card-lift">
           <div class="flex items-start justify-between mb-4">
-            <div>
-              <h3 class="font-bold text-gray-900 text-lg"><%= g.name %></h3>
-              <p class="text-sm text-gray-500 mt-0.5"><%= g.description || 'No description' %></p>
+            <div class="w-10 h-10 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
+              <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
             </div>
-            <span class="bg-primary-100 text-primary-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-              AY <%= g.academicYear %>
+            <span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">AY <%= g.academicYear %></span>
+          </div>
+          <h3 class="font-bold text-slate-900 mb-1"><%= g.name %></h3>
+          <p class="text-xs text-slate-400 mb-4 leading-relaxed"><%= g.description || 'No description' %></p>
+          <div class="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-50">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              <strong class="text-slate-700"><%= studentCount %></strong> students
             </span>
-          </div>
-          <div class="flex items-center gap-4 text-sm text-gray-600 mb-4">
-            <span>👨‍🎓 <strong><%= g.members ? g.members.filter(m => m.GroupMember?.role === 'student').length : 0 %></strong> Students</span>
-            <span>👨‍🏫 <strong><%= g.members ? g.members.filter(m => m.GroupMember?.role === 'teacher').length : 0 %></strong> Teachers</span>
-          </div>
-          <div class="flex flex-wrap gap-1.5">
-            <% if (g.members && g.members.length > 0) { %>
-              <% g.members.slice(0,5).forEach(m => { %>
-              <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs" title="<%= m.name %>">
+            <div class="flex -space-x-1.5">
+              <% if (g.members && g.members.length > 0) {
+                g.members.slice(0,5).forEach(m => { %>
+              <div class="w-6 h-6 rounded-full bg-navy-200 border-2 border-white flex items-center justify-center text-navy-700 font-bold text-[9px]" title="<%= m.name %>">
                 <%= m.name.charAt(0).toUpperCase() %>
               </div>
               <% }) %>
               <% if (g.members.length > 5) { %>
-              <div class="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-semibold">
+              <div class="w-6 h-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-slate-500 text-[9px] font-semibold">
                 +<%= g.members.length - 5 %>
               </div>
+              <% } } else { %>
+              <span class="text-slate-300">No members</span>
               <% } %>
-            <% } else { %>
-            <p class="text-xs text-gray-400">No members yet</p>
-            <% } %>
+            </div>
           </div>
         </div>
         <% }) %>
         <% if (groups.length === 0) { %>
-        <div class="col-span-3 text-center py-16 text-gray-400">
-          <svg class="w-16 h-16 mx-auto mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>
-          <p class="font-medium">No groups created yet.</p>
+        <div class="col-span-3 py-20 text-center">
+          <svg class="w-14 h-14 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          <p class="font-medium text-slate-500">No groups yet.</p>
         </div>
         <% } %>
       </div>
@@ -65,55 +74,66 @@
 </div>
 
 <!-- Create Group Modal -->
-<div id="createGroupModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-    <div class="flex items-center justify-between px-6 py-5 border-b"><h3 class="font-bold text-lg">Create Group</h3><button onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="text-gray-400 text-xl">✕</button></div>
+<div id="createGroupModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <h3 class="font-bold text-slate-900">Create Group</h3>
+      <button onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
     <form action="/admin/groups" method="POST" class="p-6 space-y-4">
-      <div><label class="block text-sm font-semibold mb-1.5">Group Name *</label><input type="text" name="name" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="e.g. FE-A 2024, PCM Batch-1" /></div>
-      <div><label class="block text-sm font-semibold mb-1.5">Description</label><textarea name="description" rows="2" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Optional description"></textarea></div>
-      <div><label class="block text-sm font-semibold mb-1.5">Academic Year</label><input type="text" name="academicYear" value="<%= process.env.ACADEMIC_YEAR %>" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" /></div>
-      <div class="flex gap-3"><button type="submit" class="flex-1 bg-primary-800 text-white font-semibold py-3 rounded-xl hover:bg-primary-900">Create</button><button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button></div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Group Name *</label>
+        <input type="text" name="name" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="e.g. PCM Batch A 2024"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+        <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Optional description"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Academic Year</label>
+        <input type="text" name="academicYear" value="<%= process.env.ACADEMIC_YEAR %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Create</button>
+        <button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+      </div>
     </form>
   </div>
 </div>
 
 <!-- Assign Member Modal -->
-<div id="assignModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-    <div class="flex items-center justify-between px-6 py-5 border-b"><h3 class="font-bold text-lg">Assign Member to Group</h3><button onclick="document.getElementById('assignModal').classList.add('hidden')" class="text-gray-400 text-xl">✕</button></div>
+<div id="assignModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <h3 class="font-bold text-slate-900">Assign Member to Group</h3>
+      <button onclick="document.getElementById('assignModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
     <form action="/admin/groups/assign-member" method="POST" class="p-6 space-y-4">
       <div>
-        <label class="block text-sm font-semibold mb-1.5">Group *</label>
-        <select name="groupId" required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Group *</label>
+        <select name="groupId" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
           <option value="">Select group</option>
           <% groups.forEach(g => { %><option value="<%= g.id %>"><%= g.name %></option><% }) %>
         </select>
       </div>
       <div>
-        <label class="block text-sm font-semibold mb-1.5">Role *</label>
-        <select name="role" id="roleSelect" onchange="updateMemberList(this.value)" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-          <option value="student">Student</option>
-          <option value="teacher">Teacher</option>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Student *</label>
+        <select name="userId" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+          <option value="">Select student</option>
+          <% students.forEach(s => { %><option value="<%= s.id %>"><%= s.name %> (<%= s.rollNo %>)</option><% }) %>
         </select>
+        <input type="hidden" name="role" value="student"/>
       </div>
-      <div>
-        <label class="block text-sm font-semibold mb-1.5">Member *</label>
-        <select name="userId" required id="memberSelect" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-          <% students.forEach(s => { %><option value="<%= s.id %>" data-role="student"><%= s.name %> (<%= s.rollNo %>)</option><% }) %>
-          <% teachers.forEach(t => { %><option value="<%= t.id %>" data-role="teacher" style="display:none"><%= t.name %></option><% }) %>
-        </select>
+      <div class="flex gap-3 pt-1">
+        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Assign</button>
+        <button type="button" onclick="document.getElementById('assignModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
       </div>
-      <div class="flex gap-3"><button type="submit" class="flex-1 bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700">Assign</button><button type="button" onclick="document.getElementById('assignModal').classList.add('hidden')" class="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button></div>
     </form>
   </div>
 </div>
-
-<script>
-function updateMemberList(role) {
-  document.querySelectorAll('#memberSelect option').forEach(opt => {
-    opt.style.display = opt.dataset.role === role ? '' : 'none';
-  });
-}
-</script>
 </body>
 </html>

@@ -1,29 +1,37 @@
-<%# views/partials/flash.ejs — reusable flash alert component %>
+<%# Reusable flash alerts — no emojis, SVG icons only %>
 <% if (locals.successMsg && successMsg.length) { %>
-  <div class="flash-msg flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg mb-4" role="alert">
-    <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-    <span><%= successMsg[0] %></span>
-    <button onclick="this.parentElement.remove()" class="ml-auto text-green-600 hover:text-green-800">✕</button>
-  </div>
+<div class="flash-in flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-xl mb-4" role="alert">
+  <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <span class="text-sm font-medium flex-1"><%= successMsg[0] %></span>
+  <button onclick="this.closest('[role=alert]').remove()" class="text-emerald-600 hover:text-emerald-800 ml-auto flex-shrink-0">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
 <% } %>
 <% if (locals.errorMsg && errorMsg.length) { %>
-  <div class="flash-msg flex items-center gap-3 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4" role="alert">
-    <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-    <span><%= errorMsg[0] %></span>
-    <button onclick="this.parentElement.remove()" class="ml-auto text-red-600 hover:text-red-800">✕</button>
-  </div>
+<div class="flash-in flex items-start gap-3 bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3.5 rounded-xl mb-4" role="alert">
+  <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <span class="text-sm font-medium flex-1"><%= errorMsg[0] %></span>
+  <button onclick="this.closest('[role=alert]').remove()" class="text-rose-600 hover:text-rose-800 ml-auto flex-shrink-0">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
 <% } %>
 <% if (locals.warningMsg && warningMsg.length) { %>
-  <div class="flash-msg flex items-center gap-3 bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-4" role="alert">
-    <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-    <span><%= warningMsg[0] %></span>
-    <button onclick="this.parentElement.remove()" class="ml-auto text-yellow-600 hover:text-yellow-800">✕</button>
-  </div>
+<div class="flash-in flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3.5 rounded-xl mb-4" role="alert">
+  <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <span class="text-sm font-medium flex-1"><%= warningMsg[0] %></span>
+  <button onclick="this.closest('[role=alert]').remove()" class="text-amber-600 hover:text-amber-800 ml-auto flex-shrink-0">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
 <% } %>
 <% if (locals.infoMsg && infoMsg.length) { %>
-  <div class="flash-msg flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-4" role="alert">
-    <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
-    <span><%= infoMsg[0] %></span>
-    <button onclick="this.parentElement.remove()" class="ml-auto text-blue-600 hover:text-blue-800">✕</button>
-  </div>
+<div class="flash-in flex items-start gap-3 bg-navy-50 border border-navy-200 text-navy-800 px-4 py-3.5 rounded-xl mb-4" role="alert">
+  <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <span class="text-sm font-medium flex-1"><%= infoMsg[0] %></span>
+  <button onclick="this.closest('[role=alert]').remove()" class="text-navy-600 hover:text-navy-800 ml-auto flex-shrink-0">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
 <% } %>

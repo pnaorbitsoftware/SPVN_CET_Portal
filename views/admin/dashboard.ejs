@@ -1,102 +1,133 @@
 <%- include('../partials/head') %>
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-admin') %>
-  <main class="ml-64 flex-1 overflow-y-auto">
-    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
-      <div>
-        <h1 class="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p class="text-sm text-gray-500"><%= process.env.COLLEGE_NAME %> · AY <%= process.env.ACADEMIC_YEAR %></p>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <!-- Topbar -->
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="flex-1 min-w-0">
+        <h1 class="text-lg font-bold text-slate-900 leading-tight">Dashboard</h1>
+        <p class="text-xs text-slate-400 hidden sm:block"><%= process.env.COLLEGE_NAME %> &middot; AY <%= process.env.ACADEMIC_YEAR %></p>
       </div>
-      <span class="text-sm text-gray-500"><%= new Date().toLocaleDateString('en-IN', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) %></span>
+      <span class="text-xs text-slate-400 hidden md:block"><%= new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short',year:'numeric'}) %></span>
     </header>
-    <div class="p-8">
+
+    <div class="p-5 lg:p-8">
       <%- include('../partials/flash') %>
 
-      <!-- Stats -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <% [
-          {label:'Total Students', value: stats.studentCount,  icon:'👨‍🎓', color:'blue',   link:'/admin/students'},
-          {label:'Total Tests',    value: stats.testCount,     icon:'📝',   color:'purple', link:'/admin/tests'},
-          {label:'Questions',      value: stats.questionCount, icon:'❓',   color:'green',  link:'/admin/questions'},
-          {label:'Active Groups',  value: stats.groupCount,    icon:'👥',   color:'orange', link:'/admin/groups'},
-        ].forEach(card => { %>
-        <a href="<%= card.link %>" class="card-hover bg-white rounded-2xl p-6 border border-gray-100 shadow-sm block">
-          <div class="flex items-center justify-between mb-4">
-            <span class="text-3xl"><%= card.icon %></span>
-            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-<%= card.color %>-100 text-<%= card.color %>-700">View</span>
+      <!-- Stats grid -->
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <%
+          const cards = [
+            {label:'Total Students', value: stats.studentCount, link:'/admin/students', icon:'M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0zm5 2.5a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z', color:'navy'},
+            {label:'Active Tests',   value: stats.testCount,    link:'/admin/tests',    icon:'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', color:'indigo'},
+            {label:'Questions',      value: stats.questionCount, link:'/admin/questions',icon:'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', color:'violet'},
+            {label:'Groups',         value: stats.groupCount,   link:'/admin/groups',   icon:'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', color:'emerald'},
+          ];
+          const bgMap = {navy:'bg-navy-50 text-navy-700',indigo:'bg-indigo-50 text-indigo-700',violet:'bg-violet-50 text-violet-700',emerald:'bg-emerald-50 text-emerald-700'};
+          const ringMap = {navy:'border-navy-100',indigo:'border-indigo-100',violet:'border-violet-100',emerald:'border-emerald-100'};
+        %>
+        <% cards.forEach(c => { %>
+        <a href="<%= c.link %>" class="card-lift bg-white rounded-2xl border border-slate-100 shadow-card p-5 block group">
+          <div class="flex items-start justify-between mb-4">
+            <div class="w-10 h-10 rounded-xl <%= bgMap[c.color] %> flex items-center justify-center">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="<%= c.icon %>"/></svg>
+            </div>
+            <svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
           </div>
-          <p class="text-3xl font-bold text-gray-900"><%= card.value %></p>
-          <p class="text-sm text-gray-500 mt-1"><%= card.label %></p>
+          <p class="text-2xl font-bold text-slate-900"><%= c.value %></p>
+          <p class="text-xs text-slate-500 mt-1 font-medium"><%= c.label %></p>
         </a>
         <% }) %>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Recent Results -->
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-            <h3 class="font-semibold text-gray-900">Recent Results</h3>
-            <a href="/admin/results" class="text-sm text-primary-600 hover:underline">View all</a>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-slate-50">
+            <h3 class="font-semibold text-slate-900 text-sm">Recent Results</h3>
+            <a href="/admin/results" class="text-xs text-navy-600 hover:text-navy-800 font-medium flex items-center gap-1">
+              View all <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </a>
           </div>
-          <div class="divide-y divide-gray-50">
-            <% if (!recentResults || recentResults.length === 0) { %>
-            <p class="px-6 py-8 text-sm text-gray-400 text-center">No results yet.</p>
-            <% } else { recentResults.forEach(r => { %>
-            <div class="flex items-center gap-4 px-6 py-3.5 hover:bg-gray-50 transition-colors">
-              <div class="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-sm flex-shrink-0">
-                <%= r.student ? r.student.name.charAt(0) : '?' %>
+          <% if (!recentResults || recentResults.length === 0) { %>
+          <div class="py-12 text-center">
+            <svg class="w-10 h-10 text-slate-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <p class="text-sm text-slate-400">No results yet</p>
+          </div>
+          <% } else { %>
+          <ul class="divide-y divide-slate-50">
+            <% recentResults.slice(0,6).forEach(r => {
+              const pct = r.totalMarks > 0 ? Math.round((r.score/r.totalMarks)*100) : 0;
+              const clr = pct>=60?'emerald':pct>=40?'amber':'rose';
+            %>
+            <li class="flex items-center gap-3 px-6 py-3.5 hover:bg-slate-50 transition-colors">
+              <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-xs shrink-0">
+                <%= r.student ? r.student.name.charAt(0).toUpperCase() : '?' %>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate"><%= r.student?.name %></p>
-                <p class="text-xs text-gray-500 truncate"><%= r.test?.title %></p>
+                <p class="text-sm font-medium text-slate-900 truncate"><%= r.student?.name %></p>
+                <p class="text-xs text-slate-400 truncate"><%= r.test?.title %></p>
               </div>
-              <div class="text-right">
-                <p class="text-sm font-bold text-gray-900"><%= r.score %>/<%= r.totalMarks %></p>
-                <p class="text-xs text-gray-400"><%= new Date(r.createdAt).toLocaleDateString('en-IN') %></p>
+              <div class="text-right shrink-0">
+                <p class="text-sm font-bold text-<%= clr %>-600"><%= pct %>%</p>
+                <p class="text-xs text-slate-400"><%= r.score %>/<%= r.totalMarks %></p>
               </div>
-            </div>
-            <% }) } %>
-          </div>
+            </li>
+            <% }) %>
+          </ul>
+          <% } %>
         </div>
 
         <!-- Recent Students -->
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-            <h3 class="font-semibold text-gray-900">Recently Added Students</h3>
-            <a href="/admin/students" class="text-sm text-primary-600 hover:underline">View all</a>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-slate-50">
+            <h3 class="font-semibold text-slate-900 text-sm">Recent Students</h3>
+            <a href="/admin/students" class="text-xs text-navy-600 hover:text-navy-800 font-medium flex items-center gap-1">
+              View all <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </a>
           </div>
-          <div class="divide-y divide-gray-50">
-            <% if (!recentUsers || recentUsers.length === 0) { %>
-            <p class="px-6 py-8 text-sm text-gray-400 text-center">No students yet.</p>
-            <% } else { recentUsers.forEach(u => { %>
-            <div class="flex items-center gap-4 px-6 py-3.5 hover:bg-gray-50 transition-colors">
-              <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm flex-shrink-0">
+          <% if (!recentUsers || recentUsers.length === 0) { %>
+          <div class="py-12 text-center">
+            <svg class="w-10 h-10 text-slate-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <p class="text-sm text-slate-400">No students yet</p>
+          </div>
+          <% } else { %>
+          <ul class="divide-y divide-slate-50">
+            <% recentUsers.forEach(u => { %>
+            <li class="flex items-center gap-3 px-6 py-3.5 hover:bg-slate-50 transition-colors">
+              <div class="w-8 h-8 rounded-full bg-navy-100 flex items-center justify-center text-navy-700 font-semibold text-xs shrink-0">
                 <%= u.name.charAt(0).toUpperCase() %>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate"><%= u.name %></p>
-                <p class="text-xs text-gray-500"><%= u.rollNo || u.email || '—' %></p>
+                <p class="text-sm font-medium text-slate-900 truncate"><%= u.name %></p>
+                <p class="text-xs text-slate-400 font-mono"><%= u.rollNo %></p>
               </div>
-              <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-indigo-100 text-indigo-700">Student</span>
-            </div>
-            <% }) } %>
-          </div>
+              <span class="<%= u.isFirstLogin ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700' %> text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0">
+                <%= u.isFirstLogin ? 'First Login' : 'Active' %>
+              </span>
+            </li>
+            <% }) %>
+          </ul>
+          <% } %>
         </div>
       </div>
 
       <!-- Quick Actions -->
-      <div class="mt-6 bg-gradient-to-r from-primary-800 to-indigo-800 rounded-2xl p-6 text-white">
-        <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-navy-950 rounded-2xl p-6">
+        <h3 class="font-semibold text-white text-sm mb-4">Quick Actions</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <% [
-            {href:'/admin/subjects',   label:'Manage Subjects', icon:'📚'},
-            {href:'/admin/students',   label:'Add Student',     icon:'👨‍🎓'},
-            {href:'/admin/tests/create',label:'Create Test',    icon:'📝'},
-            {href:'/admin/results',    label:'View Reports',    icon:'📊'},
+            {href:'/admin/subjects',    label:'Manage Subjects', icon:'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'},
+            {href:'/admin/students',    label:'Add Student',     icon:'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z'},
+            {href:'/admin/tests/create',label:'Create Test',     icon:'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'},
+            {href:'/admin/results',     label:'View Reports',    icon:'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'},
           ].forEach(a => { %>
-          <a href="<%= a.href %>" class="bg-white/10 hover:bg-white/20 rounded-xl p-4 text-center transition-colors backdrop-blur-sm">
-            <div class="text-2xl mb-1"><%= a.icon %></div>
-            <p class="text-sm font-medium"><%= a.label %></p>
+          <a href="<%= a.href %>" class="bg-white/8 hover:bg-white/15 border border-white/10 rounded-xl p-4 flex flex-col gap-2.5 transition-colors group">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="<%= a.icon %>"/></svg>
+            <p class="text-white text-xs font-medium leading-snug"><%= a.label %></p>
           </a>
           <% }) %>
         </div>
