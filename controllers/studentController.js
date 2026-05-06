@@ -128,3 +128,35 @@ exports.getResults = async (req, res) => {
     res.redirect('/student/dashboard');
   }
 };
+
+// ── DOCUMENT UPLOAD ───────────────────────────────────────────────────────────
+const { StudentDocument } = require('../models');
+const fs   = require('fs');
+const path = require('path');
+const DOC_DIR = path.join(__dirname, '../public/uploads/documents');
+if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });
+
+exports.getDocuments = async (req, res) => {
+  try {
+    const docs = await StudentDocument.findAll({ where: { studentId: req.session.user.id }, order: [['createdAt','DESC']] });
+    res.render('student/documents', { title: 'My Documents', docs });
+  } catch (e) { req.flash('error','Failed.'); res.redirect('/student/dashboard'); }
+};
+
+exports.uploadDocument = async (req, res) => {
+  try {
+    if (!req.files?.document) { req.flash('error','No file selected.'); return res.redirect('/student/documents'); }
+    const file = req.files.document;
+    const fname = `doc_${req.session.user.id}_${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+    const filePath = '/uploads/documents/' + fname;
+    fs.writeFileSync(path.join(DOC_DIR, fname), file.data);
+    await StudentDocument.create({
+      studentId: req.session.user.id, fileName: fname,
+      originalName: file.name, fileType: file.mimetype,
+      fileSize: file.size, filePath,
+      description: req.body.description || '',
+    });
+    req.flash('success', 'Document uploaded.');
+    res.redirect('/student/documents');
+  } catch (e) { req.flash('error','Upload failed: ' + e.message); res.redirect('/student/documents'); }
+};

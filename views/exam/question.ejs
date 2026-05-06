@@ -93,7 +93,23 @@
         </div>
       </div>
 
-      <!-- Navigation -->
+      <!-- Tab-switch auto-submit warning overlay -->
+  <div id="tabSwitchOverlay" class="hidden fixed inset-0 z-[999] bg-black/90 flex items-center justify-center p-6">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl">
+      <div class="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      </div>
+      <h2 class="text-xl font-bold text-slate-900 mb-2">Tab Switch Detected</h2>
+      <p class="text-slate-600 text-sm mb-6 leading-relaxed">You have switched tabs or left the exam window. This is a violation of exam rules.<br><strong class="text-rose-600">Your test will be auto-submitted in:</strong></p>
+      <div class="text-6xl font-bold text-rose-600 mb-6 timer-warning" id="tabCountdown">3</div>
+      <p class="text-xs text-slate-400">This incident has been logged in your activity report.</p>
+    </div>
+  </div>
+
+  <!-- Hidden auto-submit form -->
+  <form id="autoSubmitForm" action="/exam/<%= test.id %>/submit" method="POST" class="hidden">
+    <input type="hidden" name="auto" id="autoSubmitInput" value="true"/>
+  </form>
       <div class="border-t px-6 py-4 flex items-center justify-between bg-white flex-shrink-0">
         <% if (questionNumber > 1) { %>
         <a href="/exam/<%= test.id %>/question/<%= questionNumber-1 %>" onclick="saveCurrentBeforeNav(event, this.href)"
@@ -271,14 +287,61 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-// ── ANTI-CHEAT: TAB SWITCH / FOCUS LOSS ──────────────────────────────────────
+// ── ANTI-CHEAT: TAB SWITCH → INSTANT AUTO-SUBMIT ─────────────────────────────
+// Uses Page Visibility API (all major browsers) + window blur as fallback.
+// On first detection: show a 3-second countdown warning, then auto-submit.
+// This prevents students switching tabs to look up answers.
+
+let tabSwitchDetected = false;
+let autoSubmitCountdown = null;
+
+function triggerAutoSubmitWarning(reason) {
+  if (tabSwitchDetected) return; // already triggered
+  tabSwitchDetected = true;
+
+  // Log the violation server-side first
+  reportViolation('tabSwitch');
+
+  // Show full-screen warning overlay with countdown
+  const overlay = document.getElementById('tabSwitchOverlay');
+  const countdownEl = document.getElementById('tabCountdown');
+  overlay.classList.remove('hidden');
+
+  let count = 3;
+  countdownEl.textContent = count;
+
+  autoSubmitCountdown = setInterval(() => {
+    count--;
+    countdownEl.textContent = count;
+    if (count <= 0) {
+      clearInterval(autoSubmitCountdown);
+      // Save current answer state, then submit
+      fetch(`/exam/${TEST_ID}/save-answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
+      }).finally(() => {
+        document.getElementById('autoSubmitInput').value = 'true';
+        document.getElementById('autoSubmitForm').submit();
+      });
+    }
+  }, 1000);
+}
+
+// Primary: Page Visibility API — catches tab switch, minimize, phone lock screen
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    reportViolation('tabSwitch');
+    triggerAutoSubmitWarning('tabSwitch');
   }
 });
 
-window.addEventListener('blur', () => { reportViolation('focusLoss'); });
+// Fallback: window blur — catches Alt+Tab on desktop where visibilitychange may lag
+let blurTimeout;
+window.addEventListener('blur', () => {
+  blurTimeout = setTimeout(() => {
+    if (!document.hasFocus()) triggerAutoSubmitWarning('focusLoss');
+  }, 300); // small debounce to avoid false positives from alert dialogs
+});
+window.addEventListener('focus', () => clearTimeout(blurTimeout));
 
 // ── RIGHT-CLICK & COPY-PASTE DISABLE ─────────────────────────────────────────
 document.addEventListener('contextmenu', e => e.preventDefault());

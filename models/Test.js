@@ -65,6 +65,13 @@ const Test = sequelize.define('Test', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  course:      { type: DataTypes.ENUM('JEE','CET','NEET'), allowNull: true },
+  subject:     { type: DataTypes.STRING(100), allowNull: true },
+  topic:       { type: DataTypes.STRING(150), allowNull: true },
+  subtopic:    { type: DataTypes.STRING(150), allowNull: true },
+  questionPdfPath:  { type: DataTypes.STRING(500), allowNull: true },
+  solutionPdfPath:  { type: DataTypes.STRING(500), allowNull: true },
+  marksPerQuestion: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 1 },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
@@ -74,3 +81,5 @@ const Test = sequelize.define('Test', {
 });
 
 module.exports = Test;
+
+// Patch: add course/subject/topic/subtopic/PDF fields via alter (handled in sync)

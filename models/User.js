@@ -51,6 +51,10 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(100),
     allowNull: true,
   },
+  parentContact: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+  },
   profilePhoto: {
     type: DataTypes.STRING(255),
     allowNull: true,

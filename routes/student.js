@@ -14,3 +14,8 @@ router.get('/notifications', ...guard, sc.getNotifications);
 module.exports = router;
 
 // ─── routes/exam.js ──────────────────────────────────────────────────────────
+
+// Documents
+const studentCtrl = require('../controllers/studentController');
+router.get('/documents',  studentCtrl.getDocuments);
+router.post('/documents', studentCtrl.uploadDocument);

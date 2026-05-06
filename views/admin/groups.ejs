@@ -60,6 +60,23 @@
               <% } %>
             </div>
           </div>
+          <div class="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 flex-wrap">
+            <button onclick="openAddStudent('<%= g.id %>', `<%= g.name.replace(/`/g, '\\`') %>`)"
+              class="text-[11px] font-semibold bg-navy-950 text-white px-3 py-1.5 rounded-lg hover:bg-navy-900 transition-colors flex items-center gap-1.5">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Add Student
+            </button>
+            <button onclick="openBulkImport('<%= g.id %>', `<%= g.name.replace(/`/g, '\\`') %>`)"
+              class="text-[11px] font-semibold border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1.5">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              Bulk Import
+            </button>
+            <a href="/admin/groups/<%= g.id %>/credentials-pdf"
+              class="text-[11px] font-semibold border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1.5">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              Credentials PDF
+            </a>
+          </div>
         </div>
         <% }) %>
         <% if (groups.length === 0) { %>
@@ -73,7 +90,80 @@
   </main>
 </div>
 
-<!-- Create Group Modal -->
+<!-- Add Single Student to Batch Modal -->
+<div id="addStudentModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <div><h3 class="font-bold text-slate-900">Add Student</h3><p class="text-xs text-slate-400 mt-0.5" id="addStudentBatchLabel"></p></div>
+      <button onclick="document.getElementById('addStudentModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <form action="/admin/students" method="POST" id="addStudentForm" class="p-6 space-y-4">
+      <input type="hidden" name="groupId" id="addStudentGroupId"/>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Full Name *</label>
+        <input type="text" name="name" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Student full name"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Roll Number *</label>
+        <input type="text" name="rollNo" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="2024CE001"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Parent Contact No</label>
+        <input type="text" name="parentContact" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="10-digit mobile number"/>
+      </div>
+      <div class="bg-navy-50 border border-navy-100 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <svg class="w-4 h-4 text-navy-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-xs text-navy-700">Password auto-generated as <strong>CET@</strong> + last 4 digits of Roll No</p>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Create Student</button>
+        <button type="button" onclick="document.getElementById('addStudentModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk Import per-batch Modal -->
+<div id="bulkImportModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <div><h3 class="font-bold text-slate-900">Bulk Import Students</h3><p class="text-xs text-slate-400 mt-0.5" id="bulkImportBatchLabel"></p></div>
+      <button onclick="document.getElementById('bulkImportModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <form id="bulkImportForm" action="" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+      <input type="hidden" name="groupId" id="bulkImportGroupId"/>
+      <label class="block border-2 border-dashed border-slate-200 hover:border-navy-300 rounded-xl p-8 text-center cursor-pointer transition-colors group">
+        <svg class="w-10 h-10 text-slate-300 group-hover:text-navy-400 mx-auto mb-3 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <p class="text-sm font-medium text-slate-600">Choose CSV or Excel file</p>
+        <p class="text-xs text-slate-400 mt-1">Supports .csv, .xlsx, .xls</p>
+        <input type="file" name="csvFile" accept=".csv,.xlsx,.xls" required class="sr-only"/>
+      </label>
+      <div class="bg-slate-50 rounded-xl px-4 py-3">
+        <p class="text-xs font-semibold text-slate-600 mb-1">Required columns:</p>
+        <p class="text-xs font-mono text-slate-500">Roll No, Name, Parent Contact No</p>
+        <p class="text-xs text-slate-400 mt-1">Duplicate Roll Nos will be flagged and rejected.</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Import</button>
+        <button type="button" onclick="document.getElementById('bulkImportModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openAddStudent(groupId, groupName) {
+  document.getElementById('addStudentGroupId').value = groupId;
+  document.getElementById('addStudentBatchLabel').textContent = 'Batch: ' + groupName;
+  document.getElementById('addStudentModal').classList.remove('hidden');
+}
+function openBulkImport(groupId, groupName) {
+  document.getElementById('bulkImportGroupId').value = groupId;
+  document.getElementById('bulkImportBatchLabel').textContent = 'Batch: ' + groupName;
+  document.getElementById('bulkImportForm').action = '/admin/groups/' + groupId + '/bulk-import';
+  document.getElementById('bulkImportModal').classList.remove('hidden');
+}
+</script>
 <div id="createGroupModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
   <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
     <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">

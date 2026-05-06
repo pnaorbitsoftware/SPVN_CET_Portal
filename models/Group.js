@@ -22,6 +22,7 @@ const Group = sequelize.define('Group', {
     allowNull: true,
     defaultValue: process.env.ACADEMIC_YEAR || '2024-2025',
   },
+  course: { type: DataTypes.ENUM('JEE','CET','NEET'), allowNull: true },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
