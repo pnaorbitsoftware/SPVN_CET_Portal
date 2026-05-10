@@ -8,33 +8,39 @@ exports.getLogin = (req, res) => {
 exports.postLogin = async (req, res) => {
   try {
     const { identifier, password, role } = req.body;
+    // Only allow admin and student
     if (!['admin', 'student'].includes(role)) {
       req.flash('error', 'Invalid role.');
       return res.redirect('/auth/login');
     }
-    const user = await User.findOne({
-      where: role === 'student' ? { rollNo: identifier, role: 'student' } : { email: identifier, role: 'admin' },
-    });
+    const where = role === 'student'
+      ? { rollNo: identifier, role: 'student' }
+      : { email: identifier, role: 'admin' };
+    const user = await User.findOne({ where });
     if (!user || !user.isActive) {
-      req.flash('error', 'Invalid credentials or account is inactive.');
+      req.flash('error', 'Invalid credentials or account inactive.');
       return res.redirect('/auth/login');
     }
-    const isValid = await user.verifyPassword(password);
-    if (!isValid) {
-      req.flash('error', 'Invalid password. Please try again.');
+    const valid = await user.verifyPassword(password);
+    if (!valid) {
+      req.flash('error', 'Incorrect password. Please try again.');
       return res.redirect('/auth/login');
     }
-    req.session.user = { id: user.id, name: user.name, email: user.email, rollNo: user.rollNo, role: user.role, isFirstLogin: user.isFirstLogin, profilePhoto: user.profilePhoto };
+    req.session.user = {
+      id: user.id, name: user.name, email: user.email,
+      rollNo: user.rollNo, role: user.role,
+      isFirstLogin: user.isFirstLogin, profilePhoto: user.profilePhoto,
+    };
     await user.update({ lastLogin: new Date() });
     if (user.isFirstLogin) {
-      req.flash('warning', 'Welcome! Please change your default password to continue.');
+      req.flash('warning', 'Please change your default password to continue.');
       return res.redirect('/auth/change-password');
     }
     req.flash('success', `Welcome back, ${user.name}!`);
     return res.redirect(`/${user.role}/dashboard`);
-  } catch (error) {
-    console.error('Login error:', error);
-    req.flash('error', 'An error occurred during login.');
+  } catch (err) {
+    console.error('Login error:', err);
+    req.flash('error', 'Login failed. Please try again.');
     return res.redirect('/auth/login');
   }
 };
@@ -55,13 +61,13 @@ exports.postChangePassword = async (req, res) => {
     req.session.user.isFirstLogin = false;
     req.flash('success', 'Password changed successfully!');
     return res.redirect(`/${req.session.user.role}/dashboard`);
-  } catch (error) {
+  } catch (err) {
     req.flash('error', 'Failed to change password.');
     return res.redirect('/auth/change-password');
   }
 };
 
-// FIX: flash is called after session destroy which clears flash; use redirect directly
+// Fix logout crash — safe session destroy
 exports.logout = (req, res) => {
   req.session.destroy((err) => {
     if (err) console.error('Session destroy error:', err);

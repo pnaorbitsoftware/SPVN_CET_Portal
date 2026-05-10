@@ -19,7 +19,7 @@ const GroupMember = sequelize.define('GroupMember', {
     references: { model: 'users', key: 'id' },
   },
   role: {
-    type: DataTypes.ENUM('student', 'teacher'),
+    type: DataTypes.ENUM('student', 'admin'),
     defaultValue: 'student',
   },
 }, {

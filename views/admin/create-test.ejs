@@ -1,0 +1,119 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4">
+      <div class="flex items-center gap-3">
+        <a href="/admin/tests" class="text-slate-400 hover:text-slate-600">←</a>
+        <h1 class="text-lg font-bold text-slate-900">Create New Test</h1>
+      </div>
+    </header>
+    <div class="p-5 lg:p-8 max-w-4xl mx-auto">
+      <%- include('../partials/flash') %>
+      <form action="/admin/tests" method="POST" enctype="multipart/form-data" class="space-y-6">
+
+        <!-- Basic Info -->
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 class="font-bold text-slate-900 mb-4">📝 Test Details</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Title *</label>
+              <input type="text" name="title" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="e.g. CET Mock Test 1 — Physics"/></div>
+            <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Description</label>
+              <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"></textarea></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Course</label>
+              <select name="course" id="courseSelect" onchange="loadSubjects(this.value)" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
+                <option value="">Select Course</option>
+                <% COURSES.forEach(c => { %><option value="<%= c %>" <%= filterCourse===c?'selected':'' %>><%= c %></option><% }) %>
+              </select></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Subject</label>
+              <select name="subject" id="subjectSelect" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
+                <option value="">Select Subject</option>
+                <% SUBJECTS.forEach(s => { %><option value="<%= s %>" <%= filterSubject===s?'selected':'' %>><%= s %></option><% }) %>
+              </select></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Duration (minutes) *</label>
+              <input type="number" name="duration" value="180" min="5" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Negative Marking</label>
+              <input type="number" name="negativeMarking" value="0.25" step="0.25" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Start Time</label>
+              <input type="datetime-local" name="startTime" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
+            <div><label class="block text-sm font-semibold mb-1.5">End Time</label>
+              <input type="datetime-local" name="endTime" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
+            <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Instructions</label>
+              <textarea name="instructions" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Instructions for students..."></textarea></div>
+          </div>
+          <div class="flex gap-6 mt-4">
+            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleQuestions" value="on" checked class="rounded"/> Shuffle Questions</label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleOptions" value="on" class="rounded"/> Shuffle Options</label>
+          </div>
+        </div>
+
+        <!-- Assign Groups -->
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 class="font-bold text-slate-900 mb-4">👥 Assign to Groups</h3>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <% if (!groups.length) { %><p class="text-sm text-slate-400 col-span-3">No groups yet. Create groups first.</p><% } %>
+            <% groups.forEach(g => { %>
+            <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
+              <input type="checkbox" name="groupIds" value="<%= g.id %>" class="rounded"/>
+              <span class="text-sm font-medium text-slate-700"><%= g.name %></span>
+            </label>
+            <% }) %>
+          </div>
+        </div>
+
+        <!-- Select Questions -->
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-slate-900">❓ Select Questions</h3>
+            <span id="selCount" class="text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">0 selected</span>
+          </div>
+          <!-- Subject filter buttons -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button type="button" onclick="filterQ('')" class="qfilt active text-xs px-3 py-1.5 rounded-lg font-medium bg-navy-950 text-white">All</button>
+            <% SUBJECTS.forEach(s => { %>
+            <button type="button" onclick="filterQ('<%= s %>')" class="qfilt text-xs px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200"><%= s %></button>
+            <% }) %>
+          </div>
+          <input type="text" placeholder="Search questions..." onkeyup="searchQ(this.value)" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-navy-500"/>
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+            <% if (!questions.length) { %>
+            <p class="p-6 text-sm text-slate-400 text-center">No questions in bank. <a href="/admin/questions" class="text-navy-600 hover:underline">Add questions first →</a></p>
+            <% } %>
+            <% questions.forEach((q,i) => { %>
+            <label class="q-item flex items-start gap-3 p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors" data-subj="<%= q.subject %>" data-text="<%= q.question.toLowerCase() %>">
+              <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0"/>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-slate-800 leading-snug"><%= q.question.length>110?q.question.substring(0,110)+'...':q.question %></p>
+                <div class="flex gap-2 mt-1">
+                  <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded"><%= q.subject %></span>
+                  <span class="text-xs <%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> px-2 py-0.5 rounded"><%= q.difficulty %></span>
+                  <span class="text-xs text-slate-400"><%= q.marks %> mk</span>
+                </div>
+              </div>
+            </label>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <button type="submit" class="flex-1 bg-navy-950 text-white font-bold py-4 rounded-xl hover:bg-navy-800 transition-colors text-base shadow-lg">Create Test</button>
+          <a href="/admin/tests" class="px-8 py-4 border-2 border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+<script>
+let curSubj='';
+function updCount(){document.getElementById('selCount').textContent=document.querySelectorAll('input[name="questionIds"]:checked').length+' selected';}
+function filterQ(s){curSubj=s;document.querySelectorAll('.qfilt').forEach(b=>b.classList.remove('active','bg-navy-950','text-white'));event.target.classList.add('active','bg-navy-950','text-white');document.querySelectorAll('.q-item').forEach(r=>{r.style.display=(!s||r.dataset.subj===s)?'':'none';});}
+function searchQ(q){document.querySelectorAll('.q-item').forEach(r=>{const sm=!curSubj||r.dataset.subj===curSubj;const tm=r.dataset.text.includes(q.toLowerCase());r.style.display=sm&&tm?'':'none';});}
+function loadSubjects(course){
+  if(!course)return;
+  fetch(`/admin/ajax/subjects/${course}`).then(r=>r.json()).then(subjects=>{
+    const sel=document.getElementById('subjectSelect');
+    sel.innerHTML='<option value="">Select Subject</option>'+subjects.map(s=>`<option value="${s}">${s}</option>`).join('');
+  }).catch(()=>{});
+}
+</script>
+</body></html>

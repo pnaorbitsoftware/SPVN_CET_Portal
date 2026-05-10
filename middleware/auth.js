@@ -37,7 +37,7 @@ const requirePasswordChange = (req, res, next) => {
 
 /**
  * Role-based guard factory
- * Usage: requireRole('admin') or requireRole(['admin', 'teacher'])
+ * Usage: requireRole('admin') or requireRole(['admin', 'student'])
  */
 const requireRole = (roles) => {
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
