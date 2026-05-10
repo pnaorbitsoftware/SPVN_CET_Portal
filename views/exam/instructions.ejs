@@ -1,11 +1,11 @@
 <%- include('../partials/head') %>
-<div class="min-h-screen bg-gray-50 py-10 px-4">
+<div class="min-h-screen bg-slate-50 py-10 px-4">
   <div class="max-w-3xl mx-auto">
     <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
       <!-- Header -->
-      <div class="bg-gradient-to-r from-primary-800 to-indigo-800 p-8 text-white">
+      <div class="bg-navy-950 p-8 text-white">
         <div class="flex items-center gap-3 mb-2">
-          <span class="bg-white/20 text-xs font-semibold px-3 py-1 rounded-full">📝 EXAM</span>
+          <span class="bg-white/20 text-xs font-semibold px-3 py-1 rounded-full">EXAM</span>
           <% if (test.status === 'published') { %><span class="bg-green-500/80 text-xs font-semibold px-3 py-1 rounded-full">AVAILABLE</span><% } %>
         </div>
         <h1 class="text-2xl font-bold mb-1"><%= test.title %></h1>
@@ -13,7 +13,7 @@
       </div>
 
       <!-- Stats -->
-      <div class="grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
+      <div class="grid grid-cols-4 divide-x divide-gray-100 border-b border-slate-100">
         <% [
           {icon:'❓',label:'Questions',value:questionCount},
           {icon:'⏱',label:'Duration',value:test.duration+' min'},
@@ -22,38 +22,38 @@
         ].forEach(s => { %>
         <div class="p-5 text-center">
           <p class="text-2xl mb-1"><%= s.icon %></p>
-          <p class="text-xl font-bold text-gray-900"><%= s.value %></p>
-          <p class="text-xs text-gray-500 mt-0.5"><%= s.label %></p>
+          <p class="text-xl font-bold text-slate-900"><%= s.value %></p>
+          <p class="text-xs text-slate-500 mt-0.5"><%= s.label %></p>
         </div>
         <% }) %>
       </div>
 
       <div class="p-8">
         <!-- Instructions -->
-        <h2 class="font-bold text-gray-900 mb-3">📋 Instructions</h2>
-        <ul class="space-y-2 text-sm text-gray-600 mb-6">
-          <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span>Read each question carefully before answering.</li>
-          <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span>All questions are MCQ with 4 options. Only one is correct.</li>
-          <li class="flex items-start gap-2"><span class="text-amber-500 mt-0.5">⚠</span>Each correct answer carries marks; wrong answers will deduct <strong><%= test.negativeMarking %></strong> marks.</li>
-          <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span>You can mark questions for review and revisit them.</li>
-          <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✗</span>The exam auto-submits when the timer reaches zero.</li>
-          <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✗</span>Do not refresh the page during the exam.</li>
+        <h2 class="font-bold text-slate-900 mb-3">Instructions</h2>
+        <ul class="space-y-2 text-sm text-slate-600 mb-6">
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Read each question carefully before answering.</li>
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>All questions are MCQ with 4 options. Only one is correct.</li>
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>Each correct answer carries marks; wrong answers will deduct <strong><%= test.negativeMarking %></strong> marks.</li>
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>You can mark questions for review and revisit them.</li>
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>The exam auto-submits when the timer reaches zero.</li>
+          <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>Do not refresh the page during the exam.</li>
           <% if (test.shuffleQuestions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span>Questions will be shuffled randomly.</li><% } %>
           <% if (test.instructions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span><%= test.instructions %></li><% } %>
         </ul>
 
         <!-- Color legend -->
-        <h3 class="font-semibold text-gray-800 mb-3 text-sm">Question Palette Legend</h3>
+        <h3 class="font-semibold text-slate-800 mb-3 text-sm">Question Palette Legend</h3>
         <div class="grid grid-cols-2 gap-2 text-xs mb-8">
           <% [
-            ['bg-gray-300','Not Visited'],
+            ['bg-slate-300','Not Visited'],
             ['bg-green-500','Answered'],
             ['bg-red-500','Not Answered'],
             ['bg-purple-500','Marked for Review'],
           ].forEach(([cls,label]) => { %>
           <div class="flex items-center gap-2">
             <span class="w-6 h-6 rounded <%= cls %> flex-shrink-0"></span>
-            <span class="text-gray-600"><%= label %></span>
+            <span class="text-slate-600"><%= label %></span>
           </div>
           <% }) %>
         </div>
@@ -70,7 +70,7 @@
               <%= inProgress ? '▶ Resume Exam' : '🚀 Start Exam' %>
             </button>
           </form>
-          <a href="/student/tests" class="px-6 py-4 border-2 border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors">Back</a>
+          <a href="/student/tests" class="px-6 py-4 border-2 border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Back</a>
         </div>
       </div>
     </div>

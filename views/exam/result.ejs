@@ -1,7 +1,7 @@
 <%- include('../partials/head') %>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<div class="min-h-screen bg-gray-50 py-10 px-4">
+<div class="min-h-screen bg-slate-50 py-10 px-4">
   <div class="max-w-4xl mx-auto space-y-6">
 
     <!-- Score Hero -->
@@ -10,20 +10,20 @@
         <p class="text-white/70 text-sm mb-1"><%= result.test.title %></p>
         <div class="text-7xl font-bold mb-2"><%= percentage %>%</div>
         <p class="text-2xl font-semibold"><%= result.score %> / <%= result.totalMarks %> Marks</p>
-        <p class="text-white/70 mt-1 text-sm"><%= result.status==='auto_submitted'?'⚡ Auto-submitted':'✅ Submitted' %></p>
+        <p class="text-white/70 mt-1 text-sm"><%= result.status==='auto_submitted'?'Auto-submitted':'Submitted' %></p>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-5 divide-x divide-gray-100 border-b">
         <% [
           {icon:'🥇',label:'Rank',value:'#'+(result.rank||'—')},
-          {icon:'✅',label:'Correct',value:result.correctAnswers},
-          {icon:'❌',label:'Wrong',value:result.wrongAnswers},
-          {icon:'⏭',label:'Skipped',value:result.skippedAnswers},
-          {icon:'📊',label:'Percentile',value:(result.percentile||0).toFixed(1)+'%'},
+          {icon:'correct',label:'Correct',value:result.correctAnswers},
+          {icon:'wrong',label:'Wrong',value:result.wrongAnswers},
+          {icon:'skip',label:'Skipped',value:result.skippedAnswers},
+          {icon:'pct',label:'Percentile',value:(result.percentile||0).toFixed(1)+'%'},
         ].forEach(s => { %>
         <div class="p-4 text-center">
           <p class="text-xl mb-1"><%= s.icon %></p>
-          <p class="text-xl font-bold text-gray-900"><%= s.value %></p>
-          <p class="text-xs text-gray-500"><%= s.label %></p>
+          <p class="text-xl font-bold text-slate-900"><%= s.value %></p>
+          <p class="text-xs text-slate-500"><%= s.label %></p>
         </div>
         <% }) %>
       </div>
@@ -33,8 +33,8 @@
 
       <!-- Subject-wise Breakdown -->
       <% if (result.subjectScores && Object.keys(result.subjectScores).length > 0) { %>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 class="font-bold text-gray-900 mb-4">📚 Subject-wise Breakdown</h3>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 class="font-bold text-slate-900 mb-4">📚 Subject-wise Breakdown</h3>
         <canvas id="subjectChart" height="200"></canvas>
         <div class="mt-4 space-y-3">
           <% Object.entries(result.subjectScores).forEach(([subj, data]) => {
@@ -42,14 +42,14 @@
           %>
           <div>
             <div class="flex justify-between text-sm mb-1">
-              <span class="font-medium text-gray-700"><%= subj %></span>
+              <span class="font-medium text-slate-700"><%= subj %></span>
               <span class="font-bold <%= pct>=60?'text-green-600':pct>=40?'text-yellow-600':'text-red-500' %>"><%= data.marks||0 %>/<%= data.total||0 %> (<%= pct %>%)</span>
             </div>
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
               <div class="h-2 rounded-full <%= pct>=60?'bg-green-500':pct>=40?'bg-yellow-500':'bg-red-500' %>" style="width:<%= pct %>%"></div>
             </div>
-            <div class="flex gap-3 text-xs text-gray-500 mt-1">
-              <span>✅ <%= data.correct %></span><span>❌ <%= data.wrong %></span><span>⏭ <%= data.skipped %></span>
+            <div class="flex gap-3 text-xs text-slate-500 mt-1">
+              <span><%= data.correct %> correct</span><span><%= data.wrong %> wrong</span><span><%= data.skipped %> skipped</span>
             </div>
           </div>
           <% }) %>
@@ -59,8 +59,8 @@
 
       <!-- Weak Topics -->
       <% if (result.topicScores && Object.keys(result.topicScores).length > 0) { %>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 class="font-bold text-gray-900 mb-4">🎯 Topic Analysis</h3>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 class="font-bold text-slate-900 mb-4">🎯 Topic Analysis</h3>
         <div class="space-y-3">
           <% const sortedTopics = Object.entries(result.topicScores).sort((a,b) => {
             const accA = a[1].correct/(a[1].correct+a[1].wrong+a[1].skipped||1);
@@ -74,8 +74,8 @@
           <div class="flex items-center gap-3 p-3 rounded-xl border <%= acc < 50 ? 'bg-red-50 border-red-200' : acc < 75 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200' %>">
             <span class="text-lg"><%= acc<50?'🔴':acc<75?'🟡':'🟢' %></span>
             <div class="flex-1">
-              <p class="text-sm font-semibold text-gray-800"><%= topic %></p>
-              <p class="text-xs text-gray-500">✅ <%= data.correct %> ❌ <%= data.wrong %> ⏭ <%= data.skipped %></p>
+              <p class="text-sm font-semibold text-slate-800"><%= topic %></p>
+              <p class="text-xs text-slate-500"><%= data.correct %> correct <%= data.wrong %> wrong <%= data.skipped %> skipped</p>
             </div>
             <span class="font-bold text-sm <%= acc<50?'text-red-600':acc<75?'text-yellow-600':'text-green-600' %>"><%= acc %>%</span>
           </div>
@@ -94,8 +94,8 @@
 
       <!-- Topper Comparison -->
       <% if (topperResult && topperResult.score > 0 && result.rank !== 1) { %>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 class="font-bold text-gray-900 mb-4">🏆 Your Score vs Topper</h3>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 class="font-bold text-slate-900 mb-4">🏆 Your Score vs Topper</h3>
         <canvas id="comparisonChart" height="200"></canvas>
         <% if (topperResult.subjectScores && result.subjectScores) { %>
         <div class="mt-4 space-y-2">
@@ -107,8 +107,8 @@
           %>
           <div class="text-xs">
             <div class="flex justify-between mb-0.5">
-              <span class="text-gray-600 font-medium"><%= subj %></span>
-              <span class="text-gray-500">You: <span class="font-bold text-indigo-600"><%= myPct %>%</span> · Topper: <span class="font-bold text-amber-600"><%= topPct %>%</span></span>
+              <span class="text-slate-600 font-medium"><%= subj %></span>
+              <span class="text-slate-500">You: <span class="font-bold text-indigo-600"><%= myPct %>%</span> · Topper: <span class="font-bold text-amber-600"><%= topPct %>%</span></span>
             </div>
           </div>
           <% }) %>
@@ -119,18 +119,18 @@
 
       <!-- Performance Trend -->
       <% if (trend && trend.length > 1) { %>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 class="font-bold text-gray-900 mb-4">📈 Performance Trend</h3>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 class="font-bold text-slate-900 mb-4">📈 Performance Trend</h3>
         <canvas id="trendChart" height="200"></canvas>
       </div>
       <% } %>
 
       <!-- Question Time Analysis -->
       <% if (result.questionTimings && Object.keys(result.questionTimings).length > 0) { %>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 class="font-bold text-gray-900 mb-4">⏱ Time per Question</h3>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 class="font-bold text-slate-900 mb-4">⏱ Time per Question</h3>
         <canvas id="timeChart" height="200"></canvas>
-        <p class="text-xs text-gray-500 mt-3 text-center">Time distribution across all questions (seconds)</p>
+        <p class="text-xs text-slate-500 mt-3 text-center">Time distribution across all questions (seconds)</p>
       </div>
       <% } %>
 
@@ -139,9 +139,9 @@
       <div class="bg-white rounded-2xl border border-red-200 shadow-sm p-6">
         <h3 class="font-bold text-red-700 mb-4">⚠ Exam Integrity Report</h3>
         <div class="space-y-2 text-sm">
-          <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-600">Tab Switches</span><span class="font-bold text-red-600"><%= result.cheatingFlags.tabSwitches||0 %></span></div>
-          <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-600">Fullscreen Exits</span><span class="font-bold text-red-600"><%= result.cheatingFlags.fullscreenExits||0 %></span></div>
-          <div class="flex justify-between py-2"><span class="text-gray-600">Focus Losses</span><span class="font-bold text-red-600"><%= result.cheatingFlags.focusLosses||0 %></span></div>
+          <div class="flex justify-between py-2 border-b border-slate-50"><span class="text-slate-600">Tab Switches</span><span class="font-bold text-red-600"><%= result.cheatingFlags.tabSwitches||0 %></span></div>
+          <div class="flex justify-between py-2 border-b border-slate-50"><span class="text-slate-600">Fullscreen Exits</span><span class="font-bold text-red-600"><%= result.cheatingFlags.fullscreenExits||0 %></span></div>
+          <div class="flex justify-between py-2"><span class="text-slate-600">Focus Losses</span><span class="font-bold text-red-600"><%= result.cheatingFlags.focusLosses||0 %></span></div>
         </div>
       </div>
       <% } %>
@@ -149,20 +149,20 @@
     </div>
 
     <!-- Details & Actions -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
-        <div><span class="text-gray-500">Student</span><p class="font-semibold"><%= result.student.name %></p></div>
-        <div><span class="text-gray-500">Roll No</span><p class="font-semibold font-mono"><%= result.student.rollNo %></p></div>
-        <div><span class="text-gray-500">Time Taken</span><p class="font-semibold"><%= Math.floor(result.timeTaken/60) %>m <%= result.timeTaken%60 %>s</p></div>
-        <div><span class="text-gray-500">Out of</span><p class="font-semibold"><%= totalAttempted %> students</p></div>
-        <div><span class="text-gray-500">Submitted</span><p class="font-semibold"><%= result.submittedAt?new Date(result.submittedAt).toLocaleString('en-IN'):'—' %></p></div>
-        <div><span class="text-gray-500">Violations</span><p class="font-semibold <%= result.violationCount>0?'text-red-600':'' %>"><%= result.violationCount||0 %></p></div>
+        <div><span class="text-slate-500">Student</span><p class="font-semibold"><%= result.student.name %></p></div>
+        <div><span class="text-slate-500">Roll No</span><p class="font-semibold font-mono"><%= result.student.rollNo %></p></div>
+        <div><span class="text-slate-500">Time Taken</span><p class="font-semibold"><%= Math.floor(result.timeTaken/60) %>m <%= result.timeTaken%60 %>s</p></div>
+        <div><span class="text-slate-500">Out of</span><p class="font-semibold"><%= totalAttempted %> students</p></div>
+        <div><span class="text-slate-500">Submitted</span><p class="font-semibold"><%= result.submittedAt?new Date(result.submittedAt).toLocaleString('en-IN'):'—' %></p></div>
+        <div><span class="text-slate-500">Violations</span><p class="font-semibold <%= result.violationCount>0?'text-red-600':'' %>"><%= result.violationCount||0 %></p></div>
       </div>
       <div class="flex flex-wrap gap-3">
         <a href="/results/<%= result.id %>/pdf" class="flex items-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-red-700 transition-colors text-sm">📄 Download PDF</a>
         <a href="/results/leaderboard/<%= result.testId %>" class="flex items-center gap-2 bg-primary-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-primary-900 transition-colors text-sm">🏆 Leaderboard</a>
         <% if (currentUser.role==='student') { %>
-        <a href="/student/tests" class="flex items-center gap-2 bg-gray-100 text-gray-700 px-5 py-2.5 rounded-xl font-semibold hover:bg-gray-200 transition-colors text-sm">← Back to Tests</a>
+        <a href="/student/tests" class="flex items-center gap-2 bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl font-semibold hover:bg-slate-200 transition-colors text-sm">← Back to Tests</a>
         <% } %>
       </div>
     </div>
