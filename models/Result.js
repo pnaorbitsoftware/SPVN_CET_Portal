@@ -42,6 +42,8 @@ const Result = sequelize.define('Result', {
     type: DataTypes.ENUM('in_progress','submitted','auto_submitted','terminated'),
     defaultValue: 'in_progress',
   },
+  questionOrder: { type: DataTypes.JSON, allowNull: true },
+  markedForReview: { type: DataTypes.JSON, allowNull: true, defaultValue: [] },
   startedAt:   { type: DataTypes.DATE, allowNull: true },
   submittedAt: { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'results' });
