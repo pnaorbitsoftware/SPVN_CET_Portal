@@ -116,7 +116,7 @@ exports.postChangePassword = async (req, res) => {
 
     return res.redirect('/auth/change-password');
   }
-};
+}; 
 
 // Fix logout crash — safe session destroy
 exports.logout = (req, res) => {
