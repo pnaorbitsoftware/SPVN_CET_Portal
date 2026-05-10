@@ -1,0 +1,69 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="flex-1"><h1 class="text-lg font-bold text-slate-900">Tests</h1><p class="text-xs text-slate-400"><%= tests.length %> total tests</p></div>
+      <div class="flex items-center gap-2.5">
+        <form method="GET" class="hidden sm:flex gap-2">
+          <select name="course" onchange="this.form.submit()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white">
+            <option value="">All Courses</option>
+            <% COURSES.forEach(c=>{%><option value="<%=c%>" <%=filterCourse===c?'selected':''%>><%=c%></option><%})%>
+          </select>
+          <select name="subject" onchange="this.form.submit()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white">
+            <option value="">All Subjects</option>
+            <% SUBJECTS.forEach(s=>{%><option value="<%=s%>" <%=filterSubject===s?'selected':''%>><%=s%></option><%})%>
+          </select>
+        </form>
+        <a href="/admin/tests/create" class="flex items-center gap-1.5 bg-navy-950 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-navy-900 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          <span class="hidden sm:inline">Create Test</span>
+        </a>
+      </div>
+    </header>
+    <div class="p-5 lg:p-8">
+      <%- include('../partials/flash') %>
+      <% if (tests.length === 0) { %>
+      <div class="text-center py-20">
+        <svg class="w-16 h-16 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+        <p class="font-medium text-slate-500 mb-2">No tests created yet.</p>
+        <a href="/admin/tests/create" class="inline-flex items-center gap-2 bg-navy-950 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-navy-900 transition-colors">Create your first test</a>
+      </div>
+      <% } else { %>
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+        <% tests.forEach(test => {
+          const statusColor = test.status==='published'?'emerald':test.status==='draft'?'slate':'amber';
+        %>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5 flex flex-col card-lift">
+          <div class="flex items-start justify-between mb-3">
+            <div class="w-10 h-10 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
+              <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            </div>
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-<%= statusColor %>-100 text-<%= statusColor %>-700"><%= test.status.toUpperCase() %></span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-sm leading-snug mb-1 flex-1"><%= test.title %></h3>
+          <% if (test.course || test.subject) { %>
+          <p class="text-xs text-slate-400 mb-3"><%= [test.course, test.subject].filter(Boolean).join(' › ') %></p>
+          <% } %>
+          <div class="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-3 text-xs text-slate-500 mb-4">
+            <div class="text-center"><p class="font-bold text-slate-800"><%= test.duration %></p><p>mins</p></div>
+            <div class="text-center border-x border-slate-200"><p class="font-bold text-slate-800"><%= test.totalMarks %></p><p>marks</p></div>
+            <div class="text-center"><p class="font-bold text-slate-800"><%= test.groups?.length||0 %></p><p>batches</p></div>
+          </div>
+          <div class="flex gap-2">
+            <a href="/admin/tests/<%= test.id %>" class="flex-1 text-center text-sm font-semibold bg-navy-950 text-white py-2.5 rounded-xl hover:bg-navy-900 transition-colors">View Details</a>
+            <% if (test.status === 'draft') { %>
+            <form action="/admin/tests/<%= test.id %>/publish" method="POST">
+              <button type="submit" class="px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors">Publish</button>
+            </form>
+            <% } %>
+          </div>
+        </div>
+        <% }) %>
+      </div>
+      <% } %>
+    </div>
+  </main>
+</div>
+</body></html>

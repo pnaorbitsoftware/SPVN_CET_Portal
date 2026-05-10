@@ -1,0 +1,131 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="flex-1 min-w-0">
+        <h1 class="text-lg font-bold text-slate-900 truncate"><%= test.title %></h1>
+        <p class="text-xs text-slate-400"><%= test.duration %> mins &middot; <%= test.totalMarks %> marks &middot; <%= test.questions?.length||0 %> questions</p>
+      </div>
+      <div class="flex items-center gap-2.5 shrink-0">
+        <span class="text-[11px] font-semibold px-3 py-1 rounded-full <%= test.status==='published'?'bg-emerald-100 text-emerald-700':test.status==='draft'?'bg-slate-100 text-slate-600':'bg-amber-100 text-amber-700' %>">
+          <%= test.status.toUpperCase() %>
+        </span>
+        <% if (test.status === 'draft') { %>
+        <form action="/admin/tests/<%= test.id %>/publish" method="POST">
+          <button type="submit" class="bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors">Publish</button>
+        </form>
+        <% } %>
+        <a href="/admin/tests" class="border border-slate-200 text-slate-600 text-sm font-medium px-4 py-2 rounded-xl hover:bg-slate-50">Back</a>
+      </div>
+    </header>
+
+    <div class="p-5 lg:p-8 space-y-6">
+      <%- include('../partials/flash') %>
+
+      <!-- Test info grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <% [
+          {label:'Questions', value: test.questions?.length||0},
+          {label:'Duration',  value: test.duration+' min'},
+          {label:'Total Marks',value: test.totalMarks},
+          {label:'Negative',  value: '-'+test.negativeMarking},
+        ].forEach(s => { %>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-4 text-center">
+          <p class="text-2xl font-bold text-slate-900"><%= s.value %></p>
+          <p class="text-xs text-slate-400 mt-1"><%= s.label %></p>
+        </div>
+        <% }) %>
+      </div>
+
+      <% if (test.course || test.subject || test.topic) { %>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5">
+        <h3 class="font-semibold text-slate-900 text-sm mb-3">Content Hierarchy</h3>
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <% [test.course, test.subject, test.topic, test.subtopic].filter(Boolean).forEach((v,i,a) => { %>
+          <span class="bg-navy-100 text-navy-700 px-3 py-1 rounded-full text-xs font-semibold"><%= v %></span>
+          <% if (i < a.length-1) { %><svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><% } %>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- PDFs -->
+      <% if (test.questionPdfPath || test.solutionPdfPath) { %>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5">
+        <h3 class="font-semibold text-slate-900 text-sm mb-3">Uploaded PDFs</h3>
+        <div class="flex flex-wrap gap-3">
+          <% if (test.questionPdfPath) { %>
+          <a href="<%= test.questionPdfPath %>" target="_blank" class="flex items-center gap-2 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
+            <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Question Paper PDF
+          </a>
+          <% } %>
+          <% if (test.solutionPdfPath) { %>
+          <a href="<%= test.solutionPdfPath %>" target="_blank" class="flex items-center gap-2 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
+            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Solution PDF
+          </a>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Assigned batches -->
+      <% if (test.groups?.length > 0) { %>
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5">
+        <h3 class="font-semibold text-slate-900 text-sm mb-3">Assigned Batches</h3>
+        <div class="flex flex-wrap gap-2">
+          <% test.groups.forEach(g => { %>
+          <span class="bg-navy-50 text-navy-700 border border-navy-200 text-xs font-semibold px-3 py-1.5 rounded-full"><%= g.name %></span>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Results table -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-50">
+          <h3 class="font-semibold text-slate-900 text-sm">Student Results (<%= results.length %>)</h3>
+        </div>
+        <% if (!results.length) { %>
+        <div class="py-14 text-center">
+          <svg class="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <p class="text-sm text-slate-400">No submissions yet.</p>
+        </div>
+        <% } else { %>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50"><tr>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Rank</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Student</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:table-cell">Roll No</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Score</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">%</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">Status</th>
+              <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+            </tr></thead>
+            <tbody class="divide-y divide-slate-50">
+              <% results.forEach(r => { const pct=r.totalMarks>0?((r.score/r.totalMarks)*100).toFixed(1):0; const clr=pct>=60?'emerald':pct>=40?'amber':'rose'; %>
+              <tr class="hover:bg-slate-50 transition-colors">
+                <td class="px-6 py-4 font-bold text-slate-500 text-sm">#<%= r.rank||'—' %></td>
+                <td class="px-6 py-4 font-medium text-slate-900"><%= r.student?.name %></td>
+                <td class="px-6 py-4 font-mono text-slate-500 text-xs hidden sm:table-cell"><%= r.student?.rollNo %></td>
+                <td class="px-6 py-4 font-bold text-slate-900"><%= r.score %>/<%= r.totalMarks %></td>
+                <td class="px-6 py-4 hidden md:table-cell"><span class="font-semibold text-<%= clr %>-600"><%= pct %>%</span></td>
+                <td class="px-6 py-4 hidden md:table-cell">
+                  <span class="text-[11px] px-2.5 py-1 rounded-full font-semibold <%= r.status==='submitted'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700' %>"><%= r.status.replace('_',' ') %></span>
+                </td>
+                <td class="px-6 py-4"><a href="/results/<%= r.id %>" class="text-xs text-navy-600 hover:text-navy-800 font-medium">View</a></td>
+              </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

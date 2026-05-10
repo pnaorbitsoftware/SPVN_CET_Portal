@@ -1,22 +1,32 @@
 <%- include('../partials/head') %>
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-student') %>
-  <main class="ml-64 flex-1 overflow-y-auto">
-    <header class="sticky top-0 z-20 bg-white border-b px-8 py-4"><h1 class="text-xl font-bold">Notifications</h1></header>
-    <div class="p-8 max-w-2xl">
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div><h1 class="text-lg font-bold text-slate-900">Notifications</h1><p class="text-xs text-slate-400"><%= notifications.length %> notification(s)</p></div>
+    </header>
+    <div class="p-5 lg:p-8 max-w-2xl">
+      <%- include('../partials/flash') %>
       <% if (!notifications.length) { %>
-      <div class="text-center py-20 text-gray-400"><div class="text-5xl mb-3">🔔</div><p>No notifications.</p></div>
+      <div class="text-center py-20">
+        <svg class="w-14 h-14 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <p class="font-medium text-slate-500">No notifications yet.</p>
+      </div>
       <% } else { %>
       <div class="space-y-3">
-        <% notifications.forEach(n => { %>
-        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-xl flex-shrink-0">
-            <%= n.type==='exam'?'📝':n.type==='success'?'✅':n.type==='warning'?'⚠️':'ℹ️' %>
+        <% notifications.forEach(n => {
+          const iconPath = n.type==='exam'?'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4':n.type==='success'?'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z':'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+          const nclr = n.type==='exam'?'navy':n.type==='success'?'emerald':n.type==='warning'?'amber':'slate';
+        %>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5 flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-<%= nclr === 'navy' ? 'navy-100' : nclr+'-100' %> flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5 text-<%= nclr === 'navy' ? 'navy-600' : nclr+'-600' %>" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="<%= iconPath %>"/></svg>
           </div>
-          <div class="flex-1">
-            <p class="font-semibold text-gray-900"><%= n.title %></p>
-            <p class="text-sm text-gray-600 mt-1"><%= n.message %></p>
-            <p class="text-xs text-gray-400 mt-2"><%= new Date(n.createdAt).toLocaleString('en-IN') %></p>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-slate-900 text-sm"><%= n.title %></p>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed"><%= n.message %></p>
+            <p class="text-xs text-slate-400 mt-2"><%= new Date(n.createdAt).toLocaleString('en-IN') %></p>
           </div>
         </div>
         <% }) %>

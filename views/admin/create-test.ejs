@@ -1,0 +1,235 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="flex-1"><h1 class="text-lg font-bold text-slate-900">Create New Test</h1></div>
+      <a href="/admin/tests" class="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg> Back
+      </a>
+    </header>
+    <div class="p-5 lg:p-8 max-w-5xl">
+      <%- include('../partials/flash') %>
+      <form action="/admin/tests" method="POST" enctype="multipart/form-data" class="space-y-6">
+
+        <!-- Basic Info -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-6">
+          <h3 class="font-bold text-slate-900 mb-5 flex items-center gap-2 text-sm">
+            <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            Test Details
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Test Title *</label>
+              <input type="text" name="title" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="e.g. CET Mock Test 1 — Physics & Chemistry"/>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+              <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Brief description"></textarea>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Duration (minutes) *</label>
+              <input type="number" name="duration" value="180" min="10" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Marks Per Question</label>
+              <input type="number" name="marksPerQuestion" value="1" step="0.5" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Negative Marking</label>
+              <input type="number" name="negativeMarking" value="0.25" step="0.25" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Passing Marks</label>
+              <input type="number" name="passingMarks" step="0.5" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Optional"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Start Time (optional)</label>
+              <input type="datetime-local" name="startTime" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">End Time (optional)</label>
+              <input type="datetime-local" name="endTime" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Additional Instructions</label>
+              <textarea name="instructions" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Any special instructions for students"></textarea>
+            </div>
+            <div class="flex items-center gap-5">
+              <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+                <input type="checkbox" name="shuffleQuestions" value="on" checked class="w-4 h-4 rounded border-slate-300 text-navy-600"/> Shuffle Questions
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+                <input type="checkbox" name="shuffleOptions" value="on" class="w-4 h-4 rounded border-slate-300 text-navy-600"/> Shuffle Options
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content Hierarchy -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-6">
+          <h3 class="font-bold text-slate-900 mb-5 flex items-center gap-2 text-sm">
+            <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            Content Hierarchy
+          </h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Course</label>
+              <select name="course" id="courseSelect" onchange="onCourseChange(this.value)" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+                <option value="">Select</option>
+                <% COURSES.forEach(c=>{%><option value="<%=c%>" <%=filterCourse===c?'selected':''%>><%=c%></option><%})%>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Subject</label>
+              <select name="subject" id="subjectSelect" onchange="onSubjectChange(this.value)" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+                <option value="">Select course first</option>
+                <% SUBJECTS.forEach(s=>{%><option value="<%=s%>" <%=filterSubject===s?'selected':''%>><%=s%></option><%})%>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Topic</label>
+              <select name="topic" id="topicSelect" onchange="onTopicChange(this.value)" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+                <option value="">Select subject first</option>
+                <% topics.forEach(t=>{%><option value="<%=t.name%>"><%=t.name%></option><%})%>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Subtopic</label>
+              <select name="subtopic" id="subtopicSelect" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+                <option value="">Select topic first</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- PDF Upload -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-6">
+          <h3 class="font-bold text-slate-900 mb-5 flex items-center gap-2 text-sm">
+            <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            PDF Upload (optional)
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Question Paper PDF</label>
+              <label class="block border-2 border-dashed border-slate-200 hover:border-navy-300 rounded-xl p-5 text-center cursor-pointer transition-colors group">
+                <svg class="w-8 h-8 text-slate-300 group-hover:text-navy-400 mx-auto mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                <p class="text-xs text-slate-500 font-medium">Upload Question PDF</p>
+                <input type="file" name="questionPdf" accept=".pdf" class="sr-only" onchange="this.closest('label').querySelector('p').textContent=this.files[0]?.name||'Upload Question PDF'"/>
+              </label>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Solution PDF (separate)</label>
+              <label class="block border-2 border-dashed border-slate-200 hover:border-navy-300 rounded-xl p-5 text-center cursor-pointer transition-colors group">
+                <svg class="w-8 h-8 text-slate-300 group-hover:text-navy-400 mx-auto mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                <p class="text-xs text-slate-500 font-medium">Upload Solution PDF</p>
+                <input type="file" name="solutionPdf" accept=".pdf" class="sr-only" onchange="this.closest('label').querySelector('p').textContent=this.files[0]?.name||'Upload Solution PDF'"/>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Questions -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Select Questions
+            </h3>
+            <span id="selectedCount" class="text-xs font-semibold bg-navy-100 text-navy-700 px-3 py-1 rounded-full">0 selected</span>
+          </div>
+          <div class="mb-3">
+            <input type="text" placeholder="Search questions…" onkeyup="filterQuestions(this.value)"
+              class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+          </div>
+          <div class="max-h-96 overflow-y-auto space-y-2 border border-slate-100 rounded-xl p-3" id="questionsList">
+            <% questions.forEach(q => { %>
+            <label class="question-item flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-200">
+              <input type="checkbox" name="questionIds" value="<%= q.id %>" class="mt-1 w-4 h-4 rounded border-slate-300 text-navy-600" onchange="updateCount()"/>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-slate-800 leading-relaxed line-clamp-2"><%= q.question %></p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"><%= q.subject %></span>
+                  <span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"><%= q.difficulty %></span>
+                  <span class="text-[11px] text-slate-400"><%= q.marks %> mark(s)</span>
+                  <% if (q.topic) { %><span class="text-[11px] text-slate-400">· <%= q.topic %></span><% } %>
+                </div>
+              </div>
+            </label>
+            <% }) %>
+            <% if (!questions.length) { %>
+            <div class="py-10 text-center text-slate-400 text-sm">No questions available. Add questions first.</div>
+            <% } %>
+          </div>
+        </div>
+
+        <!-- Assign Batches -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-6">
+          <h3 class="font-bold text-slate-900 mb-4 flex items-center gap-2 text-sm">
+            <svg class="w-5 h-5 text-navy-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            Assign to Batches
+          </h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <% groups.forEach(g => { %>
+            <label class="flex items-center gap-2.5 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-navy-200 transition-colors">
+              <input type="checkbox" name="groupIds" value="<%= g.id %>" class="w-4 h-4 rounded border-slate-300 text-navy-600"/>
+              <div>
+                <p class="text-sm font-medium text-slate-800"><%= g.name %></p>
+                <p class="text-[11px] text-slate-400"><%= g.academicYear %></p>
+              </div>
+            </label>
+            <% }) %>
+            <% if (!groups.length) { %>
+            <p class="col-span-3 text-sm text-slate-400">No batches yet. Create batches first.</p>
+            <% } %>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button type="submit" class="flex-1 bg-navy-950 text-white font-bold py-3.5 rounded-xl hover:bg-navy-900 transition-colors">Create Test</button>
+          <a href="/admin/tests" class="px-8 py-3.5 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors text-sm flex items-center">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+<script>
+function updateCount() {
+  const n = document.querySelectorAll('input[name="questionIds"]:checked').length;
+  document.getElementById('selectedCount').textContent = n + ' selected';
+}
+function filterQuestions(q) {
+  document.querySelectorAll('.question-item').forEach(item => {
+    item.style.display = item.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+async function onCourseChange(course) {
+  const subSel = document.getElementById('subjectSelect');
+  subSel.innerHTML = '<option value="">Loading…</option>';
+  if (!course) { subSel.innerHTML = '<option value="">Select course first</option>'; return; }
+  try {
+    const subs = await fetch('/admin/ajax/subjects/' + course).then(r => r.json());
+    subSel.innerHTML = '<option value="">Select subject</option>' + subs.map(s=>`<option value="${s}">${s}</option>`).join('');
+  } catch { subSel.innerHTML = '<option value="">Error</option>'; }
+  document.getElementById('topicSelect').innerHTML = '<option value="">Select subject first</option>';
+}
+async function onSubjectChange(subject) {
+  const course = document.getElementById('courseSelect').value;
+  const topSel = document.getElementById('topicSelect');
+  topSel.innerHTML = '<option value="">Loading…</option>';
+  if (!subject) return;
+  try {
+    const topics = await fetch(`/admin/ajax/topics?course=${encodeURIComponent(course)}&subject=${encodeURIComponent(subject)}`).then(r=>r.json());
+    topSel.innerHTML = '<option value="">Select topic</option>' + topics.map(t=>`<option value="${t.name}" data-subtopics='${JSON.stringify(t.subtopics||[])}'>${t.name}</option>`).join('');
+  } catch { topSel.innerHTML = '<option value="">Error</option>'; }
+}
+function onTopicChange(topic) {
+  const topSel = document.getElementById('topicSelect');
+  const sel = topSel.options[topSel.selectedIndex];
+  const subtopics = sel ? JSON.parse(sel.dataset.subtopics||'[]') : [];
+  const subSel = document.getElementById('subtopicSelect');
+  subSel.innerHTML = '<option value="">Select subtopic</option>' + subtopics.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+</script>
+</body></html>
