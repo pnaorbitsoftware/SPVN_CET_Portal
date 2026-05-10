@@ -1,53 +1,33 @@
 <%- include('../partials/head') %>
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-student') %>
-  <main class="lg:ml-64 flex-1 overflow-y-auto">
-    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center gap-4">
-      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-      <div class="flex-1"><h1 class="text-lg font-bold text-slate-900">My Results</h1><p class="text-xs text-slate-400"><%= results.length %> completed test(s)</p></div>
-    </header>
-    <div class="p-5 lg:p-8">
-      <%- include('../partials/flash') %>
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
-        <% if (!results.length) { %>
-        <div class="py-20 text-center">
-          <svg class="w-14 h-14 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          <p class="font-medium text-slate-500">No results yet.</p>
-          <p class="text-sm text-slate-400 mt-1">Complete a test to see your results here.</p>
-        </div>
-        <% } else { %>
+  <main class="ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-20 bg-white border-b px-8 py-4"><h1 class="text-xl font-bold">My Results</h1></header>
+    <div class="p-8">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead class="bg-slate-50">
-              <tr>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Test</th>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Score</th>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">%</th>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">Rank</th>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">Date</th>
-                <th class="px-6 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Action</th>
-              </tr>
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr><th class="px-6 py-3 text-left">Test</th><th class="px-6 py-3 text-left">Score</th><th class="px-6 py-3 text-left">%</th><th class="px-6 py-3 text-left">Rank</th><th class="px-6 py-3 text-left">Date</th><th class="px-6 py-3 text-left">Action</th></tr>
             </thead>
-            <tbody class="divide-y divide-slate-50">
-              <% results.forEach(r => { const pct = r.totalMarks>0?((r.score/r.totalMarks)*100).toFixed(1):0; const clr=pct>=60?'emerald':pct>=40?'amber':'rose'; %>
-              <tr class="hover:bg-slate-50 transition-colors">
-                <td class="px-6 py-4 font-medium text-slate-900 max-w-[200px] truncate"><%= r.test?.title %></td>
-                <td class="px-6 py-4 font-bold text-slate-900"><%= r.score %>/<%= r.totalMarks %></td>
-                <td class="px-6 py-4"><span class="font-semibold text-<%= clr %>-600"><%= pct %>%</span></td>
-                <td class="px-6 py-4 text-slate-600 hidden md:table-cell">#<%= r.rank||'—' %></td>
-                <td class="px-6 py-4 text-xs text-slate-400 hidden md:table-cell"><%= r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'—' %></td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-3">
-                    <a href="/results/<%= r.id %>" class="text-xs text-navy-600 hover:text-navy-800 font-medium">View</a>
-                    <a href="/results/<%= r.id %>/pdf" class="text-xs text-rose-500 hover:text-rose-700 font-medium">PDF</a>
-                  </div>
+            <tbody class="divide-y divide-gray-50">
+              <% results.forEach(r => { const pct=((r.score/r.totalMarks)*100).toFixed(1) %>
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 font-medium max-w-xs truncate"><%= r.test?.title %></td>
+                <td class="px-6 py-4 font-bold"><%= r.score %>/<%= r.totalMarks %></td>
+                <td class="px-6 py-4 font-semibold <%= pct>=60?'text-green-600':pct>=40?'text-yellow-600':'text-red-500' %>"><%= pct %>%</td>
+                <td class="px-6 py-4 text-gray-600">#<%= r.rank||'—' %></td>
+                <td class="px-6 py-4 text-xs text-gray-400"><%= r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'—' %></td>
+                <td class="px-6 py-4 flex gap-2">
+                  <a href="/results/<%= r.id %>" class="text-indigo-600 hover:underline text-xs font-medium">View</a>
+                  <a href="/results/<%= r.id %>/pdf" class="text-red-500 hover:underline text-xs font-medium">PDF</a>
                 </td>
               </tr>
               <% }) %>
+              <% if (!results.length) { %><tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">No results yet.</td></tr><% } %>
             </tbody>
           </table>
         </div>
-        <% } %>
       </div>
     </div>
   </main>

@@ -1,145 +1,162 @@
 <%- include('../partials/head') %>
 <style>
-  body { overflow: hidden; }
-  .option-card input:checked ~ .opt-box { border-color: #131330; background: #f0f4ff; }
-  .opt-box { transition: border-color .15s, background .15s; }
-  .opt-box:hover { border-color: #8199f8; background: #f8faff; }
-  .palette-btn { width:34px; height:34px; font-size:11px; font-weight:600; border-radius:8px; cursor:pointer; transition:all .15s; display:flex; align-items:center; justify-content:center; }
-  #timer.urgent { background:#fee2e2; color:#dc2626; animation:pulse 1s infinite; }
-  #timer.warning { background:#fef9c3; color:#d97706; }
-  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
-  .timer-warning { animation: pulse 1s infinite; }
+  body{overflow:hidden}
+  .option-label input:checked+div{border-color:#4f46e5;background:#eef2ff}
+  .option-label:hover div{border-color:#a5b4fc;background:#f5f3ff}
+  #timer.urgent{background:#fee2e2;color:#dc2626;animation:pulse 1s infinite}
+  #timer.warning{background:#fef9c3;color:#d97706}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  .palette-btn{width:34px;height:34px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;transition:all .15s}
+  #violationBar{transition:all .3s}
+  .q-image{max-width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;margin:10px 0}
 </style>
 
-<%
-  const TEST_ID_VAL = test.id;
-  const Q_ID_VAL    = question.id;
-  const Q_NUM_VAL   = questionNumber;
-  const SEL_ANS     = selectedAnswer || '';
-  const IS_MARKED   = isMarked ? 'true' : 'false';
-%>
-
-<div class="h-screen flex flex-col bg-slate-100" id="examContainer">
-
+<div class="h-screen flex flex-col bg-gray-100" id="examContainer">
   <!-- Top bar -->
-  <div class="bg-navy-950 text-white px-4 py-3 flex items-center justify-between flex-shrink-0 select-none">
-    <div class="flex items-center gap-3 min-w-0">
-      <span class="font-bold text-sm hidden sm:block text-white/80 shrink-0"><%= process.env.COLLEGE_SHORT_NAME %></span>
-      <span class="text-white/30 hidden sm:block">|</span>
-      <span class="text-sm font-medium truncate text-white/90"><%= test.title %></span>
+  <div class="bg-primary-800 text-white px-4 py-2.5 flex items-center justify-between flex-shrink-0 select-none">
+    <div class="flex items-center gap-3">
+      <span class="font-bold text-sm hidden sm:block"><%= process.env.COLLEGE_SHORT_NAME %></span>
+      <span class="text-white/40 hidden sm:block">|</span>
+      <span class="text-sm font-medium truncate max-w-xs"><%= test.title %></span>
     </div>
-    <div class="flex items-center gap-3 shrink-0">
-      <% if (violations > 0) { %>
-      <div class="flex items-center gap-1.5 bg-rose-500/80 rounded-lg px-3 py-1.5 text-xs font-bold">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-        <span id="violationCount"><%= violations %></span> Violation<%= violations!==1?'s':'' %>
+    <div class="flex items-center gap-4">
+      <!-- Violation counter -->
+      <div id="violationBar" class="<%= violations > 0 ? 'flex' : 'hidden' %> items-center gap-1.5 bg-red-500/80 rounded-lg px-3 py-1.5 text-xs font-bold" title="Violations detected">
+        ⚠ <span id="violationCount"><%= violations %></span> Violation<span id="violPlural"><%= violations!==1?'s':'' %></span>
       </div>
-      <% } %>
-      <button onclick="toggleFullscreen()" class="text-white/60 hover:text-white text-xs hidden sm:flex items-center gap-1">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-        Fullscreen
+      <!-- Fullscreen toggle -->
+      <button onclick="toggleFullscreen()" id="fsBtn" class="text-white/70 hover:text-white text-xs flex items-center gap-1 transition-colors" title="Toggle fullscreen">
+        <svg id="fsIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        <span class="hidden sm:inline">Fullscreen</span>
       </button>
-      <div id="timer" class="flex items-center gap-2 bg-white/15 border border-white/20 rounded-lg px-3 py-1.5 font-mono font-bold text-sm" data-remaining="<%= remaining %>">
-        <svg class="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <span id="timerDisplay">--:--:--</span>
+      <!-- Timer -->
+      <div id="timer" class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-1.5 font-mono font-bold text-sm" data-remaining="<%= remaining %>">
+        ⏱ <span id="timerDisplay">--:--:--</span>
       </div>
-      <span class="text-xs text-white/50 hidden md:block"><%= currentUser.rollNo %></span>
+      <div class="text-xs text-white/60 hidden md:block"><%= currentUser.name %> · <%= currentUser.rollNo %></div>
     </div>
+  </div>
+
+  <!-- Violation warning banner (hidden by default) -->
+  <div id="warnBanner" class="hidden bg-red-600 text-white text-center text-sm font-semibold py-2 px-4 flex-shrink-0">
+    ⚠ Warning: Switching tabs or leaving fullscreen will be recorded and reported to your teacher!
   </div>
 
   <div class="flex flex-1 overflow-hidden">
     <!-- Question panel -->
     <div class="flex-1 flex flex-col overflow-hidden bg-white">
-
       <!-- Question header -->
-      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0">
-        <div class="flex items-center gap-2.5">
-          <span class="bg-navy-950 text-white text-xs font-bold px-3 py-1 rounded-full">Q <%= questionNumber %> / <%= totalQuestions %></span>
-          <span class="text-xs text-slate-400 hidden sm:block"><%= question.subject %><% if(question.topic){%> › <%= question.topic %><% } %> · <%= question.difficulty %> · <%= question.marks %> mark(s)</span>
+      <div class="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="bg-primary-800 text-white text-xs font-bold px-3 py-1 rounded-full">Q <%= questionNumber %> / <%= totalQuestions %></span>
+          <span class="text-xs text-gray-500 hidden sm:block"><%= question.subject %><% if(question.topic){%> › <%= question.topic %><% } %> · <%= question.difficulty %> · <%= question.marks %> mark(s)</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-400 hidden sm:block">Time: <span id="qTimer" class="font-mono font-semibold text-slate-600">0s</span></span>
+          <!-- Per-question timer display -->
+          <span class="text-xs text-gray-400 hidden sm:block">Time on this Q: <span id="qTimer" class="font-mono font-semibold text-gray-600">0s</span></span>
           <button id="markReviewBtn" onclick="toggleMark()"
-            class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors <%= isMarked?'bg-violet-600 text-white border-violet-600':'border-slate-200 text-slate-600 hover:bg-violet-50' %>">
-            <%= isMarked ? 'Marked' : 'Mark for Review' %>
+            class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors <%= isMarked?'bg-purple-600 text-white border-purple-600':'border-gray-300 text-gray-600 hover:bg-purple-50' %>">
+            🔖 <%= isMarked?'Marked':'Mark for Review' %>
           </button>
-          <button onclick="clearAnswer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Clear</button>
+          <button onclick="clearAnswer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Clear</button>
         </div>
       </div>
 
       <!-- Question content -->
-      <div class="flex-1 overflow-y-auto px-5 lg:px-8 py-5">
-        <p class="text-base font-medium text-slate-900 leading-relaxed mb-2"><%= question.question %></p>
+      <div class="flex-1 overflow-y-auto px-6 py-5">
+        <p class="text-base font-medium text-gray-900 leading-relaxed mb-2"><%= question.question %></p>
         <% if (question.questionImage) { %>
-        <img src="<%= question.questionImage %>" alt="Question" class="max-w-full max-h-52 object-contain rounded-xl border border-slate-200 my-3"/>
+        <img src="<%= question.questionImage %>" alt="Question image" class="q-image" />
         <% } %>
 
-        <div class="space-y-3 mt-5" id="optionsContainer">
+        <!-- Options -->
+        <div class="space-y-3 mt-4" id="optionsContainer">
           <% options.forEach(opt => { %>
-          <label class="option-card flex items-start gap-3 cursor-pointer">
-            <input type="radio" name="answer" value="<%= opt.key %>" class="sr-only" <%= selectedAnswer===opt.key?'checked':'' %> onchange="saveAnswer('<%= opt.key %>')"/>
-            <div class="opt-box flex-1 flex items-start gap-3 border-2 border-slate-200 rounded-xl p-4 <%= selectedAnswer===opt.key?'border-navy-950 bg-navy-50':'' %>">
-              <span class="w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 <%= selectedAnswer===opt.key?'bg-navy-950 border-navy-950 text-white':'border-slate-300 text-slate-500' %>"><%= opt.key %></span>
-              <span class="text-sm text-slate-800 leading-relaxed pt-0.5"><%= opt.value %></span>
+          <label class="option-label flex items-start gap-3 cursor-pointer">
+            <input type="radio" name="answer" value="<%= opt.key %>" class="sr-only"
+              <%= selectedAnswer===opt.key?'checked':'' %>
+              onchange="saveAnswer('<%= opt.key %>')" />
+            <div class="flex-1 flex flex-col border-2 border-gray-200 rounded-xl p-4 transition-all <%= selectedAnswer===opt.key?'border-indigo-500 bg-indigo-50':'' %>">
+              <div class="flex items-start gap-3">
+                <span class="w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5
+                  <%= selectedAnswer===opt.key?'bg-indigo-600 border-indigo-600 text-white':'border-gray-400 text-gray-600' %>">
+                  <%= opt.key %>
+                </span>
+                <span class="text-sm text-gray-800 leading-relaxed"><%= opt.value %></span>
+              </div>
+              <% if (opt.image) { %>
+              <img src="<%= opt.image %>" alt="Option <%= opt.key %>" class="q-image mt-2 ml-10" />
+              <% } %>
             </div>
           </label>
           <% }) %>
         </div>
       </div>
 
-      <!-- Navigation -->
-      <div class="border-t border-slate-100 px-5 py-4 flex items-center justify-between bg-white flex-shrink-0">
+      <!-- Tab-switch auto-submit warning overlay -->
+  <div id="tabSwitchOverlay" class="hidden fixed inset-0 z-[999] bg-black/90 flex items-center justify-center p-6">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl">
+      <div class="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      </div>
+      <h2 class="text-xl font-bold text-slate-900 mb-2">Tab Switch Detected</h2>
+      <p class="text-slate-600 text-sm mb-6 leading-relaxed">You have switched tabs or left the exam window. This is a violation of exam rules.<br><strong class="text-rose-600">Your test will be auto-submitted in:</strong></p>
+      <div class="text-6xl font-bold text-rose-600 mb-6 timer-warning" id="tabCountdown">3</div>
+      <p class="text-xs text-slate-400">This incident has been logged in your activity report.</p>
+    </div>
+  </div>
+
+  <!-- Hidden auto-submit form -->
+  <form id="autoSubmitForm" action="/exam/<%= test.id %>/submit" method="POST" class="hidden">
+    <input type="hidden" name="auto" id="autoSubmitInput" value="true"/>
+  </form>
+      <div class="border-t px-6 py-4 flex items-center justify-between bg-white flex-shrink-0">
         <% if (questionNumber > 1) { %>
         <a href="/exam/<%= test.id %>/question/<%= questionNumber-1 %>" onclick="saveCurrentBeforeNav(event, this.href)"
-          class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Prev
-        </a>
+          class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">← Prev</a>
         <% } else { %><div></div><% } %>
 
-        <button onclick="submitConfirm()" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Submit Exam</button>
+        <button onclick="submitConfirm()" class="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Submit Exam</button>
 
         <% if (questionNumber < totalQuestions) { %>
         <a href="/exam/<%= test.id %>/question/<%= questionNumber+1 %>" onclick="saveCurrentBeforeNav(event, this.href)"
-          class="flex items-center gap-2 bg-navy-950 hover:bg-navy-900 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          Save &amp; Next <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </a>
+          class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Save & Next →</a>
         <% } else { %>
-        <button onclick="submitConfirm()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Finish
-        </button>
+        <button onclick="submitConfirm()" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">✅ Finish</button>
         <% } %>
       </div>
     </div>
 
-    <!-- Palette panel (desktop) -->
-    <div class="w-56 bg-white border-l border-slate-200 flex flex-col flex-shrink-0 hidden md:flex overflow-hidden">
-      <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
-        <p class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Question Palette</p>
-        <div class="grid grid-cols-2 gap-1 text-[10px] text-slate-500">
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span>Answered</span>
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-rose-500 inline-block"></span>Not Ans.</span>
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-violet-500 inline-block"></span>Marked</span>
-          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-300 inline-block"></span>Not Visited</span>
+    <!-- Palette panel -->
+    <div class="w-60 bg-white border-l border-gray-200 flex flex-col flex-shrink-0 hidden md:flex overflow-hidden">
+      <div class="px-4 py-3 border-b bg-gray-50">
+        <p class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Question Palette</p>
+        <div class="grid grid-cols-2 gap-1 text-xs">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span>Answered</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span>Not Ans.</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-500 inline-block"></span>Marked</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-300 inline-block"></span>Not Visited</span>
         </div>
       </div>
       <div class="flex-1 overflow-y-auto p-3">
         <div class="flex flex-wrap gap-1.5">
-          <% paletteStatus.forEach(p => {
-            const bg = p.status==='answered'?'bg-emerald-500 text-white':p.status==='marked'?'bg-violet-500 text-white':p.status==='answered-marked'?'bg-violet-700 text-white':p.status==='not-answered'?'bg-rose-500 text-white':'bg-slate-200 text-slate-600';
-          %>
-          <a href="/exam/<%= test.id %>/question/<%= p.num %>" onclick="saveCurrentBeforeNav(event, this.href)"
-            class="palette-btn <%= bg %> <%= p.num===questionNumber?'ring-2 ring-offset-1 ring-navy-950 scale-110':'' %>">
+          <% paletteStatus.forEach(p => { %>
+          <a href="/exam/<%= test.id %>/question/<%= p.num %>"
+            onclick="saveCurrentBeforeNav(event, this.href)"
+            class="palette-btn flex items-center justify-center text-white
+              <%= p.status==='answered'?'q-answered':p.status==='marked'?'q-marked':p.status==='answered-marked'?'q-answered-marked':p.status==='not-answered'?'q-not-answered':'q-not-visited' %>
+              <%= p.num===questionNumber?'ring-2 ring-offset-1 ring-gray-700 scale-110':'' %>">
             <%= p.num %>
           </a>
           <% }) %>
         </div>
       </div>
-      <div class="border-t border-slate-100 p-4 text-xs text-slate-600 space-y-1.5">
+      <div class="border-t p-4 text-xs text-gray-600 space-y-1.5">
         <% const answered=paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %>
         <% const marked=paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %>
-        <div class="flex justify-between"><span>Answered</span><span class="font-bold text-emerald-600"><%= answered %></span></div>
-        <div class="flex justify-between"><span>Unanswered</span><span class="font-bold text-rose-500"><%= totalQuestions-answered %></span></div>
-        <div class="flex justify-between"><span>Marked</span><span class="font-bold text-violet-600"><%= marked %></span></div>
+        <div class="flex justify-between"><span>✅ Answered</span><span class="font-bold text-green-600"><%= answered %></span></div>
+        <div class="flex justify-between"><span>❌ Not Answered</span><span class="font-bold text-red-500"><%= totalQuestions-answered %></span></div>
+        <div class="flex justify-between"><span>🔖 Marked</span><span class="font-bold text-purple-600"><%= marked %></span></div>
         <div class="flex justify-between border-t pt-1.5"><span>Total</span><span class="font-bold"><%= totalQuestions %></span></div>
       </div>
     </div>
@@ -148,157 +165,220 @@
 
 <!-- Submit modal -->
 <div id="submitModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-8 text-center">
-    <div class="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-      <svg class="w-7 h-7 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-    </div>
-    <h3 class="text-xl font-bold text-slate-900 mb-2">Submit Exam?</h3>
-    <p class="text-slate-500 text-sm mb-5">Once submitted, you cannot change your answers.</p>
-    <div class="grid grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4 mb-5 text-sm">
-      <div><p class="text-2xl font-bold text-emerald-600"><%= paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-slate-500">Answered</p></div>
-      <div><p class="text-2xl font-bold text-rose-500"><%= totalQuestions - paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-slate-500">Unanswered</p></div>
-      <div><p class="text-2xl font-bold text-violet-600"><%= paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-slate-500">Marked</p></div>
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+    <div class="text-5xl mb-4">📋</div>
+    <h3 class="text-xl font-bold mb-2">Submit Exam?</h3>
+    <p class="text-gray-500 text-sm mb-5">Once submitted, you cannot change your answers.</p>
+    <div class="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 mb-5 text-sm">
+      <div><p class="text-2xl font-bold text-green-600"><%= paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Answered</p></div>
+      <div><p class="text-2xl font-bold text-red-500"><%= totalQuestions - paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Unanswered</p></div>
+      <div><p class="text-2xl font-bold text-purple-600"><%= paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-gray-500">Marked</p></div>
     </div>
     <div class="flex gap-3">
       <form action="/exam/<%= test.id %>/submit" method="POST" class="flex-1">
-        <button type="submit" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700">Yes, Submit</button>
+        <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700">Yes, Submit</button>
       </form>
-      <button onclick="document.getElementById('submitModal').classList.add('hidden')" class="flex-1 border-2 border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50">Cancel</button>
+      <button onclick="document.getElementById('submitModal').classList.add('hidden')" class="flex-1 border-2 border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50">Cancel</button>
     </div>
   </div>
 </div>
 
-<!-- Tab-switch auto-submit warning overlay -->
-<div id="tabSwitchOverlay" class="hidden fixed inset-0 z-[999] bg-black/90 flex items-center justify-center p-6">
-  <div class="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-card-lg">
-    <div class="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
-      <svg class="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-    </div>
-    <h2 class="text-xl font-bold text-slate-900 mb-2">Tab Switch Detected</h2>
-    <p class="text-slate-600 text-sm mb-6 leading-relaxed">You have left the exam window.<br><strong class="text-rose-600">Your test will be auto-submitted in:</strong></p>
-    <div class="text-6xl font-bold text-rose-600 mb-6 timer-warning" id="tabCountdown">3</div>
-    <p class="text-xs text-slate-400">This incident has been logged in your activity report.</p>
-  </div>
-</div>
-
-<!-- Hidden auto-submit form -->
-<form id="autoSubmitForm" action="/exam/<%= test.id %>/submit" method="POST" class="hidden">
-  <input type="hidden" name="auto" value="true"/>
+<form id="autoSubmitForm" action="/exam/<%= test.id %>/submit" method="POST" style="display:none">
+  <input type="hidden" name="auto" value="true">
 </form>
 
 <script>
-// ── Core variables ─────────────────────────────────────────────────────────
-const TEST_ID      = '<%= test.id %>';
-const QUESTION_ID  = '<%= question.id %>';
-let currentAnswer  = '<%= selectedAnswer || "" %>';
-let markedForReview= <%= isMarked ? 'true' : 'false' %>;
-let qElapsed       = 0;
-let qTimerInt      = setInterval(() => { qElapsed++; const el=document.getElementById('qTimer'); if(el) el.textContent=qElapsed+'s'; }, 1000);
+const TEST_ID = '<%= test.id %>';
+const QUESTION_ID = '<%= question.id %>';
+let remainingSeconds = <%= remaining %>;
+let markedForReview = <%= isMarked %>;
+let currentAnswer = '<%= selectedAnswer || "" %>';
+let saveTimer = null;
+let qStartTime = Date.now();
+let qElapsed = 0;
+let violations = <%= violations %>;
 
-// ── Timer ──────────────────────────────────────────────────────────────────
+// ── TIMER ─────────────────────────────────────────────────────────────────────
+const fmt = s => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 const timerEl = document.getElementById('timer');
-let remaining  = parseInt(timerEl.dataset.remaining);
+const timerDisplay = document.getElementById('timerDisplay');
+timerDisplay.textContent = fmt(remainingSeconds);
+
 const countdown = setInterval(() => {
-  remaining--;
-  const h=Math.floor(remaining/3600), m=Math.floor((remaining%3600)/60), s=remaining%60;
-  document.getElementById('timerDisplay').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  timerEl.className = timerEl.className.replace(/urgent|warning/g,'').trim();
-  if (remaining <= 300) timerEl.classList.add('warning');
-  if (remaining <= 60)  { timerEl.classList.remove('warning'); timerEl.classList.add('urgent'); }
-  if (remaining <= 0)   { clearInterval(countdown); document.getElementById('autoSubmitForm').submit(); }
+  remainingSeconds--;
+  timerDisplay.textContent = fmt(remainingSeconds);
+  if (remainingSeconds <= 0) { clearInterval(countdown); document.getElementById('autoSubmitForm').submit(); }
+  else if (remainingSeconds <= 300) { timerEl.className = timerEl.className + ' urgent'; }
+  else if (remainingSeconds <= 600) { timerEl.classList.add('warning'); }
 }, 1000);
 
-// ── Save answer ────────────────────────────────────────────────────────────
+// ── PER-QUESTION TIMER ────────────────────────────────────────────────────────
+const qTimerEl = document.getElementById('qTimer');
+const qInterval = setInterval(() => {
+  qElapsed = Math.floor((Date.now() - qStartTime) / 1000);
+  qTimerEl.textContent = qElapsed > 60 ? `${Math.floor(qElapsed/60)}m ${qElapsed%60}s` : `${qElapsed}s`;
+}, 1000);
+
+// ── SAVE ANSWER ───────────────────────────────────────────────────────────────
 function saveAnswer(ans) {
   currentAnswer = ans;
-  fetch(`/exam/${TEST_ID}/save-answer`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ questionId: QUESTION_ID, answer: ans, markForReview: markedForReview, timeSpent: qElapsed }),
-  }).catch(() => {});
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fetch(`/exam/${TEST_ID}/save-answer`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ questionId: QUESTION_ID, answer: ans, markForReview: markedForReview, timeSpent: qElapsed })
+    }).catch(console.error);
+  }, 400);
 }
 
 function clearAnswer() {
   currentAnswer = '';
   document.querySelectorAll('input[name="answer"]').forEach(r => r.checked = false);
-  document.querySelectorAll('.opt-box').forEach(b => b.classList.remove('border-navy-950','bg-navy-50'));
-  saveAnswer('');
+  document.querySelectorAll('.option-label > div').forEach(d => { d.className = d.className.replace('border-indigo-500','border-gray-200').replace('bg-indigo-50',''); });
+  fetch(`/exam/${TEST_ID}/save-answer`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ questionId: QUESTION_ID, answer:'', markForReview: markedForReview, timeSpent: qElapsed })
+  }).catch(console.error);
 }
 
-// ── Mark for review ────────────────────────────────────────────────────────
 function toggleMark() {
   markedForReview = !markedForReview;
   const btn = document.getElementById('markReviewBtn');
-  if (markedForReview) { btn.classList.add('bg-violet-600','text-white','border-violet-600'); btn.classList.remove('border-slate-200','text-slate-600'); btn.textContent='Marked'; }
-  else { btn.classList.remove('bg-violet-600','text-white','border-violet-600'); btn.classList.add('border-slate-200','text-slate-600'); btn.textContent='Mark for Review'; }
+  btn.textContent = markedForReview ? '🔖 Marked' : '🔖 Mark for Review';
+  btn.className = markedForReview
+    ? 'text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors bg-purple-600 text-white border-purple-600'
+    : 'text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors border-gray-300 text-gray-600 hover:bg-purple-50';
   fetch(`/exam/${TEST_ID}/save-answer`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer||null, markForReview: markedForReview, timeSpent: qElapsed }),
-  }).catch(() => {});
+    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
+  }).catch(console.error);
 }
 
-// ── Navigate with save ─────────────────────────────────────────────────────
 function saveCurrentBeforeNav(e, href) {
   e.preventDefault();
-  clearInterval(qTimerInt);
+  clearInterval(qInterval);
   fetch(`/exam/${TEST_ID}/save-answer`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer||null, markForReview: markedForReview, timeSpent: qElapsed }),
-  }).finally(() => { window.location.href = href; });
+    body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
+  }).finally(() => window.location.href = href);
 }
 
-// ── Submit confirm ─────────────────────────────────────────────────────────
-function submitConfirm() { document.getElementById('submitModal').classList.remove('hidden'); }
-
-// ── Fullscreen ─────────────────────────────────────────────────────────────
+// ── FULLSCREEN ────────────────────────────────────────────────────────────────
+function enterFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+function exitFullscreen() {
+  if (document.exitFullscreen) document.exitFullscreen();
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+}
 function toggleFullscreen() {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-  else document.exitFullscreen?.();
+  if (!document.fullscreenElement) enterFullscreen(); else exitFullscreen();
 }
+// Auto-enter fullscreen on load
+window.addEventListener('load', () => { setTimeout(enterFullscreen, 500); });
 
-// ── Violation report ───────────────────────────────────────────────────────
-function reportViolation(type) {
-  fetch(`/exam/${TEST_ID}/report-violation`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ type }),
-  }).then(r => r.json()).then(d => {
-    if (d.violations) { const el=document.getElementById('violationCount'); if(el) el.textContent=d.violations; }
-  }).catch(() => {});
-}
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    reportViolation('fullscreenExit');
+    showWarnBanner('⚠ Fullscreen exited! Please re-enter fullscreen to continue. Click the fullscreen button.');
+  }
+});
 
-// ── ANTI-CHEAT: Tab switch → instant auto-submit ───────────────────────────
+// ── ANTI-CHEAT: TAB SWITCH → INSTANT AUTO-SUBMIT ─────────────────────────────
+// Uses Page Visibility API (all major browsers) + window blur as fallback.
+// On first detection: show a 3-second countdown warning, then auto-submit.
+// This prevents students switching tabs to look up answers.
+
 let tabSwitchDetected = false;
 let autoSubmitCountdown = null;
 
-function triggerAutoSubmitWarning() {
-  if (tabSwitchDetected) return;
+function triggerAutoSubmitWarning(reason) {
+  if (tabSwitchDetected) return; // already triggered
   tabSwitchDetected = true;
+
+  // Log the violation server-side first
   reportViolation('tabSwitch');
-  document.getElementById('tabSwitchOverlay').classList.remove('hidden');
+
+  // Show full-screen warning overlay with countdown
+  const overlay = document.getElementById('tabSwitchOverlay');
+  const countdownEl = document.getElementById('tabCountdown');
+  overlay.classList.remove('hidden');
+
   let count = 3;
-  document.getElementById('tabCountdown').textContent = count;
+  countdownEl.textContent = count;
+
   autoSubmitCountdown = setInterval(() => {
     count--;
-    document.getElementById('tabCountdown').textContent = count;
+    countdownEl.textContent = count;
     if (count <= 0) {
       clearInterval(autoSubmitCountdown);
+      // Save current answer state, then submit
       fetch(`/exam/${TEST_ID}/save-answer`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer||null, markForReview: markedForReview, timeSpent: qElapsed }),
-      }).finally(() => { document.getElementById('autoSubmitForm').submit(); });
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId: QUESTION_ID, answer: currentAnswer, markForReview: markedForReview, timeSpent: qElapsed })
+      }).finally(() => {
+        document.getElementById('autoSubmitInput').value = 'true';
+        document.getElementById('autoSubmitForm').submit();
+      });
     }
   }, 1000);
 }
 
-// Primary: Page Visibility API
+// Primary: Page Visibility API — catches tab switch, minimize, phone lock screen
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') triggerAutoSubmitWarning();
+  if (document.visibilityState === 'hidden') {
+    triggerAutoSubmitWarning('tabSwitch');
+  }
 });
 
-// Fallback: window blur with debounce
+// Fallback: window blur — catches Alt+Tab on desktop where visibilitychange may lag
 let blurTimeout;
 window.addEventListener('blur', () => {
-  blurTimeout = setTimeout(() => { if (!document.hasFocus()) triggerAutoSubmitWarning(); }, 500);
+  blurTimeout = setTimeout(() => {
+    if (!document.hasFocus()) triggerAutoSubmitWarning('focusLoss');
+  }, 300); // small debounce to avoid false positives from alert dialogs
 });
 window.addEventListener('focus', () => clearTimeout(blurTimeout));
+
+// ── RIGHT-CLICK & COPY-PASTE DISABLE ─────────────────────────────────────────
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('copy',  e => e.preventDefault());
+document.addEventListener('cut',   e => e.preventDefault());
+document.addEventListener('paste', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  // Disable F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S
+  if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key==='I') || (e.ctrlKey && e.key==='u') || (e.ctrlKey && e.key==='s')) {
+    e.preventDefault();
+  }
+});
+
+function reportViolation(type) {
+  violations++;
+  document.getElementById('violationCount').textContent = violations;
+  document.getElementById('violPlural').textContent = violations!==1?'s':'';
+  document.getElementById('violationBar').classList.remove('hidden');
+  document.getElementById('violationBar').classList.add('flex');
+  fetch(`/exam/${TEST_ID}/report-violation`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ type })
+  }).catch(console.error);
+}
+
+function showWarnBanner(msg) {
+  const banner = document.getElementById('warnBanner');
+  banner.textContent = msg;
+  banner.classList.remove('hidden');
+  setTimeout(() => banner.classList.add('hidden'), 4000);
+}
+
+function submitConfirm() {
+  document.getElementById('submitModal').classList.remove('hidden');
+}
+
+// Prevent accidental back navigation
+window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue=''; });
 </script>
 </body></html>
