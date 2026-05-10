@@ -188,7 +188,15 @@ exports.getTopics = async (req, res) => {
     const { course, subject } = req.query;
     const topics = await loadTopics(course, subject);
     const SUBJECTS = course ? (SUBJECTS_BY_COURSE[course] || ALL_SUBJECTS) : ALL_SUBJECTS;
-    res.render('admin/topics', { title: 'Content Management', topics, COURSES, SUBJECTS, filterCourse: course || '', filterSubject: subject || '' });
+    res.render('admin/topics', {
+      title: 'Content Management',
+      topics,
+      COURSES,
+      SUBJECTS,
+      SUBJECTS_BY_COURSE,   // ← add this
+      filterCourse: course || '',
+      filterSubject: subject || ''
+    });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/dashboard'); }
 };
 

@@ -51,18 +51,69 @@ exports.getChangePassword = (req, res) => {
 };
 
 exports.postChangePassword = async (req, res) => {
+
   try {
+
     const { currentPassword, newPassword, confirmPassword } = req.body;
-    if (newPassword !== confirmPassword) { req.flash('error', 'Passwords do not match.'); return res.redirect('/auth/change-password'); }
-    if (newPassword.length < 8) { req.flash('error', 'Password must be at least 8 characters.'); return res.redirect('/auth/change-password'); }
+
+    // Check passwords match
+    if (newPassword !== confirmPassword) {
+
+      req.flash('error', 'Passwords do not match.');
+
+      return res.redirect('/auth/change-password');
+    }
+
+    // Password length
+    if (newPassword.length < 6) {
+
+      req.flash('error', 'Password must be at least 6 characters.');
+
+      return res.redirect('/auth/change-password');
+    }
+
+    // Find user
     const user = await User.findByPk(req.session.user.id);
-    if (!await user.verifyPassword(currentPassword)) { req.flash('error', 'Current password is incorrect.'); return res.redirect('/auth/change-password'); }
-    await user.update({ password: newPassword, isFirstLogin: false });
+
+    if (!user) {
+
+      req.flash('error', 'User not found.');
+
+      return res.redirect('/auth/login');
+    }
+
+    // Verify current password ONLY if not first login
+    if (!user.isFirstLogin) {
+
+      const validPassword = await user.verifyPassword(currentPassword);
+
+      if (!validPassword) {
+
+        req.flash('error', 'Current password is incorrect.');
+
+        return res.redirect('/auth/change-password');
+      }
+    }
+
+    // Save new password
+    user.password = newPassword;
+    user.isFirstLogin = false;
+
+    await user.save();
+
+    // Update session
     req.session.user.isFirstLogin = false;
+
     req.flash('success', 'Password changed successfully!');
+
     return res.redirect(`/${req.session.user.role}/dashboard`);
+
   } catch (err) {
+
+    console.error('Change password error:', err);
+
     req.flash('error', 'Failed to change password.');
+
     return res.redirect('/auth/change-password');
   }
 };
