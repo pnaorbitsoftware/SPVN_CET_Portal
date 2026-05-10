@@ -60,8 +60,24 @@ const PORT = process.env.PORT || 3000;
   await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
   console.log('✅ Models synced');
 
+  // ── Auto-seed admin from .env (only if no admin exists) ──────────────────
+  try {
+    const { User } = require('./models');
+    const exists = await User.findOne({ where: { role: 'admin' } });
+    if (!exists) {
+      const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@college.edu';
+      const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1234';
+      const adminName     = process.env.ADMIN_NAME     || 'Administrator';
+      await User.create({ name: adminName, email: adminEmail, password: adminPassword, role: 'admin', isActive: true, isFirstLogin: false });
+      console.log(`✅ Admin seeded — email: ${adminEmail}`);
+      console.log(`   ⚠  Change ADMIN_PASSWORD in .env after first login!`);
+    }
+  } catch (e) {
+    console.error('Admin seed error:', e.message);
+  }
+
   app.listen(PORT, () => {
-    console.log(`\n🚀 ${process.env.APP_NAME}`);
+    console.log(`\n${process.env.APP_NAME || 'CET Exam Portal'}`);
     console.log(`   Running at: http://localhost:${PORT}`);
     console.log(`   Environment: ${process.env.NODE_ENV}\n`);
   });
