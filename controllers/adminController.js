@@ -244,26 +244,66 @@ exports.getTopicsForSubject = async (req, res) => {
 };
 
 // ── QUESTION MANAGEMENT ───────────────────────────────────────────────────────
+
+// AJAX: get subtopics for a topic name
+exports.getSubtopicsForTopic = async (req, res) => {
+  try {
+    const { course, subject, topic } = req.query;
+    const where = { isActive: true };
+    if (course)  where.course   = course;
+    if (subject) where.subject  = subject;
+    if (topic)   where.name     = topic;
+    const topicRow = await Topic.findOne({ where });
+    res.json(topicRow?.subtopics || []);
+  } catch { res.json([]); }
+};
+
 exports.getQuestions = async (req, res) => {
   try {
-    const { subject, difficulty, course, page = 1 } = req.query;
+    const { subject, topic, subtopic, difficulty, course, page = 1 } = req.query;
     const limit = 25, offset = (page - 1) * limit;
     const where = { isActive: true };
-    if (subject) where.subject = subject;
+    if (subject)   where.subject   = subject;
+    if (topic)     where.topic     = topic;
+    if (subtopic)  where.subtopic  = subtopic;
     if (difficulty) where.difficulty = difficulty;
-    const { count, rows: questions } = await Question.findAndCountAll({ where, order: [['subject','ASC'],['createdAt','DESC']], limit, offset });
-    res.render('admin/questions', { title: 'Question Bank', questions, total: count,
+    const { count, rows: questions } = await Question.findAndCountAll({
+      where,
+      order: [['subject','ASC'],['topic','ASC'],['subtopic','ASC'],['difficulty','ASC'],['createdAt','DESC']],
+      limit, offset,
+    });
+    // Load topics for filter dropdowns
+    const topicRows = subject ? await loadTopics(course, subject) : [];
+    // Get unique subtopics from selected topic
+    const subtopicList = topic
+      ? (topicRows.find(t => t.name === topic)?.subtopics || [])
+      : [];
+    res.render('admin/questions', {
+      title: 'Question Bank', questions, total: count,
       currentPage: parseInt(page), totalPages: Math.ceil(count/limit),
-      filters: { subject, difficulty, course }, COURSES, SUBJECTS: ALL_SUBJECTS });
+      filters: { subject, topic, subtopic, difficulty, course },
+      COURSES, SUBJECTS: ALL_SUBJECTS, topicRows, subtopicList,
+    });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.createQuestion = async (req, res) => {
   try {
-    const { question, optionA, optionB, optionC, optionD, correctAnswer, subject, difficulty, marks, explanation, topic } = req.body;
-    await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer, subject, difficulty, marks: parseFloat(marks)||1, explanation, topic, createdBy: req.session.user.id });
+    const { question, optionA, optionB, optionC, optionD, correctAnswer,
+            subject, topic, subtopic, difficulty, marks, explanation, questionImageUrl } = req.body;
+    let questionImage = questionImageUrl || null;
+    if (req.files?.questionImage) {
+      const { processQuestionImage } = require('../utils/imageUpload');
+      questionImage = await processQuestionImage(req.files.questionImage, `q_${Date.now()}`);
+    }
+    await Question.create({
+      question, optionA, optionB, optionC, optionD, correctAnswer,
+      subject, topic: topic||null, subtopic: subtopic||null,
+      difficulty, marks: parseFloat(marks)||1, explanation: explanation||null,
+      questionImage, createdBy: req.session.user.id,
+    });
     req.flash('success', 'Question added.');
-    res.redirect('/admin/questions');
+    res.redirect(`/admin/questions?subject=${encodeURIComponent(subject||'')}&topic=${encodeURIComponent(topic||'')}`);
   } catch (e) { req.flash('error', 'Failed: ' + e.message); res.redirect('/admin/questions'); }
 };
 
@@ -280,7 +320,7 @@ exports.bulkImportQuestions = async (req, res) => {
           optionB: row.optionB || row['Option B'], optionC: row.optionC || row['Option C'], optionD: row.optionD || row['Option D'],
           correctAnswer: (row.correctAnswer||'A').toUpperCase(), subject: row.subject||'Physics',
           difficulty: row.difficulty||'Medium', marks: parseFloat(row.marks||1),
-          topic: row.topic||null, explanation: row.explanation||null, createdBy: req.session.user.id,
+          topic: row.topic||null, subtopic: row.subtopic||row.Subtopic||null, explanation: row.explanation||null, createdBy: req.session.user.id,
         });
         created++;
       } catch {}

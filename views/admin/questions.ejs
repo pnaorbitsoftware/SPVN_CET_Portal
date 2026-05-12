@@ -3,54 +3,129 @@
   <%- include('../partials/sidebar-admin') %>
   <main class="lg:ml-64 flex-1 overflow-y-auto">
     <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4 flex items-center justify-between">
-      <div><h1 class="text-lg font-bold text-slate-900">Question Bank</h1><p class="text-sm text-slate-500"><%= total %> questions total</p></div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900">Question Bank</h1>
+        <p class="text-sm text-slate-500"><%= total %> questions</p>
+      </div>
       <div class="flex gap-2">
-        <button onclick="document.getElementById('addQModal').classList.remove('hidden')" class="flex items-center gap-2 bg-navy-950 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-navy-800 transition-colors">+ Add Question</button>
-        <button onclick="document.getElementById('importModal').classList.remove('hidden')" class="flex items-center gap-2 border border-slate-200 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">📥 Import CSV</button>
+        <button onclick="document.getElementById('addQModal').classList.remove('hidden')"
+          class="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors">
+          + Add Question
+        </button>
+        <button onclick="document.getElementById('importModal').classList.remove('hidden')"
+          class="flex items-center gap-2 border border-slate-200 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
+          📥 Import CSV
+        </button>
       </div>
     </header>
+
     <div class="p-5 lg:p-8">
       <%- include('../partials/flash') %>
-      <!-- Filters -->
-      <form method="GET" class="flex flex-wrap gap-3 mb-6">
-        <select name="subject" class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
-          <option value="">All Subjects</option>
-          <% SUBJECTS.forEach(s => { %><option value="<%= s %>" <%= filters.subject===s?'selected':'' %>><%= s %></option><% }) %>
-        </select>
-        <select name="difficulty" class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
-          <option value="">All Difficulty</option>
-          <% ['Easy','Medium','Hard'].forEach(d => { %><option value="<%= d %>" <%= filters.difficulty===d?'selected':'' %>><%= d %></option><% }) %>
-        </select>
-        <button type="submit" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-lg text-sm font-medium">Filter</button>
-        <a href="/admin/questions" class="px-4 py-2 rounded-lg text-sm text-slate-500 hover:bg-slate-50">Clear</a>
+
+      <!-- ── Filter bar: Subject → Topic → Subtopic ── -->
+      <form method="GET" id="filterForm" class="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Filter Questions</p>
+        <div class="flex flex-wrap gap-3 items-end">
+          <!-- Subject -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Subject</label>
+            <select name="subject" id="fSubject" onchange="onFilterSubjectChange(this.value)"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 w-44">
+              <option value="">All Subjects</option>
+              <% SUBJECTS.forEach(s => { %><option value="<%= s %>" <%= filters.subject===s?'selected':'' %>><%= s %></option><% }) %>
+            </select>
+          </div>
+
+          <!-- Topic (populated by AJAX or server-side) -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Topic</label>
+            <select name="topic" id="fTopic" onchange="onFilterTopicChange(this.value)"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 w-44">
+              <option value="">All Topics</option>
+              <% (topicRows||[]).forEach(t => { %><option value="<%= t.name %>" <%= filters.topic===t.name?'selected':'' %>><%= t.name %></option><% }) %>
+            </select>
+          </div>
+
+          <!-- Subtopic -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Subtopic</label>
+            <select name="subtopic" id="fSubtopic"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 w-44">
+              <option value="">All Subtopics</option>
+              <% (subtopicList||[]).forEach(st => { %><option value="<%= st %>" <%= filters.subtopic===st?'selected':'' %>><%= st %></option><% }) %>
+            </select>
+          </div>
+
+          <!-- Difficulty -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Difficulty</label>
+            <select name="difficulty"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 w-36">
+              <option value="">All</option>
+              <% ['Easy','Medium','Hard'].forEach(d => { %><option value="<%= d %>" <%= filters.difficulty===d?'selected':'' %>><%= d %></option><% }) %>
+            </select>
+          </div>
+
+          <div class="flex gap-2 mt-auto">
+            <button type="submit" class="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors">Apply</button>
+            <a href="/admin/questions" class="px-4 py-2 rounded-lg text-sm text-slate-500 border border-slate-200 hover:bg-slate-50">Clear</a>
+          </div>
+        </div>
+
+        <!-- Active filter breadcrumb -->
+        <% if (filters.subject || filters.topic || filters.subtopic || filters.difficulty) { %>
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          <span class="text-xs text-slate-400">Active:</span>
+          <% if (filters.subject) { %><span class="bg-blue-100 text-blue-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.subject %></span><% } %>
+          <% if (filters.topic) { %><span class="text-slate-400 text-xs">›</span><span class="bg-purple-100 text-purple-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.topic %></span><% } %>
+          <% if (filters.subtopic) { %><span class="text-slate-400 text-xs">›</span><span class="bg-orange-100 text-orange-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.subtopic %></span><% } %>
+          <% if (filters.difficulty) { %><span class="bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.difficulty %></span><% } %>
+        </div>
+        <% } %>
       </form>
 
+      <!-- Questions table -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="divide-y divide-slate-100">
           <% if (!questions.length) { %>
-          <p class="px-6 py-12 text-center text-slate-400">No questions yet. Add your first question!</p>
+          <p class="px-6 py-12 text-center text-slate-400">No questions found. Try clearing filters or add new questions.</p>
           <% } %>
+          <% let lastSubject='', lastTopic=''; %>
           <% questions.forEach((q, i) => { %>
+            <!-- Subject group header -->
+            <% if (q.subject !== lastSubject) { lastSubject = q.subject; lastTopic = ''; %>
+            <div class="px-6 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+              <span class="text-xs font-bold text-blue-700 uppercase tracking-wider">📚 <%= q.subject %></span>
+            </div>
+            <% } %>
+            <!-- Topic group header -->
+            <% if (q.topic && q.topic !== lastTopic) { lastTopic = q.topic; %>
+            <div class="px-8 py-1.5 bg-purple-50 border-b border-purple-100 flex items-center gap-2">
+              <span class="text-xs font-semibold text-purple-600">📌 <%= q.topic %></span>
+              <% if (q.subtopic) { %><span class="text-purple-400 text-xs">›</span><span class="text-xs text-purple-500"><%= q.subtopic %></span><% } %>
+            </div>
+            <% } %>
           <div class="px-6 py-4 hover:bg-slate-50 transition-colors">
             <div class="flex items-start gap-4">
               <span class="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-1 rounded mt-0.5 shrink-0"><%= ((currentPage-1)*25)+i+1 %></span>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-slate-900 mb-2"><%= q.question %></p>
+                <p class="text-sm font-medium text-slate-900 mb-2 leading-snug"><%= q.question %></p>
                 <% if (q.questionImage) { %><img src="<%= q.questionImage %>" class="max-h-28 rounded-lg border mb-2 object-contain"/><% } %>
-                <div class="grid grid-cols-2 gap-1 text-xs text-slate-600 mb-2">
-                  <span>A. <%= q.optionA %></span><span>B. <%= q.optionB %></span>
-                  <span>C. <%= q.optionC %></span><span>D. <%= q.optionD %></span>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
+                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">A.</span> <%= q.optionA %></span>
+                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">B.</span> <%= q.optionB %></span>
+                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">C.</span> <%= q.optionC %></span>
+                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">D.</span> <%= q.optionD %></span>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-semibold">✓ Ans: <%= q.correctAnswer %></span>
-                  <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded"><%= q.subject %></span>
+                <div class="flex flex-wrap gap-2 items-center">
+                  <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-semibold">✓ <%= q.correctAnswer %></span>
+                  <% if (q.subtopic) { %><span class="bg-orange-100 text-orange-600 text-xs px-2 py-0.5 rounded"><%= q.subtopic %></span><% } %>
                   <span class="<%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> text-xs px-2 py-0.5 rounded"><%= q.difficulty %></span>
-                  <% if (q.topic) { %><span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded"><%= q.topic %></span><% } %>
                   <span class="text-xs text-slate-400"><%= q.marks %> mk</span>
                 </div>
               </div>
-              <form action="/admin/questions/<%= q.id %>/delete" method="POST" onsubmit="return confirm('Delete?')">
-                <button type="submit" class="text-xs text-red-400 hover:text-red-600 font-medium shrink-0 mt-1">Delete</button>
+              <form action="/admin/questions/<%= q.id %>/delete" method="POST" onsubmit="return confirm('Delete this question?')">
+                <button type="submit" class="text-xs text-red-400 hover:text-red-600 font-medium mt-1 shrink-0">Delete</button>
               </form>
             </div>
           </div>
@@ -59,8 +134,10 @@
         <% if (totalPages > 1) { %>
         <div class="flex justify-center gap-1 px-6 py-4 border-t border-slate-100">
           <% for(let p=1;p<=totalPages;p++) { %>
-          <a href="?page=<%= p %>&subject=<%= filters.subject||'' %>&difficulty=<%= filters.difficulty||'' %>"
-            class="w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium <%= p===currentPage?'bg-navy-950 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200' %>"><%= p %></a>
+          <a href="?page=<%= p %>&subject=<%= encodeURIComponent(filters.subject||'') %>&topic=<%= encodeURIComponent(filters.topic||'') %>&subtopic=<%= encodeURIComponent(filters.subtopic||'') %>&difficulty=<%= filters.difficulty||'' %>"
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium <%= p===currentPage?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200' %>">
+            <%= p %>
+          </a>
           <% } %>
         </div>
         <% } %>
@@ -69,7 +146,7 @@
   </main>
 </div>
 
-<!-- Add Question Modal -->
+<!-- ── Add Question Modal ── -->
 <div id="addQModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
     <div class="flex items-center justify-between px-6 py-5 border-b">
@@ -77,65 +154,183 @@
       <button onclick="document.getElementById('addQModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
     </div>
     <form action="/admin/questions" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
-      <div><label class="block text-sm font-semibold mb-1.5">Question *</label>
-        <textarea name="question" rows="2" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="Enter question text"></textarea>
+
+      <!-- Question text -->
+      <div>
+        <label class="block text-sm font-semibold mb-1.5">Question *</label>
+        <textarea name="question" rows="2" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Enter question text"></textarea>
       </div>
-      <div><label class="block text-sm font-semibold mb-1.5">Question Image <span class="text-slate-400 font-normal">(optional — upload or paste URL)</span></label>
+
+      <!-- Question image -->
+      <div class="border border-dashed border-slate-300 rounded-xl p-3 bg-slate-50">
+        <label class="block text-xs font-semibold text-slate-600 mb-2">📷 Question Image <span class="font-normal text-slate-400">(optional)</span></label>
         <div class="flex gap-2">
-          <input type="file" name="questionImage" accept="image/*" onchange="prev(this,'qp')" class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white"/>
-          <input type="text" name="questionImageUrl" placeholder="Or paste image URL" class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2"/>
+          <input type="file" name="questionImage" accept="image/*" onchange="prev(this,'qp')" class="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"/>
+          <input type="text" name="questionImageUrl" placeholder="Or paste image URL (imgbb / image.io)" class="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5"/>
         </div>
-        <img id="qp" class="hidden mt-2 max-h-28 rounded-lg border object-contain"/>
+        <img id="qp" class="hidden mt-2 max-h-24 rounded-lg border object-contain"/>
       </div>
+
+      <!-- Options -->
       <div class="grid grid-cols-2 gap-3">
-        <% ['A','B','C','D'].forEach(o => { %><div><label class="block text-sm font-semibold mb-1">Option <%= o %> *</label><input type="text" name="option<%= o %>" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="Option <%= o %>"/></div><% }) %>
+        <% ['A','B','C','D'].forEach(o => { %>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">Option <%= o %> *</label>
+          <input type="text" name="option<%= o %>" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Option <%= o %>"/>
+        </div>
+        <% }) %>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div><label class="block text-sm font-semibold mb-1">Correct *</label>
-          <select name="correctAnswer" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
-            <% ['A','B','C','D'].forEach(o => { %><option value="<%= o %>"><%= o %></option><% }) %>
-          </select></div>
-        <div><label class="block text-sm font-semibold mb-1">Subject *</label>
-          <select name="subject" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
-            <% SUBJECTS.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
-          </select></div>
-        <div><label class="block text-sm font-semibold mb-1">Difficulty</label>
-          <select name="difficulty" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500">
+
+      <!-- Correct + Difficulty + Marks -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">Correct Answer *</label>
+          <select name="correctAnswer" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+            <% ['A','B','C','D'].forEach(o => { %><option><%= o %></option><% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">Difficulty</label>
+          <select name="difficulty" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
             <% ['Easy','Medium','Hard'].forEach(d => { %><option><%= d %></option><% }) %>
-          </select></div>
-        <div><label class="block text-sm font-semibold mb-1">Marks</label>
-          <input type="number" name="marks" value="1" step="0.5" min="0.5" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">Marks</label>
+          <input type="number" name="marks" value="1" step="0.5" min="0.5" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"/>
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-sm font-semibold mb-1">Topic</label><input type="text" name="topic" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="e.g. Kinematics"/></div>
-        <div><label class="block text-sm font-semibold mb-1">Explanation</label><input type="text" name="explanation" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Brief explanation"/></div>
+
+      <!-- Subject → Topic → Subtopic cascade -->
+      <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+        <p class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">📂 Classify Question</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <!-- Subject -->
+          <div>
+            <label class="block text-xs font-semibold mb-1 text-slate-600">Subject *</label>
+            <select name="subject" id="mSubject" required onchange="onModalSubjectChange(this.value)"
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select Subject</option>
+              <% SUBJECTS.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+            </select>
+          </div>
+          <!-- Topic (AJAX) -->
+          <div>
+            <label class="block text-xs font-semibold mb-1 text-slate-600">Topic</label>
+            <select name="topic" id="mTopic" onchange="onModalTopicChange(this.value)"
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select Topic</option>
+            </select>
+          </div>
+          <!-- Subtopic (AJAX) -->
+          <div>
+            <label class="block text-xs font-semibold mb-1 text-slate-600">Subtopic</label>
+            <select name="subtopic" id="mSubtopic"
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select Subtopic</option>
+            </select>
+          </div>
+        </div>
       </div>
+
+      <!-- Explanation -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-600">Explanation (optional)</label>
+        <input type="text" name="explanation" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Brief explanation of correct answer"/>
+      </div>
+
       <div class="flex gap-3 pt-2">
-        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-800 transition-colors">Add Question</button>
+        <button type="submit" class="flex-1 bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-700 transition-colors">Add Question</button>
         <button type="button" onclick="document.getElementById('addQModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50">Cancel</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Import Modal -->
+<!-- ── Import Modal ── -->
 <div id="importModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
     <div class="flex items-center justify-between px-6 py-5 border-b">
-      <h3 class="font-bold text-lg">Import Questions</h3>
+      <h3 class="font-bold text-lg">Import Questions (CSV / Excel)</h3>
       <button onclick="document.getElementById('importModal').classList.add('hidden')" class="text-slate-400 text-xl">✕</button>
     </div>
     <form action="/admin/questions/bulk-import" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
       <div class="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
-        <label class="cursor-pointer"><span class="text-navy-600 font-medium hover:underline text-sm">Choose CSV / Excel file</span><input type="file" name="csvFile" accept=".csv,.xlsx,.xls" required class="sr-only"/></label>
-        <p class="text-xs text-slate-400 mt-1">question, optionA-D, correctAnswer, subject, difficulty, marks, topic</p>
+        <label class="cursor-pointer">
+          <span class="text-slate-900 font-medium hover:underline text-sm">Choose file</span>
+          <input type="file" name="csvFile" accept=".csv,.xlsx,.xls" required class="sr-only"/>
+        </label>
+        <p class="text-xs text-slate-400 mt-2">Required columns: question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic, subtopic, difficulty, marks</p>
       </div>
       <div class="flex gap-3">
-        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-800">Import</button>
+        <button type="submit" class="flex-1 bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-700">Import</button>
         <button type="button" onclick="document.getElementById('importModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl">Cancel</button>
       </div>
     </form>
   </div>
 </div>
-<script>function prev(i,id){const r=new FileReader();r.onload=e=>{const p=document.getElementById(id);p.src=e.target.result;p.classList.remove('hidden')};r.readAsDataURL(i.files[0]);}</script>
+
+<script>
+// ── Image preview ─────────────────────────────────────────────────────────
+function prev(input, id) {
+  const r = new FileReader();
+  r.onload = e => { const p = document.getElementById(id); p.src = e.target.result; p.classList.remove('hidden'); };
+  r.readAsDataURL(input.files[0]);
+}
+
+// ── Filter bar cascades ───────────────────────────────────────────────────
+async function onFilterSubjectChange(subject) {
+  const tSel = document.getElementById('fTopic');
+  const stSel = document.getElementById('fSubtopic');
+  tSel.innerHTML = '<option value="">All Topics</option>';
+  stSel.innerHTML = '<option value="">All Subtopics</option>';
+  if (!subject) return;
+  const topics = await fetchTopics(subject);
+  topics.forEach(t => tSel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
+}
+
+async function onFilterTopicChange(topicName) {
+  const stSel = document.getElementById('fSubtopic');
+  const subj  = document.getElementById('fSubject').value;
+  stSel.innerHTML = '<option value="">All Subtopics</option>';
+  if (!topicName) return;
+  const subs = await fetchSubtopics(subj, topicName);
+  subs.forEach(s => stSel.innerHTML += `<option value="${s}">${s}</option>`);
+}
+
+// ── Modal cascades ────────────────────────────────────────────────────────
+async function onModalSubjectChange(subject) {
+  const tSel  = document.getElementById('mTopic');
+  const stSel = document.getElementById('mSubtopic');
+  tSel.innerHTML  = '<option value="">Select Topic</option>';
+  stSel.innerHTML = '<option value="">Select Subtopic</option>';
+  if (!subject) return;
+  const topics = await fetchTopics(subject);
+  topics.forEach(t => tSel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
+}
+
+async function onModalTopicChange(topicName) {
+  const stSel = document.getElementById('mSubtopic');
+  const subj  = document.getElementById('mSubject').value;
+  stSel.innerHTML = '<option value="">Select Subtopic</option>';
+  if (!topicName) return;
+  const subs = await fetchSubtopics(subj, topicName);
+  subs.forEach(s => stSel.innerHTML += `<option value="${s}">${s}</option>`);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────
+async function fetchTopics(subject) {
+  try {
+    const r = await fetch(`/admin/ajax/topics?subject=${encodeURIComponent(subject)}`);
+    return await r.json();
+  } catch { return []; }
+}
+
+async function fetchSubtopics(subject, topic) {
+  try {
+    const r = await fetch(`/admin/ajax/subtopics?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}`);
+    return await r.json();
+  } catch { return []; }
+}
+</script>
 </body></html>

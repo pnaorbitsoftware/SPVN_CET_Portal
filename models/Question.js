@@ -16,14 +16,15 @@ const Question = sequelize.define('Question', {
   optionDImage: { type: DataTypes.STRING(500), allowNull: true },
   correctAnswer: { type: DataTypes.ENUM('A','B','C','D'), allowNull: false },
   subject: {
-    type: DataTypes.ENUM('Physics','Chemistry','Mathematics','Biology','English','General Knowledge'),
+    type: DataTypes.STRING(100),
     allowNull: false,
   },
   difficulty: { type: DataTypes.ENUM('Easy','Medium','Hard'), allowNull: false, defaultValue: 'Medium' },
   marks: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 1.0 },
   explanation: { type: DataTypes.TEXT, allowNull: true },
   explanationImage: { type: DataTypes.STRING(500), allowNull: true },
-  topic: { type: DataTypes.STRING(100), allowNull: true }, // sub-topic for weak topic analysis
+  topic:    { type: DataTypes.STRING(100), allowNull: true },
+  subtopic: { type: DataTypes.STRING(100), allowNull: true },
   createdBy: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'users', key: 'id' } },
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'questions' });

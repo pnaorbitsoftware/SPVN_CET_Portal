@@ -29,6 +29,7 @@ router.post('/topics/:id/delete', ...guard, c.deleteTopic);
 // AJAX helpers
 router.get('/ajax/subjects/:course', ...guard, c.getSubjectsForCourse);
 router.get('/ajax/topics',           ...guard, c.getTopicsForSubject);
+router.get('/ajax/subtopics',        ...guard, c.getSubtopicsForTopic);
 
 // Questions
 router.get('/questions',              ...guard, c.getQuestions);
