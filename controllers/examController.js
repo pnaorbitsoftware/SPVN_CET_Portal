@@ -137,6 +137,7 @@ exports.getQuestion = async (req, res) => {
       isMarked: markedForReview.includes(String(currentQuestionId)),
       resultId: result.id,
       violations: result.violationCount || 0,
+      result, // pass result so exam view can read cheatingFlags for initial counts
     });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
@@ -183,23 +184,60 @@ exports.saveAnswer = async (req, res) => {
 };
 
 // ── REPORT VIOLATION (AJAX) ───────────────────────────────────────────────────
+// ── REPORT VIOLATION (AJAX) ───────────────────────────────────────────────────
 exports.reportViolation = async (req, res) => {
   try {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const { type } = req.body;
-    const result = await Result.findOne({ where: { studentId, testId, status: 'in_progress' } });
+    const examSession = req.session.examSession?.[testId];
+    if (!examSession) return res.json({ success: false });
+
+    const result = await Result.findOne({ where: { id: examSession.resultId, studentId, status: 'in_progress' } });
     if (!result) return res.json({ success: false });
 
+    const test = await Test.findByPk(testId);
     const flags = result.cheatingFlags || { tabSwitches:0, fullscreenExits:0, focusLosses:0 };
+
     if (type === 'tabSwitch') flags.tabSwitches = (flags.tabSwitches||0) + 1;
     else if (type === 'fullscreenExit') flags.fullscreenExits = (flags.fullscreenExits||0) + 1;
     else if (type === 'focusLoss') flags.focusLosses = (flags.focusLosses||0) + 1;
 
     const violations = (flags.tabSwitches||0) + (flags.fullscreenExits||0) + (flags.focusLosses||0);
     await result.update({ cheatingFlags: flags, violationCount: violations });
-    return res.json({ success: true, violations });
-  } catch (e) { return res.json({ success: false }); }
+
+    // Check if auto-submit should trigger
+    let autoSubmit = false;
+    let warningMsg = '';
+    const maxTab = test.maxTabSwitches || 3;
+    const maxFocus = test.maxFocusLosses || 5;
+
+    if (test.autoSubmitOnViolation) {
+      if (type === 'tabSwitch' && flags.tabSwitches >= maxTab) {
+        autoSubmit = true;
+        warningMsg = `Exam auto-submitted: exceeded ${maxTab} tab switch limit.`;
+      } else if (type === 'focusLoss' && flags.focusLosses >= maxFocus) {
+        autoSubmit = true;
+        warningMsg = `Exam auto-submitted: exceeded ${maxFocus} focus loss limit.`;
+      }
+    }
+
+    // Remaining warnings
+    const tabRemaining = Math.max(0, maxTab - (flags.tabSwitches||0));
+    const warningLevel = tabRemaining <= 1 ? 'danger' : tabRemaining <= 2 ? 'warning' : 'info';
+
+    return res.json({
+      success: true,
+      violations,
+      autoSubmit,
+      warningMsg,
+      tabSwitches: flags.tabSwitches||0,
+      maxTabSwitches: maxTab,
+      tabRemaining,
+      warningLevel,
+      autoSubmitEnabled: !!test.autoSubmitOnViolation,
+    });
+  } catch (e) { console.error(e); return res.json({ success: false }); }
 };
 
 // ── SUBMIT ────────────────────────────────────────────────────────────────────

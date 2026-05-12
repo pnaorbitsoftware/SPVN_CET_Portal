@@ -72,6 +72,31 @@ const Test = sequelize.define('Test', {
   questionPdfPath:  { type: DataTypes.STRING(500), allowNull: true },
   solutionPdfPath:  { type: DataTypes.STRING(500), allowNull: true },
   marksPerQuestion: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 1 },
+
+  // ── Anti-cheat & proctoring settings ─────────────────────────────────────
+  autoSubmitOnViolation: {
+    // Auto-submit exam when tab switches exceed limit
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  maxTabSwitches: {
+    // Number of tab switches allowed before auto-submit (0 = unlimited)
+    type: DataTypes.INTEGER,
+    defaultValue: 3,
+  },
+  maxFocusLosses: {
+    type: DataTypes.INTEGER,
+    defaultValue: 5,
+  },
+  blockCopyPaste: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  requireFullscreen: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
@@ -83,3 +108,5 @@ const Test = sequelize.define('Test', {
 module.exports = Test;
 
 // Patch: add course/subject/topic/subtopic/PDF fields via alter (handled in sync)
+
+// Anti-cheat settings (injected via sequelize alter on sync)

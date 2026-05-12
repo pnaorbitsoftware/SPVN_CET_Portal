@@ -354,6 +354,12 @@ exports.createTest = async (req, res) => {
       course: course||null, subject: subject||null, topic: topic||null, subtopic: subtopic||null,
       marksPerQuestion: parseFloat(marksPerQuestion)||1,
       questionPdfPath, solutionPdfPath,
+      // Anti-cheat settings
+      autoSubmitOnViolation: req.body.autoSubmitOnViolation === 'on',
+      maxTabSwitches: parseInt(req.body.maxTabSwitches) || 3,
+      maxFocusLosses: parseInt(req.body.maxFocusLosses) || 5,
+      blockCopyPaste: req.body.blockCopyPaste === 'on',
+      requireFullscreen: req.body.requireFullscreen === 'on',
     });
     for (let i = 0; i < selected.length; i++) await TestQuestion.create({ testId: test.id, questionId: selected[i], orderIndex: i });
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);

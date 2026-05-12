@@ -194,6 +194,17 @@ let markedForReview = <%- isMarked ? 'true' : 'false' %>;
 let qElapsed = 0;
 let navInProgress = false;
 
+// ── Per-test anti-cheat settings (from admin) ────────────────────────────
+const SETTINGS = {
+  autoSubmitOnViolation: <%- test.autoSubmitOnViolation ? 'true' : 'false' %>,
+  maxTabSwitches:  <%= test.maxTabSwitches  || 3 %>,
+  maxFocusLosses:  <%= test.maxFocusLosses  || 5 %>,
+  blockCopyPaste:  <%- test.blockCopyPaste  !== false ? 'true' : 'false' %>,
+  requireFullscreen: <%- test.requireFullscreen ? 'true' : 'false' %>,
+};
+let tabSwitchCount  = <%= (result && result.cheatingFlags && result.cheatingFlags.tabSwitches)  || 0 %>;
+let focusLossCount  = <%= (result && result.cheatingFlags && result.cheatingFlags.focusLosses)  || 0 %>;
+
 // ── Timer ──────────────────────────────────────────────────────────────────
 const fmt = s => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 let remaining = <%= remaining %>;
@@ -286,15 +297,15 @@ function toggleFullscreen() {
 }
 window.addEventListener('load', () => setTimeout(() => document.documentElement.requestFullscreen?.().catch(()=>{}), 600));
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) {
+  if (!document.fullscreenElement && SETTINGS.requireFullscreen) {
     reportViolation('fullscreenExit');
-    showWarnBanner('Fullscreen exited! Please click the fullscreen button to re-enter.');
+    showWarnBanner('⚠ Fullscreen exited! Click the fullscreen button to re-enter.', 'danger');
   }
 });
 
 // ── Violation report ───────────────────────────────────────────────────────
-function reportViolation(type) {
-  fetch(`/exam/${TEST_ID}/report-violation`, {
+function reportViolation(type, onAutoSubmit) {
+  return fetch(`/exam/${TEST_ID}/report-violation`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type }),
   }).then(r => r.json()).then(d => {
@@ -304,24 +315,40 @@ function reportViolation(type) {
       document.getElementById('violationBar').classList.remove('hidden');
       document.getElementById('violationBar').classList.add('flex');
     }
+    // Update local counts
+    if (type === 'tabSwitch') tabSwitchCount = d.tabSwitches || tabSwitchCount + 1;
+    if (type === 'focusLoss') focusLossCount++;
+
+    // Show remaining warnings
+    if (SETTINGS.autoSubmitOnViolation && type === 'tabSwitch') {
+      const remaining = Math.max(0, SETTINGS.maxTabSwitches - tabSwitchCount);
+      if (remaining > 0) {
+        showWarnBanner(`⚠ Tab switch warning! ${remaining} more allowed before auto-submit.`, d.warningLevel === 'danger' ? 'danger' : 'warning');
+      }
+    }
+    // Auto-submit if server says so
+    if (d.autoSubmit) {
+      showAutoSubmitOverlay(d.warningMsg || 'Exam auto-submitted due to violations.');
+    }
+    return d;
   }).catch(() => {});
 }
 
-function showWarnBanner(msg) {
+function showWarnBanner(msg, level = 'warning') {
   const b = document.getElementById('warnBanner');
   b.textContent = msg;
+  b.className = b.className.replace(/bg-\S+/g, '');
+  b.classList.add(level === 'danger' ? 'bg-red-700' : 'bg-amber-600');
   b.classList.remove('hidden');
-  setTimeout(() => b.classList.add('hidden'), 5000);
+  setTimeout(() => b.classList.add('hidden'), 6000);
 }
 
-// ── Anti-cheat: tab switch → auto-submit ──────────────────────────────────
-let tabSwitchDetected = false;
-function triggerAutoSubmit() {
-  if (tabSwitchDetected) return;
-  tabSwitchDetected = true;
-  reportViolation('tabSwitch');
-  document.getElementById('tabSwitchOverlay').classList.remove('hidden');
-  let count = 3;
+function showAutoSubmitOverlay(msg) {
+  const overlay = document.getElementById('tabSwitchOverlay');
+  const msgEl = document.getElementById('tabSwitchMsg');
+  if (msgEl) msgEl.textContent = msg;
+  overlay.classList.remove('hidden');
+  let count = 5;
   document.getElementById('tabCountdown').textContent = count;
   const t = setInterval(() => {
     count--;
@@ -333,11 +360,35 @@ function triggerAutoSubmit() {
   }, 1000);
 }
 
+// ── Anti-cheat: tab switch detection ────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') triggerAutoSubmit();
+  if (document.visibilityState === 'hidden') {
+    reportViolation('tabSwitch');
+  }
 });
 let blurTimer;
-window.addEventListener('blur', () => { blurTimer = setTimeout(() => { if (!document.hasFocus()) triggerAutoSubmit(); }, 500); });
+window.addEventListener('blur', () => {
+  blurTimer = setTimeout(() => {
+    if (!document.hasFocus()) reportViolation('focusLoss');
+  }, 800);
+});
+window.addEventListener('focus', () => clearTimeout(blurTimer));
+
+// Block copy/paste if enabled by admin
+if (SETTINGS.blockCopyPaste) {
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('copy',  e => e.preventDefault());
+  document.addEventListener('cut',   e => e.preventDefault());
+  document.addEventListener('paste', e => e.preventDefault());
+  document.addEventListener('keydown', e => {
+    if (e.key==='F12' || (e.ctrlKey&&e.shiftKey&&e.key==='I') || (e.ctrlKey&&e.key==='u') || (e.ctrlKey&&e.key==='s')) e.preventDefault();
+  });
+}
+
+// Fullscreen: only force if admin enabled requireFullscreen
+if (SETTINGS.requireFullscreen) {
+  window.addEventListener('load', () => setTimeout(() => document.documentElement.requestFullscreen?.().catch(()=>{}), 600));
+}
 window.addEventListener('focus', () => clearTimeout(blurTimer));
 
 // ── Security ───────────────────────────────────────────────────────────────
