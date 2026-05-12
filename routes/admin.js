@@ -17,6 +17,7 @@ router.get('/groups',                    ...guard, c.getGroups);
 router.post('/groups',                   ...guard, c.createGroup);
 router.post('/groups/assign-member',     ...guard, c.assignMember);
 router.get('/groups/:id/credentials-pdf',...guard, c.exportGroupCredentials);
+router.get('/groups/template/download',   ...guard, c.downloadStudentTemplate);
 router.post('/groups/:id/bulk-import',   ...guard, c.bulkImportStudents);
 router.post('/groups/:id/add-student',   ...guard, c.createStudent);
 

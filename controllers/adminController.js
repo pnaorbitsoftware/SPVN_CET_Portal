@@ -136,6 +136,24 @@ exports.assignMember = async (req, res) => {
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/groups'); }
 };
 
+// ── DOWNLOAD STUDENT IMPORT TEMPLATE ─────────────────────────────────────────
+exports.downloadStudentTemplate = (req, res) => {
+  const templateRows = [
+    { 'Name': 'Arjun Mehta',  'Roll No': '2024CE001', 'Email': 'arjun@example.com', 'Phone': '9876543210', 'Parent Contact No': '9876543200' },
+    { 'Name': 'Priya Patel',  'Roll No': '2024CE002', 'Email': 'priya@example.com', 'Phone': '9876543211', 'Parent Contact No': '9876543201' },
+    { 'Name': 'Sample Student','Roll No': '2024CE003', 'Email': 'sample@example.com','Phone': '',            'Parent Contact No': '' },
+  ];
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.json_to_sheet(templateRows);
+  // Column widths
+  ws['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 20 }];
+  xlsx.utils.book_append_sheet(wb, ws, 'Students');
+  const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', 'attachment; filename=student_import_template.xlsx');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+};
+
 // ── EXPORT BATCH CREDENTIAL PDF ───────────────────────────────────────────────
 exports.exportGroupCredentials = async (req, res) => {
   try {
