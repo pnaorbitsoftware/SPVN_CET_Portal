@@ -1,0 +1,69 @@
+<%- include('../partials/head') %>
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 relative overflow-hidden">
+  <!-- Background decoration -->
+  <div class="absolute top-0 left-0 w-96 h-96 bg-indigo-600/10 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl"></div>
+  <div class="absolute bottom-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full translate-x-1/2 translate-y-1/2 blur-3xl"></div>
+
+  <div class="w-full max-w-md relative z-10">
+    <!-- College branding -->
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/30">
+        <svg class="w-9 h-9 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <h1 class="text-white font-bold text-xl"><%= process.env.COLLEGE_SHORT_NAME %></h1>
+      <p class="text-slate-400 text-sm">Admin Control Panel</p>
+    </div>
+
+    <!-- Login card -->
+    <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
+      <h2 class="text-white font-bold text-2xl mb-1">Administrator Login</h2>
+      <p class="text-slate-400 text-sm mb-6">Restricted access — authorised personnel only</p>
+
+      <%- include('../partials/flash') %>
+
+      <form action="/auth/admin" method="POST" class="space-y-5">
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-1.5">Email Address</label>
+          <input type="email" name="email" required autofocus
+            class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+            placeholder="admin@xyzcollege.edu.in"/>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-1.5">Password</label>
+          <div class="relative">
+            <input type="password" name="password" id="pwInput" required
+              class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm pr-12 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+              placeholder="Enter admin password"/>
+            <button type="button"
+              onclick="const i=document.getElementById('pwInput');i.type=i.type==='password'?'text':'password'"
+              class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit"
+          class="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/30 active:scale-95 mt-2">
+          Access Admin Panel →
+        </button>
+      </form>
+
+      <div class="mt-6 pt-6 border-t border-white/10 text-center">
+        <a href="/auth/login" class="text-slate-400 hover:text-slate-200 text-sm transition-colors flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          Student Login
+        </a>
+      </div>
+    </div>
+
+    <p class="text-center text-slate-600 text-xs mt-6">
+      <%= process.env.COLLEGE_NAME %> · AY <%= process.env.ACADEMIC_YEAR %>
+    </p>
+  </div>
+</div>
+</body></html>

@@ -1,6 +1,44 @@
 // controllers/authController.js
 const { User } = require('../models');
 
+
+// ── ADMIN LOGIN (separate URL: /auth/admin) ───────────────────────────────
+exports.getAdminLogin = (req, res) => {
+  res.render('auth/admin-login', { title: 'Admin Login — ' + (process.env.COLLEGE_SHORT_NAME || 'Exam') + ' Portal' });
+};
+
+exports.postAdminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ where: { email, role: 'admin' } });
+    if (!user || !user.isActive) {
+      req.flash('error', 'Invalid admin credentials.');
+      return res.redirect('/auth/admin');
+    }
+    const valid = await user.verifyPassword(password);
+    if (!valid) {
+      req.flash('error', 'Incorrect password.');
+      return res.redirect('/auth/admin');
+    }
+    req.session.user = {
+      id: user.id, name: user.name, email: user.email,
+      rollNo: user.rollNo, role: user.role,
+      isFirstLogin: user.isFirstLogin, profilePhoto: user.profilePhoto,
+    };
+    await user.update({ lastLogin: new Date() });
+    if (user.isFirstLogin) {
+      req.flash('warning', 'Please change your default password.');
+      return res.redirect('/auth/change-password');
+    }
+    req.flash('success', `Welcome, ${user.name}!`);
+    return res.redirect('/admin/dashboard');
+  } catch (err) {
+    console.error('Admin login error:', err);
+    req.flash('error', 'Login failed. Please try again.');
+    return res.redirect('/auth/admin');
+  }
+};
+
 exports.getLogin = (req, res) => {
   res.render('auth/login', { title: 'Login — ' + (process.env.COLLEGE_SHORT_NAME || 'Exam') + ' Portal' });
 };
