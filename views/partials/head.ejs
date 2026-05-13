@@ -4,7 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= typeof title !== 'undefined' ? title : 'CET Exam Portal' %> — <%= process.env.COLLEGE_SHORT_NAME %></title>
-  <link rel="icon" href="/favicon.ico" />
+  <!-- PWA Manifest & Meta -->
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#131330"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="CET Exam"/>
+  <meta name="application-name" content="CET Exam"/>
+  <meta name="msapplication-TileColor" content="#131330"/>
+  <meta name="msapplication-TileImage" content="/icons/icon-144x144.png"/>
+  <!-- Apple touch icons -->
+  <link rel="apple-touch-icon" href="/icons/icon-152x152.png"/>
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png"/>
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-72x72.png"/>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -66,3 +82,4 @@
   </style>
 </head>
 <body class="h-full bg-slate-50 text-slate-800">
+<script src="/pwa.js" defer></script>

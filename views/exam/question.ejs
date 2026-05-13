@@ -270,13 +270,30 @@ function toggleMark() {
   saveToServer(currentAnswer);
 }
 
-// ── Save to server ─────────────────────────────────────────────────────────
+// ── Save to server (with offline fallback) ───────────────────────────────
 function saveToServer(ans) {
-  return fetch(`/exam/${TEST_ID}/save-answer`, {
+  const payload = { questionId: QUESTION_ID, answer: ans, markForReview: markedForReview, timeSpent: qElapsed };
+  const url = `/exam/${TEST_ID}/save-answer`;
+
+  if (!navigator.onLine) {
+    // Queue for background sync
+    if (typeof window.queueOfflineAnswer === 'function') {
+      window.queueOfflineAnswer(url, payload);
+    }
+    console.warn('[Exam] Offline — answer queued for sync');
+    return Promise.resolve();
+  }
+
+  return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ questionId: QUESTION_ID, answer: ans, markForReview: markedForReview, timeSpent: qElapsed }),
-  }).catch(console.error);
+    body: JSON.stringify(payload),
+  }).then(r => r.json()).catch(() => {
+    // Network failed mid-request — queue it
+    if (typeof window.queueOfflineAnswer === 'function') {
+      window.queueOfflineAnswer(url, payload);
+    }
+  });
 }
 
 // ── Navigate with save (wait for save before nav) ──────────────────────────

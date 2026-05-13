@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <rect width="72" height="72" rx="12.959999999999999" fill="#131330"/>
+  <rect x="8.64" y="8.64" width="54.72" height="54.72" rx="8.64" fill="#1e1f5e"/>
+  <!-- Graduation cap -->
+  <polygon points="36,20.160000000000004 56.160000000000004,30.24 36,40.32000000000001 15.84,30.24" fill="#f59e0b"/>
+  <rect x="45.36" y="30.24" width="3.6" height="12.959999999999999" fill="#f59e0b" rx="2"/>
+  <circle cx="47.160000000000004" cy="45.36" r="2.88" fill="#f59e0b"/>
+  <!-- Lines representing exam paper -->
+  <rect x="20.160000000000004" y="46.800000000000004" width="31.68" height="2.88" rx="2" fill="white" opacity="0.6"/>
+  <rect x="20.160000000000004" y="52.56" width="23.04" height="2.88" rx="2" fill="white" opacity="0.4"/>
+</svg>
