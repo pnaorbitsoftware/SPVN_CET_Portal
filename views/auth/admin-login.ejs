@@ -1,69 +1,167 @@
 <%- include('../partials/head') %>
-<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 relative overflow-hidden">
-  <!-- Background decoration -->
-  <div class="absolute top-0 left-0 w-96 h-96 bg-indigo-600/10 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl"></div>
-  <div class="absolute bottom-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full translate-x-1/2 translate-y-1/2 blur-3xl"></div>
+<div class="min-h-screen flex">
 
-  <div class="w-full max-w-md relative z-10">
-    <!-- College branding -->
-    <div class="text-center mb-8">
-      <div class="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/30">
-        <svg class="w-9 h-9 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-        </svg>
-      </div>
-      <h1 class="text-white font-bold text-xl"><%= process.env.COLLEGE_SHORT_NAME %></h1>
-      <p class="text-slate-400 text-sm">Admin Control Panel</p>
-    </div>
+  <!-- Right Panel — Login Form (first on mobile) -->
+  <div class="flex-1 flex items-center justify-center p-6 lg:p-12 order-2 lg:order-1"
+       style="background: #0f172a;">
+    <div class="w-full max-w-[400px]">
 
-    <!-- Login card -->
-    <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
-      <h2 class="text-white font-bold text-2xl mb-1">Administrator Login</h2>
-      <p class="text-slate-400 text-sm mb-6">Restricted access — authorised personnel only</p>
-
-      <%- include('../partials/flash') %>
-
-      <form action="/auth/admin" method="POST" class="space-y-5">
-        <div>
-          <label class="block text-sm font-semibold text-slate-300 mb-1.5">Email Address</label>
-          <input type="email" name="email" required autofocus
-            class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-            placeholder="admin@xyzcollege.edu.in"/>
+      <!-- Logo -->
+      <div class="flex items-center gap-4 mb-10 justify-center lg:justify-start">
+        <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-slate-900"
+             style="background: linear-gradient(135deg, #f59e0b, #f97316);">
+          <%= (process.env.COLLEGE_SHORT_NAME||'X').charAt(0) %>
         </div>
         <div>
-          <label class="block text-sm font-semibold text-slate-300 mb-1.5">Password</label>
-          <div class="relative">
-            <input type="password" name="password" id="pwInput" required
-              class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm pr-12 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-              placeholder="Enter admin password"/>
-            <button type="button"
-              onclick="const i=document.getElementById('pwInput');i.type=i.type==='password'?'text':'password'"
-              class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
-            </button>
+          <p class="text-white font-bold text-base"><%= process.env.COLLEGE_SHORT_NAME %></p>
+          <p class="text-slate-500 text-xs">Admin Control Panel</p>
+        </div>
+      </div>
+
+      <!-- Form card -->
+      <div class="rounded-3xl p-8 border border-white/10" style="background: rgba(255,255,255,0.04); backdrop-filter: blur(20px);">
+        <!-- Header -->
+        <div class="mb-7">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+               style="background: rgba(245,158,11,0.15);">
+            <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
           </div>
+          <h2 class="text-2xl font-black text-white">Administrator Login</h2>
+          <p class="text-slate-500 text-sm mt-1">Restricted access — authorised personnel only</p>
         </div>
 
-        <button type="submit"
-          class="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/30 active:scale-95 mt-2">
-          Access Admin Panel →
-        </button>
-      </form>
+        <%- include('../partials/flash') %>
 
-      <div class="mt-6 pt-6 border-t border-white/10 text-center">
-        <a href="/auth/login" class="text-slate-400 hover:text-slate-200 text-sm transition-colors flex items-center justify-center gap-2">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-          Student Login
-        </a>
+        <form action="/auth/admin" method="POST" class="space-y-4">
+
+          <!-- Email -->
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Email Address</label>
+            <div class="relative">
+              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+                </svg>
+              </div>
+              <input type="email" name="email" required autofocus
+                class="w-full pl-11 pr-4 py-3.5 rounded-2xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);"
+                placeholder="admin@xyzcollege.edu.in"
+                onfocus="this.style.background='rgba(255,255,255,0.1)'"
+                onblur="this.style.background='rgba(255,255,255,0.06)'"/>
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+            <div class="relative">
+              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+              </div>
+              <input type="password" name="password" id="aPw" required
+                class="w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);"
+                placeholder="Enter admin password"
+                onfocus="this.style.background='rgba(255,255,255,0.1)'"
+                onblur="this.style.background='rgba(255,255,255,0.06)'"/>
+              <button type="button"
+                onclick="const i=document.getElementById('aPw');i.type=i.type==='password'?'text':'password'"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Security note -->
+          <div class="rounded-2xl p-3.5 flex items-start gap-3" style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);">
+            <svg class="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            <p class="text-amber-400 text-xs leading-relaxed">
+              This is a restricted area. Unauthorised access attempts are logged and monitored.
+            </p>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit"
+            class="w-full font-bold py-4 rounded-2xl transition-all active:scale-95 mt-2 flex items-center justify-center gap-2 text-slate-900"
+            style="background: linear-gradient(135deg, #f59e0b, #f97316); box-shadow: 0 8px 24px rgba(245,158,11,0.3);">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+            Access Admin Panel
+          </button>
+        </form>
+
+        <!-- Student link -->
+        <div class="mt-6 pt-5 border-t text-center" style="border-color: rgba(255,255,255,0.08);">
+          <a href="/auth/login" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Go to Student Login
+          </a>
+        </div>
+      </div>
+
+      <p class="text-center text-xs text-slate-700 mt-5">
+        © <%= new Date().getFullYear() %> <%= process.env.COLLEGE_NAME %>
+      </p>
+    </div>
+  </div>
+
+  <!-- Left Panel — Visual (hidden on mobile) -->
+  <div class="hidden lg:flex lg:w-[45%] relative overflow-hidden flex-col justify-between p-14 order-1 lg:order-2"
+       style="background: linear-gradient(135deg, #1c1917 0%, #292524 40%, #1c1917 100%);">
+    <!-- Decorative elements -->
+    <div class="absolute inset-0" style="background: radial-gradient(ellipse at 70% 30%, rgba(245,158,11,0.15) 0%, transparent 60%);"></div>
+    <div class="absolute inset-0" style="background: radial-gradient(ellipse at 30% 80%, rgba(239,68,68,0.08) 0%, transparent 50%);"></div>
+
+    <!-- Grid pattern -->
+    <div class="absolute inset-0 opacity-5"
+         style="background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 40px 40px;"></div>
+
+    <div class="relative z-10 flex items-center gap-3">
+      <span class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+      <span class="text-amber-400 text-xs font-semibold uppercase tracking-widest">Admin Portal</span>
+    </div>
+
+    <div class="relative z-10">
+      <h2 class="text-4xl font-black text-white leading-tight mb-6">
+        Control.<br/>
+        <span style="color: #f59e0b;">Manage.</span><br/>
+        Analyse.
+      </h2>
+      <div class="space-y-4">
+        <% [
+          ['👨‍🎓', 'Manage Students & Groups'],
+          ['📝', 'Create & Schedule Tests'],
+          ['📊', 'View Analytics & Results'],
+          ['🔒', 'Anti-Cheat & Proctoring'],
+        ].forEach(([icon, text]) => { %>
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+               style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.2);">
+            <%= icon %>
+          </div>
+          <span class="text-slate-300 text-sm font-medium"><%= text %></span>
+        </div>
+        <% }) %>
       </div>
     </div>
 
-    <p class="text-center text-slate-600 text-xs mt-6">
-      <%= process.env.COLLEGE_NAME %> · AY <%= process.env.ACADEMIC_YEAR %>
+    <p class="relative z-10 text-stone-700 text-xs">
+      <%= process.env.COLLEGE_ADDRESS %>
     </p>
   </div>
+
 </div>
 </body></html>
