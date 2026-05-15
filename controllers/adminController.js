@@ -121,10 +121,43 @@ exports.getGroups = async (req, res) => {
 exports.createGroup = async (req, res) => {
   try {
     const { name, description, academicYear, course } = req.body;
-    await Group.create({ name, description, academicYear: academicYear || process.env.ACADEMIC_YEAR, course: course || null });
-    req.flash('success', 'Batch created.');
+    const group = await Group.create({ name, description, academicYear: academicYear || process.env.ACADEMIC_YEAR, course: course || null });
+
+    // Optional: bulk import students along with group creation
+    let imported = 0, skipped = 0;
+    if (req.files?.csvFile) {
+      const wb   = xlsx.read(req.files.csvFile.data, { type: 'buffer' });
+      const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      for (const row of rows) {
+        try {
+          const rollNo = String(row['Roll No'] || row.rollNo || row.roll_no || '').trim();
+          const sName  = String(row['Name']    || row.name   || '').trim();
+          if (!rollNo || !sName) { skipped++; continue; }
+          const pw = `CET@${rollNo.slice(-4).padStart(4,'0')}`;
+          const [student, created] = await User.findOrCreate({
+            where: { rollNo },
+            defaults: {
+              name: sName,
+              email:  String(row['Email']   || row.email   || '').trim() || null,
+              phone:  String(row['Phone']   || row.phone   || '').trim() || null,
+              parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null,
+              rollNo, role: 'student', password: pw, isFirstLogin: true,
+            },
+          });
+          await GroupMember.findOrCreate({ where: { groupId: group.id, userId: student.id }, defaults: { role: 'student' } });
+          if (created) imported++; else skipped++;
+        } catch { skipped++; }
+      }
+      req.flash('success', `Batch "${name}" created with ${imported} students imported${skipped ? ', ' + skipped + ' skipped' : ''}.`);
+    } else {
+      req.flash('success', `Batch "${name}" created successfully.`);
+    }
     res.redirect('/admin/groups');
-  } catch (e) { req.flash('error', 'Failed. Name may already exist.'); res.redirect('/admin/groups'); }
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Failed. Batch name may already exist.');
+    res.redirect('/admin/groups');
+  }
 };
 
 exports.assignMember = async (req, res) => {

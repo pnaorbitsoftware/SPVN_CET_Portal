@@ -234,6 +234,33 @@ function openAddStudent(groupId, groupName) {
   document.getElementById('addStudentBatchLabel').textContent = 'Batch: ' + groupName;
   document.getElementById('addStudentModal').classList.remove('hidden');
 }
+
+function toggleImportSection(checked) {
+  const section = document.getElementById('importSection');
+  const label   = document.getElementById('cgSubmitLabel');
+  const fileInput = document.getElementById('cgFileInput');
+  if (checked) {
+    section.classList.remove('hidden');
+    label.textContent = 'Create Batch & Import';
+  } else {
+    section.classList.add('hidden');
+    label.textContent = 'Create Batch';
+    // Clear file input
+    fileInput.value = '';
+    document.getElementById('cgDropLabel').textContent = 'Click to choose or drag & drop';
+    document.getElementById('cgDropZone').classList.remove('border-green-500','bg-green-50');
+  }
+}
+
+function onCGFileSelect(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  document.getElementById('cgDropLabel').textContent = '✅ ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+  const zone = document.getElementById('cgDropZone');
+  zone.classList.remove('border-slate-300');
+  zone.classList.add('border-green-500', 'bg-green-50');
+}
+
 function openBulkImport(groupId, groupName) {
   document.getElementById('bulkImportGroupId').value = groupId;
   document.getElementById('bulkImportBatchLabel').textContent = '📂 Batch: ' + groupName;
@@ -269,29 +296,127 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <div id="createGroupModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
-    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-      <h3 class="font-bold text-slate-900">Create Group</h3>
-      <button onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-y-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white z-10">
+      <div>
+        <h3 class="font-bold text-slate-900 text-base">Create New Batch</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Fill details and optionally import students</p>
+      </div>
+      <button onclick="document.getElementById('createGroupModal').classList.add('hidden')"
+        class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
-    <form action="/admin/groups" method="POST" class="p-6 space-y-4">
+
+    <form action="/admin/groups" method="POST" enctype="multipart/form-data" class="p-6 space-y-5">
+
+      <!-- ── Batch Details ── -->
       <div>
-        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Group Name *</label>
-        <input type="text" name="name" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="e.g. PCM Batch A 2024"/>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Group Name *</label>
+        <input type="text" name="name" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
+          placeholder="e.g. PCM Batch A 2024"/>
       </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
-        <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Optional description"></textarea>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+        <textarea name="description" rows="2"
+          class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all resize-none"
+          placeholder="Optional description"></textarea>
       </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Academic Year</label>
-        <input type="text" name="academicYear" value="<%= process.env.ACADEMIC_YEAR %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Academic Year</label>
+        <input type="text" name="academicYear" value="<%= process.env.ACADEMIC_YEAR %>"
+          class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"/>
       </div>
-      <div class="flex gap-3 pt-1">
-        <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Create</button>
-        <button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+
+      <!-- ── Divider ── -->
+      <div class="relative my-2">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+        <div class="relative flex justify-center">
+          <span class="bg-white px-3 text-xs text-slate-400 font-semibold uppercase tracking-wider">Import Students (Optional)</span>
+        </div>
+      </div>
+
+      <!-- ── Import Toggle ── -->
+      <div>
+        <label class="flex items-center gap-3 cursor-pointer select-none group">
+          <div class="relative">
+            <input type="checkbox" id="importToggle" onchange="toggleImportSection(this.checked)" class="sr-only peer"/>
+            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-slate-900 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-slate-800">Import students while creating batch</p>
+            <p class="text-xs text-slate-400">Upload Excel / CSV file with student data</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- ── Import Section (hidden by default) ── -->
+      <div id="importSection" class="hidden space-y-4">
+
+        <!-- Download template -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 text-white">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <p class="text-sm font-semibold text-blue-900 mb-0.5">Start with the template</p>
+            <p class="text-xs text-blue-600 mb-2">Pre-formatted with correct columns and sample data</p>
+            <a href="/admin/groups/template/download" target="_blank"
+              class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Download student_import_template.xlsx
+            </a>
+          </div>
+        </div>
+
+        <!-- Column guide -->
+        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+          <p class="text-xs font-bold text-slate-600 mb-2">Required Columns</p>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span><span class="font-mono font-semibold text-slate-700">Name</span><span class="text-slate-400">required</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span><span class="font-mono font-semibold text-slate-700">Roll No</span><span class="text-slate-400">required</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-slate-300 rounded-full"></span><span class="font-mono text-slate-600">Email</span><span class="text-slate-400">optional</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-slate-300 rounded-full"></span><span class="font-mono text-slate-600">Phone</span><span class="text-slate-400">optional</span></div>
+            <div class="flex items-center gap-1.5 col-span-2"><span class="w-1.5 h-1.5 bg-slate-300 rounded-full"></span><span class="font-mono text-slate-600">Parent Contact No</span><span class="text-slate-400">optional</span></div>
+          </div>
+          <p class="text-xs text-slate-400 mt-2.5 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Default password = <span class="font-mono font-bold">CET@XXXX</span> (last 4 digits of Roll No)
+          </p>
+        </div>
+
+        <!-- File drop zone -->
+        <label id="cgDropZone"
+          class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 hover:border-slate-900 rounded-xl p-6 cursor-pointer transition-colors group">
+          <div class="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-slate-200 flex items-center justify-center transition-colors">
+            <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+          </div>
+          <p class="text-sm font-semibold text-slate-700 group-hover:text-slate-900" id="cgDropLabel">Click to choose or drag & drop</p>
+          <p class="text-xs text-slate-400">Excel (.xlsx, .xls) or CSV — max 10MB</p>
+          <input type="file" name="csvFile" id="cgFileInput" accept=".csv,.xlsx,.xls" class="sr-only"
+            onchange="onCGFileSelect(this)"/>
+        </label>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex gap-3 pt-2">
+        <button type="submit" id="cgSubmitBtn"
+          class="flex-1 bg-slate-900 text-white font-semibold py-3.5 rounded-xl hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          <span id="cgSubmitLabel">Create Batch</span>
+        </button>
+        <button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden')"
+          class="px-6 border border-slate-200 text-slate-700 font-semibold py-3.5 rounded-xl hover:bg-slate-50 transition-colors">
+          Cancel
+        </button>
       </div>
     </form>
   </div>
