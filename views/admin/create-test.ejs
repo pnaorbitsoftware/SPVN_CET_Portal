@@ -134,31 +134,102 @@
             <h3 class="font-bold text-slate-900">❓ Select Questions</h3>
             <span id="selCount" class="text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">0 selected</span>
           </div>
-          <!-- Subject filter buttons -->
-          <div class="flex flex-wrap gap-2 mb-3">
-            <button type="button" onclick="filterQ('')" class="qfilt active text-xs px-3 py-1.5 rounded-lg font-medium bg-navy-950 text-white">All</button>
-            <% SUBJECTS.forEach(s => { %>
-            <button type="button" onclick="filterQ('<%= s %>')" class="qfilt text-xs px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200"><%= s %></button>
-            <% }) %>
+
+          <!-- Subject → Topic → Subtopic cascade -->
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 mb-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Filter by</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <!-- Subject -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Subject</label>
+                <select id="ctSubject" onchange="onCtSubjectChange(this.value)"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                  <option value="">All Subjects</option>
+                  <% SUBJECTS.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+                </select>
+              </div>
+              <!-- Topic (AJAX) -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Topic</label>
+                <select id="ctTopic" onchange="onCtTopicChange(this.value)"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                  <option value="">All Topics</option>
+                </select>
+              </div>
+              <!-- Subtopic (AJAX) -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Subtopic</label>
+                <select id="ctSubtopic" onchange="applyCtFilters()"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                  <option value="">All Subtopics</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Active breadcrumb + reset -->
+            <div class="flex items-center justify-between mt-2.5" id="ctBreadcrumb" style="display:none!important">
+              <div class="flex items-center gap-1.5 flex-wrap" id="ctBreadcrumbInner"></div>
+              <button type="button" onclick="resetCtFilters()" class="text-xs text-slate-400 hover:text-slate-700 font-medium shrink-0 transition-colors">Clear filters</button>
+            </div>
           </div>
-          <input type="text" placeholder="Search questions..." onkeyup="searchQ(this.value)" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-navy-500"/>
-          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+
+          <!-- Difficulty quick filter chips -->
+          <div class="flex flex-wrap gap-1.5 mb-3">
+            <button type="button" onclick="filterDiff('')"  class="diff-chip active text-xs px-3 py-1 rounded-full font-semibold bg-slate-900 text-white transition-all">All</button>
+            <button type="button" onclick="filterDiff('Easy')"   class="diff-chip text-xs px-3 py-1 rounded-full font-semibold bg-green-100 text-green-700 hover:bg-green-200 transition-all">Easy</button>
+            <button type="button" onclick="filterDiff('Medium')" class="diff-chip text-xs px-3 py-1 rounded-full font-semibold bg-yellow-100 text-yellow-700 hover:bg-yellow-200 transition-all">Medium</button>
+            <button type="button" onclick="filterDiff('Hard')"   class="diff-chip text-xs px-3 py-1 rounded-full font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-all">Hard</button>
+            <div class="ml-auto">
+              <input type="text" placeholder="Search questions..." id="ctSearch" onkeyup="applyCtFilters()"
+                class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-44 transition-all"/>
+            </div>
+          </div>
+
+          <!-- Questions list -->
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto" id="ctQuestionList">
             <% if (!questions.length) { %>
             <p class="p-6 text-sm text-slate-400 text-center">No questions in bank. <a href="/admin/questions" class="text-navy-600 hover:underline">Add questions first →</a></p>
             <% } %>
+            <% let lastSubj='', lastTopic=''; %>
             <% questions.forEach((q,i) => { %>
-            <label class="q-item flex items-start gap-3 p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors" data-subj="<%= q.subject %>" data-text="<%= q.question.toLowerCase() %>">
+            <% if (q.subject !== lastSubj) { lastSubj=q.subject; lastTopic=''; %>
+            <div class="q-group-header px-4 py-2 bg-blue-50 border-b border-blue-100 sticky top-0 z-[1]"
+                 data-subj="<%= q.subject %>" data-topic="" data-subtopic="">
+              <span class="text-xs font-bold text-blue-700 uppercase tracking-wider">📚 <%= q.subject %></span>
+            </div>
+            <% } %>
+            <% if (q.topic && q.topic !== lastTopic) { lastTopic=q.topic; %>
+            <div class="q-group-header px-5 py-1.5 bg-purple-50 border-b border-purple-100"
+                 data-subj="<%= q.subject %>" data-topic="<%= q.topic %>" data-subtopic="">
+              <span class="text-xs font-semibold text-purple-600">📌 <%= q.topic %></span>
+              <% if (q.subtopic) { %><span class="text-purple-400 mx-1">›</span><span class="text-xs text-purple-500"><%= q.subtopic %></span><% } %>
+            </div>
+            <% } %>
+            <label class="q-item flex items-start gap-3 p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
+              data-subj="<%= q.subject %>"
+              data-topic="<%= q.topic || '' %>"
+              data-subtopic="<%= q.subtopic || '' %>"
+              data-diff="<%= q.difficulty %>"
+              data-text="<%= q.question.toLowerCase() %>">
               <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0"/>
               <div class="flex-1 min-w-0">
-                <p class="text-sm text-slate-800 leading-snug"><%= q.question.length>110?q.question.substring(0,110)+'...':q.question %></p>
-                <div class="flex gap-2 mt-1">
-                  <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded"><%= q.subject %></span>
+                <p class="text-sm text-slate-800 leading-snug"><%= q.question.length>120?q.question.substring(0,120)+'...':q.question %></p>
+                <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                  <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium"><%= q.subject %></span>
+                  <% if (q.topic) { %><span class="text-slate-300 text-xs">›</span><span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded"><%= q.topic %></span><% } %>
+                  <% if (q.subtopic) { %><span class="text-slate-300 text-xs">›</span><span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded"><%= q.subtopic %></span><% } %>
                   <span class="text-xs <%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> px-2 py-0.5 rounded"><%= q.difficulty %></span>
-                  <span class="text-xs text-slate-400"><%= q.marks %> mk</span>
+                  <span class="text-xs text-slate-400 ml-auto"><%= q.marks %> mk</span>
                 </div>
               </div>
             </label>
             <% }) %>
+          </div>
+
+          <!-- Select all / deselect visible -->
+          <div class="flex items-center justify-between mt-3 text-xs text-slate-500">
+            <button type="button" onclick="selectAllVisible()" class="hover:text-slate-900 font-medium transition-colors">✅ Select all visible</button>
+            <button type="button" onclick="deselectAll()" class="hover:text-red-600 font-medium transition-colors">✕ Deselect all</button>
           </div>
         </div>
 
@@ -171,17 +242,157 @@
   </main>
 </div>
 <script>
-let curSubj='';
-function updCount(){document.getElementById('selCount').textContent=document.querySelectorAll('input[name="questionIds"]:checked').length+' selected';}
-function filterQ(s){curSubj=s;document.querySelectorAll('.qfilt').forEach(b=>b.classList.remove('active','bg-navy-950','text-white'));event.target.classList.add('active','bg-navy-950','text-white');document.querySelectorAll('.q-item').forEach(r=>{r.style.display=(!s||r.dataset.subj===s)?'':'none';});}
-function searchQ(q){document.querySelectorAll('.q-item').forEach(r=>{const sm=!curSubj||r.dataset.subj===curSubj;const tm=r.dataset.text.includes(q.toLowerCase());r.style.display=sm&&tm?'':'none';});}
-function loadSubjects(course){
-  if(!course)return;
-  fetch(`/admin/ajax/subjects/${course}`).then(r=>r.json()).then(subjects=>{
-    const sel=document.getElementById('subjectSelect');
-    sel.innerHTML='<option value="">Select Subject</option>'+subjects.map(s=>`<option value="${s}">${s}</option>`).join('');
-  }).catch(()=>{});
+// ── Counter ───────────────────────────────────────────────────────────────
+function updCount() {
+  const n = document.querySelectorAll('input[name="questionIds"]:checked').length;
+  document.getElementById('selCount').textContent = n + ' selected';
 }
+
+// ── Current filter state ──────────────────────────────────────────────────
+const ctState = { subject:'', topic:'', subtopic:'', diff:'', search:'' };
+
+// ── Apply all filters ─────────────────────────────────────────────────────
+function applyCtFilters() {
+  ctState.subject  = document.getElementById('ctSubject').value;
+  ctState.topic    = document.getElementById('ctTopic').value;
+  ctState.subtopic = document.getElementById('ctSubtopic').value;
+  ctState.diff     = document.querySelector('.diff-chip.active')?.dataset.diff || '';
+  ctState.search   = (document.getElementById('ctSearch').value || '').toLowerCase();
+
+  // Filter question rows
+  document.querySelectorAll('.q-item').forEach(row => {
+    const matchSubj    = !ctState.subject  || row.dataset.subj     === ctState.subject;
+    const matchTopic   = !ctState.topic    || row.dataset.topic    === ctState.topic;
+    const matchSub     = !ctState.subtopic || row.dataset.subtopic === ctState.subtopic;
+    const matchDiff    = !ctState.diff     || row.dataset.diff     === ctState.diff;
+    const matchSearch  = !ctState.search   || row.dataset.text.includes(ctState.search);
+    row.style.display  = (matchSubj && matchTopic && matchSub && matchDiff && matchSearch) ? '' : 'none';
+  });
+
+  // Show/hide group headers — only show if they have at least one visible q-item
+  document.querySelectorAll('.q-group-header').forEach(header => {
+    if (!header.dataset.topic) {
+      // Subject header — show if any q-item below with same subject is visible
+      const subj = header.dataset.subj;
+      const hasVisible = [...document.querySelectorAll('.q-item')]
+        .some(r => r.dataset.subj === subj && r.style.display !== 'none');
+      header.style.display = hasVisible ? '' : 'none';
+    } else {
+      // Topic header
+      const subj  = header.dataset.subj;
+      const topic = header.dataset.topic;
+      const hasVisible = [...document.querySelectorAll('.q-item')]
+        .some(r => r.dataset.subj === subj && r.dataset.topic === topic && r.style.display !== 'none');
+      header.style.display = hasVisible ? '' : 'none';
+    }
+  });
+
+  updateBreadcrumb();
+}
+
+// ── Subject change ────────────────────────────────────────────────────────
+async function onCtSubjectChange(subject) {
+  const tSel  = document.getElementById('ctTopic');
+  const stSel = document.getElementById('ctSubtopic');
+  tSel.innerHTML  = '<option value="">All Topics</option>';
+  stSel.innerHTML = '<option value="">All Subtopics</option>';
+  if (subject) {
+    const topics = await fetchTopics(subject);
+    topics.forEach(t => tSel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
+  }
+  applyCtFilters();
+}
+
+// ── Topic change ──────────────────────────────────────────────────────────
+async function onCtTopicChange(topic) {
+  const stSel = document.getElementById('ctSubtopic');
+  const subj  = document.getElementById('ctSubject').value;
+  stSel.innerHTML = '<option value="">All Subtopics</option>';
+  if (topic) {
+    const subs = await fetchSubtopics(subj, topic);
+    subs.forEach(s => stSel.innerHTML += `<option value="${s}">${s}</option>`);
+  }
+  applyCtFilters();
+}
+
+// ── Difficulty chip filter ────────────────────────────────────────────────
+function filterDiff(diff) {
+  document.querySelectorAll('.diff-chip').forEach(b => {
+    b.classList.remove('active','bg-slate-900','text-white');
+    if (!b.dataset.diff) b.dataset.diff = b.textContent.trim() === 'All' ? '' : b.textContent.trim();
+  });
+  event.target.classList.add('active','bg-slate-900','text-white');
+  ctState.diff = diff;
+  applyCtFilters();
+}
+
+// ── Reset all filters ─────────────────────────────────────────────────────
+function resetCtFilters() {
+  document.getElementById('ctSubject').value  = '';
+  document.getElementById('ctTopic').innerHTML   = '<option value="">All Topics</option>';
+  document.getElementById('ctSubtopic').innerHTML = '<option value="">All Subtopics</option>';
+  document.getElementById('ctSearch').value   = '';
+  document.querySelectorAll('.diff-chip').forEach(b => b.classList.remove('active','bg-slate-900','text-white'));
+  document.querySelector('.diff-chip').classList.add('active','bg-slate-900','text-white');
+  Object.keys(ctState).forEach(k => ctState[k] = '');
+  document.querySelectorAll('.q-item,.q-group-header').forEach(r => r.style.display = '');
+  updateBreadcrumb();
+}
+
+// ── Breadcrumb display ────────────────────────────────────────────────────
+function updateBreadcrumb() {
+  const crumb = document.getElementById('ctBreadcrumb');
+  const inner = document.getElementById('ctBreadcrumbInner');
+  const parts = [];
+  if (ctState.subject)  parts.push(`<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.subject}</span>`);
+  if (ctState.topic)    parts.push(`<span class="text-slate-400 text-xs">›</span><span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.topic}</span>`);
+  if (ctState.subtopic) parts.push(`<span class="text-slate-400 text-xs">›</span><span class="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.subtopic}</span>`);
+  inner.innerHTML = parts.join('');
+  crumb.style.display = parts.length ? 'flex' : 'none';
+}
+
+// ── Select / Deselect helpers ─────────────────────────────────────────────
+function selectAllVisible() {
+  document.querySelectorAll('.q-item').forEach(row => {
+    if (row.style.display !== 'none') row.querySelector('input[type="checkbox"]').checked = true;
+  });
+  updCount();
+}
+
+function deselectAll() {
+  document.querySelectorAll('input[name="questionIds"]').forEach(cb => cb.checked = false);
+  updCount();
+}
+
+// ── AJAX topic/subtopic fetchers ──────────────────────────────────────────
+async function fetchTopics(subject) {
+  try {
+    const r = await fetch(`/admin/ajax/topics?subject=${encodeURIComponent(subject)}`);
+    return await r.json();
+  } catch { return []; }
+}
+
+async function fetchSubtopics(subject, topic) {
+  try {
+    const r = await fetch(`/admin/ajax/subtopics?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}`);
+    return await r.json();
+  } catch { return []; }
+}
+
+// ── Test detail page: load subjects on course select ──────────────────────
+function loadSubjects(course) {
+  if (!course) return;
+  fetch(`/admin/ajax/subjects/${course}`).then(r => r.json()).then(subjects => {
+    const sel = document.getElementById('subjectSelect');
+    sel.innerHTML = '<option value="">Select Subject</option>' + subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+  }).catch(() => {});
+}
+
+// Set data-diff on diff chips on load
+document.querySelectorAll('.diff-chip').forEach(b => {
+  const t = b.textContent.trim();
+  b.dataset.diff = t === 'All' ? '' : t;
+});
 </script>
 
 <script>
