@@ -311,18 +311,28 @@ exports.getSubtopicsForTopic = async (req, res) => {
 
 exports.getQuestions = async (req, res) => {
   try {
-    const { subject, topic, subtopic, difficulty, course, page = 1 } = req.query;
+    const { subject, topic, subtopic, difficulty, course, sort = 'subject', page = 1 } = req.query;
     const limit = 25, offset = (page - 1) * limit;
     const where = { isActive: true };
     if (subject)   where.subject   = subject;
     if (topic)     where.topic     = topic;
     if (subtopic)  where.subtopic  = subtopic;
     if (difficulty) where.difficulty = difficulty;
-    const { count, rows: questions } = await Question.findAndCountAll({
-      where,
-      order: [['subject','ASC'],['topic','ASC'],['subtopic','ASC'],['difficulty','ASC'],['createdAt','DESC']],
-      limit, offset,
-    });
+
+    // Build order based on sort param
+    let order;
+    if (sort === 'difficulty') {
+      order = [['difficulty','ASC'],['subject','ASC'],['topic','ASC'],['createdAt','DESC']];
+    } else if (sort === 'newest') {
+      order = [['createdAt','DESC']];
+    } else if (sort === 'oldest') {
+      order = [['createdAt','ASC']];
+    } else {
+      // default: subject → topic → subtopic → difficulty
+      order = [['subject','ASC'],['topic','ASC'],['subtopic','ASC'],['difficulty','ASC'],['createdAt','DESC']];
+    }
+
+    const { count, rows: questions } = await Question.findAndCountAll({ where, order, limit, offset });
     // Load topics for filter dropdowns
     const topicRows = subject ? await loadTopics(course, subject) : [];
     // Get unique subtopics from selected topic
@@ -332,7 +342,7 @@ exports.getQuestions = async (req, res) => {
     res.render('admin/questions', {
       title: 'Question Bank', questions, total: count,
       currentPage: parseInt(page), totalPages: Math.ceil(count/limit),
-      filters: { subject, topic, subtopic, difficulty, course },
+      filters: { subject, topic, subtopic, difficulty, course, sort },
       COURSES, SUBJECTS: ALL_SUBJECTS, topicRows, subtopicList,
     });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/dashboard'); }
