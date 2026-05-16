@@ -110,7 +110,7 @@
     </div>
 
     <!-- Palette panel -->
-    <div class="w-56 bg-white border-l border-slate-200 flex flex-col flex-shrink-0 hidden md:flex overflow-hidden">
+    <div id="paletteSidebar" class="fixed md:relative inset-y-0 right-0 w-72 md:w-56 bg-white border-l border-slate-200 flex flex-col flex-shrink-0 overflow-hidden z-40 transform translate-x-full md:translate-x-0 transition-transform duration-300 shadow-2xl md:shadow-none">
       <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
         <p class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Question Palette</p>
         <div class="grid grid-cols-2 gap-1 text-[10px] text-slate-500">
@@ -419,4 +419,5 @@ function _beforeUnload(e) { e.preventDefault(); e.returnValue = ''; }
 window.addEventListener('beforeunload', _beforeUnload);
 function allowLeave() { window.removeEventListener('beforeunload', _beforeUnload); }
 </script>
+<div id="paletteOverlay" class="hidden fixed inset-0 bg-black/40 z-30 md:hidden" onclick="togglePalette()"></div>
 </body></html>

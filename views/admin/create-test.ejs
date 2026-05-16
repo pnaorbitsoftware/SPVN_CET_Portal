@@ -3,6 +3,9 @@
   <%- include('../partials/sidebar-admin') %>
   <main class="lg:ml-64 flex-1 overflow-y-auto">
     <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-5 lg:px-8 py-4">
+      <button onclick="openSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800 mr-3 shrink-0">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <div class="flex items-center gap-3">
         <a href="/admin/tests" class="text-slate-400 hover:text-slate-600">←</a>
         <h1 class="text-lg font-bold text-slate-900">Create New Test</h1>
@@ -51,7 +54,7 @@
         <div class="bg-white rounded-xl border border-slate-200 p-6">
           <h3 class="font-bold text-slate-900 mb-1 flex items-center gap-2">🔒 Anti-Cheat & Proctoring</h3>
           <p class="text-xs text-slate-500 mb-4">Control exam security behaviour. Violations are always logged regardless of these settings.</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="grid grid-cols-1 gap-5">
             <!-- Auto-submit on violation -->
             <div class="border border-slate-200 rounded-xl p-4">
               <div class="flex items-center justify-between mb-3">
