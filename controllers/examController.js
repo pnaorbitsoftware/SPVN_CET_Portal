@@ -359,36 +359,223 @@ exports.downloadResultPDF = async (req, res) => {
     const result = await Result.findOne({
       where: { id: req.params.resultId },
       include: [
-        { model: User, as: 'student', attributes: ['name','rollNo'] },
-        { model: Test, as: 'test', attributes: ['title','totalMarks','duration'] },
+        { model: User, as: 'student', attributes: ['name','rollNo','email'] },
+        { model: Test, as: 'test', include: [{ model: Question, as: 'questions', through: { attributes: [] } }] },
       ],
     });
     if (!result) return res.status(404).send('Not found');
-    const doc = new PDFDocument({ margin: 50 });
-    res.setHeader('Content-Type','application/pdf');
-    res.setHeader('Content-Disposition',`attachment; filename=result_${result.id}.pdf`);
+
+    // Build ordered question list using persisted questionOrder
+    const questionMap = {};
+    (result.test.questions || []).forEach(q => { questionMap[q.id] = q; });
+    const orderedIds = result.questionOrder && result.questionOrder.length
+      ? result.questionOrder
+      : Object.keys(questionMap).map(Number);
+    const questions = orderedIds.map(id => questionMap[id]).filter(Boolean);
+    const answers = result.answers || {};
+
+    const COLLEGE = process.env.COLLEGE_NAME || 'College';
+    const pct = result.totalMarks > 0 ? ((result.score / result.totalMarks) * 100).toFixed(1) : '0.0';
+
+    const doc = new PDFDocument({ margin: 45, size: 'A4', bufferPages: true });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=result_${result.id}.pdf`);
     doc.pipe(res);
-    doc.fontSize(18).font('Helvetica-Bold').text(process.env.COLLEGE_NAME || 'College', { align:'center' });
-    doc.fontSize(13).font('Helvetica').text('CET Examination — Result Card', { align:'center' });
-    doc.moveDown().moveTo(50,doc.y).lineTo(550,doc.y).stroke().moveDown();
-    doc.font('Helvetica-Bold').text('Student Details');
-    doc.font('Helvetica').text(`Name: ${result.student.name}`).text(`Roll No: ${result.student.rollNo}`).text(`Test: ${result.test.title}`).text(`Date: ${new Date(result.submittedAt).toLocaleDateString('en-IN')}`).moveDown();
-    doc.font('Helvetica-Bold').text('Score Summary');
-    doc.font('Helvetica')
-      .text(`Score: ${result.score} / ${result.totalMarks}`)
-      .text(`Percentage: ${result.totalMarks>0?((result.score/result.totalMarks)*100).toFixed(1):0}%`)
-      .text(`Rank: ${result.rank||'N/A'}`)
-      .text(`Correct: ${result.correctAnswers}  Wrong: ${result.wrongAnswers}  Skipped: ${result.skippedAnswers}`)
-      .text(`Time Taken: ${Math.floor((result.timeTaken||0)/60)}m ${(result.timeTaken||0)%60}s`).moveDown();
-    if (result.subjectScores) {
-      doc.font('Helvetica-Bold').text('Subject-wise Breakdown');
-      doc.font('Helvetica');
-      Object.entries(result.subjectScores).forEach(([subj,data]) => {
-        doc.text(`${subj}: ${data.marks||0}/${data.total||0} marks (C:${data.correct} W:${data.wrong} S:${data.skipped})`);
+
+    // ── Helper: safe text (strip HTML tags) ──────────────────────────────────
+    const safe = str => (str || '').replace(/<[^>]*>/g, '').trim();
+
+    // ── Header ───────────────────────────────────────────────────────────────
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#1e293b')
+       .text(COLLEGE, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').fillColor('#64748b')
+       .text('CET Examination — Detailed Result Card', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.moveTo(45, doc.y).lineTo(550, doc.y).strokeColor('#e2e8f0').stroke();
+    doc.moveDown(0.5);
+
+    // ── Student Info Table ───────────────────────────────────────────────────
+    const infoY = doc.y;
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text('STUDENT DETAILS', 45, infoY);
+    doc.moveDown(0.3);
+    const info = [
+      ['Name', result.student.name],
+      ['Roll No', result.student.rollNo || '—'],
+      ['Test', result.test.title],
+      ['Date', result.submittedAt ? new Date(result.submittedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'],
+      ['Duration', `${result.test.duration || '—'} min`],
+      ['Time Taken', `${Math.floor((result.timeTaken||0)/60)}m ${(result.timeTaken||0)%60}s`],
+    ];
+    info.forEach(([label, val]) => {
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(`${label}:`, 45, doc.y, { continued: true, width: 80 });
+      doc.font('Helvetica').fillColor('#1e293b').text(` ${val}`);
+    });
+
+    doc.moveDown(0.5);
+    doc.moveTo(45, doc.y).lineTo(550, doc.y).strokeColor('#e2e8f0').stroke();
+    doc.moveDown(0.5);
+
+    // ── Score Summary Box ────────────────────────────────────────────────────
+    const boxY = doc.y;
+    doc.rect(45, boxY, 505, 68).fillColor('#f8fafc').fill();
+    doc.rect(45, boxY, 505, 68).strokeColor('#e2e8f0').stroke();
+
+    const cols = [
+      { label: 'Score', value: `${result.score} / ${result.totalMarks}` },
+      { label: 'Percentage', value: `${pct}%` },
+      { label: 'Rank', value: `#${result.rank || '—'}` },
+      { label: 'Correct', value: String(result.correctAnswers || 0) },
+      { label: 'Wrong', value: String(result.wrongAnswers || 0) },
+      { label: 'Skipped', value: String(result.skippedAnswers || 0) },
+    ];
+    const colW = 505 / cols.length;
+    cols.forEach((c, i) => {
+      const cx = 45 + i * colW;
+      doc.fontSize(14).font('Helvetica-Bold')
+         .fillColor(c.label==='Correct'?'#16a34a':c.label==='Wrong'?'#dc2626':c.label==='Skipped'?'#d97706':'#1e293b')
+         .text(c.value, cx, boxY + 12, { width: colW, align: 'center' });
+      doc.fontSize(7).font('Helvetica').fillColor('#94a3b8')
+         .text(c.label, cx, boxY + 48, { width: colW, align: 'center' });
+    });
+    doc.moveDown(0.3);
+    doc.y = boxY + 78;
+
+    // ── Subject-wise Breakdown ───────────────────────────────────────────────
+    if (result.subjectScores && Object.keys(result.subjectScores).length > 0) {
+      doc.moveDown(0.3);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text('SUBJECT-WISE BREAKDOWN', 45);
+      doc.moveDown(0.3);
+      const hY = doc.y;
+      doc.rect(45, hY, 505, 16).fillColor('#1e293b').fill();
+      ['Subject','Marks','Correct','Wrong','Skipped','%'].forEach((h, i) => {
+        const ws = [180,65,65,65,65,65];
+        const xs = [45, 225, 290, 355, 420, 485];
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff')
+           .text(h, xs[i], hY+4, { width: ws[i], align: i===0?'left':'center' });
       });
+      doc.y = hY + 18;
+      let rowAlt = false;
+      Object.entries(result.subjectScores).forEach(([subj, data]) => {
+        const rY = doc.y;
+        if (rowAlt) doc.rect(45, rY, 505, 16).fillColor('#f8fafc').fill();
+        rowAlt = !rowAlt;
+        const spct = data.total > 0 ? ((data.marks||0)/data.total*100).toFixed(0) : 0;
+        const xs = [45, 225, 290, 355, 420, 485];
+        const ws = [175, 65, 65, 65, 65, 60];
+        const vals = [subj, `${data.marks||0}/${data.total||0}`, data.correct||0, data.wrong||0, data.skipped||0, `${spct}%`];
+        vals.forEach((v, i) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#1e293b')
+             .text(String(v), xs[i], rY+4, { width: ws[i], align: i===0?'left':'center' });
+        });
+        doc.y = rY + 18;
+      });
+      doc.moveDown(0.5);
     }
+
+    // ── Question-by-Question Answer Sheet ────────────────────────────────────
+    doc.addPage();
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b')
+       .text('QUESTION-BY-QUESTION ANSWER SHEET', { align: 'center' });
+    doc.fontSize(8).font('Helvetica').fillColor('#64748b')
+       .text(`${result.test.title}  ·  ${result.student.name}  ·  ${result.student.rollNo || ''}`, { align: 'center' });
+    doc.moveDown(0.5);
+
+    // Legend
+    const legendY = doc.y;
+    [['#16a34a','● Correct'], ['#dc2626','● Wrong'], ['#d97706','○ Skipped']].forEach(([color, label], i) => {
+      doc.fontSize(8).font('Helvetica').fillColor(color).text(label, 45 + i * 100, legendY);
+    });
+    doc.moveDown(0.6);
+
+    questions.forEach((q, idx) => {
+      const ans = answers[q.id];
+      const given = ans?.answer || null;
+      const correct = q.correctAnswer;
+      const isCorrect = given && given === correct;
+      const isWrong = given && given !== correct;
+      const isSkipped = !given;
+
+      const statusColor = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : '#d97706';
+      const statusLabel = isCorrect ? '✓ Correct' : isWrong ? '✗ Wrong' : '○ Skipped';
+      const bgColor = isCorrect ? '#f0fdf4' : isWrong ? '#fff1f2' : '#fffbeb';
+      const borderColor = isCorrect ? '#86efac' : isWrong ? '#fca5a5' : '#fcd34d';
+
+      // Check if new page needed
+      if (doc.y > 700) doc.addPage();
+
+      const qY = doc.y;
+      const optMap = { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
+      const optLines = Object.entries(optMap).map(([k,v]) => `${k}) ${safe(v)}`);
+      const bodyText = safe(q.question);
+
+      // Estimate height
+      const textHeight = Math.ceil(bodyText.length / 85) * 12 + optLines.length * 11 + 18 + (q.explanation ? 20 : 0);
+      const boxH = Math.max(textHeight, 50);
+
+      if (doc.y + boxH > 750) doc.addPage();
+      const qY2 = doc.y;
+
+      // Box background
+      doc.rect(45, qY2, 505, boxH).fillColor(bgColor).fill();
+      doc.rect(45, qY2, 505, boxH).strokeColor(borderColor).lineWidth(0.5).stroke();
+      doc.lineWidth(1);
+
+      // Q number + status
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e293b')
+         .text(`Q${idx + 1}.`, 52, qY2 + 5, { continued: true });
+      doc.font('Helvetica').fillColor('#1e293b')
+         .text(` ${bodyText}`, { width: 390 });
+
+      // Status badge (top right)
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(statusColor)
+         .text(statusLabel, 430, qY2 + 5, { width: 110, align: 'right' });
+
+      // Options
+      doc.moveDown(0.1);
+      optLines.forEach(opt => {
+        const key = opt[0];
+        const isAnswered = given === key;
+        const isCorrectOpt = correct === key;
+        const optColor = isCorrectOpt ? '#16a34a' : (isAnswered && !isCorrectOpt) ? '#dc2626' : '#475569';
+        const fontWeight = (isAnswered || isCorrectOpt) ? 'Helvetica-Bold' : 'Helvetica';
+        doc.fontSize(8).font(fontWeight).fillColor(optColor)
+           .text(`  ${opt}`, 58, doc.y, { width: 460 });
+      });
+
+      // Correct answer + student answer line
+      doc.moveDown(0.15);
+      const ansY = doc.y;
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#16a34a')
+         .text(`Correct: ${correct}) ${safe(optMap[correct])}`, 58, ansY, { width: 220 });
+      if (given) {
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(isCorrect ? '#16a34a' : '#dc2626')
+           .text(`Your Answer: ${given}) ${safe(optMap[given])}`, 280, ansY, { width: 260 });
+      } else {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#d97706')
+           .text('Your Answer: Not Attempted', 280, ansY, { width: 260 });
+      }
+
+      // Explanation if any
+      if (q.explanation) {
+        doc.moveDown(0.15);
+        doc.fontSize(7).font('Helvetica').fillColor('#475569')
+           .text(`Explanation: ${safe(q.explanation)}`, 58, doc.y, { width: 460 });
+      }
+
+      doc.y = qY2 + boxH + 5;
+    });
+
+    // ── Footer on each page ──────────────────────────────────────────────────
+    const totalPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(7).font('Helvetica').fillColor('#94a3b8')
+         .text(`${COLLEGE}  ·  Generated ${new Date().toLocaleString('en-IN')}  ·  Page ${i+1} of ${totalPages}`,
+           45, 820, { width: 505, align: 'center' });
+    }
+
     doc.end();
-  } catch (e) { res.status(500).send('PDF generation failed'); }
+  } catch (e) { console.error('PDF error:', e); res.status(500).send('PDF generation failed: ' + e.message); }
 };
 
 // ── LEADERBOARD ───────────────────────────────────────────────────────────────
