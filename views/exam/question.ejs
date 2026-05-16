@@ -159,7 +159,7 @@
       <div><p class="text-2xl font-bold text-violet-600"><%= paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %></p><p class="text-xs text-slate-500">Marked</p></div>
     </div>
     <div class="flex gap-3">
-      <form action="/exam/<%= test.id %>/submit" method="POST" class="flex-1">
+      <form action="/exam/<%= test.id %>/submit" method="POST" class="flex-1" onsubmit="allowLeave()">
         <button type="submit" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 transition-colors">Yes, Submit</button>
       </form>
       <button onclick="document.getElementById('submitModal').classList.add('hidden')" class="flex-1 border-2 border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
@@ -219,7 +219,7 @@ const countdown = setInterval(() => {
   timerEl.classList.remove('warning', 'urgent');
   if (remaining <= 60)       timerEl.classList.add('urgent');
   else if (remaining <= 300) timerEl.classList.add('warning');
-  if (remaining <= 0) { clearInterval(countdown); document.getElementById('autoSubmitForm').submit(); }
+  if (remaining <= 0) { clearInterval(countdown); allowLeave(); document.getElementById('autoSubmitForm').submit(); }
 }, 1000);
 
 // Per-question timer
@@ -301,7 +301,7 @@ function saveAndNav(e, href) {
   e.preventDefault();
   if (navInProgress) return;
   navInProgress = true;
-  saveToServer(currentAnswer).finally(() => { window.location.href = href; });
+  saveToServer(currentAnswer).finally(() => { allowLeave(); window.location.href = href; });
 }
 
 // ── Submit confirm ─────────────────────────────────────────────────────────
@@ -372,7 +372,7 @@ function showAutoSubmitOverlay(msg) {
     document.getElementById('tabCountdown').textContent = count;
     if (count <= 0) {
       clearInterval(t);
-      saveToServer(currentAnswer).finally(() => document.getElementById('autoSubmitForm').submit());
+      saveToServer(currentAnswer).finally(() => { allowLeave(); document.getElementById('autoSubmitForm').submit(); });
     }
   }, 1000);
 }
@@ -415,6 +415,8 @@ document.addEventListener('cut',   e => e.preventDefault());
 document.addEventListener('keydown', e => {
   if (e.key==='F12' || (e.ctrlKey&&e.shiftKey&&['I','J','C'].includes(e.key)) || (e.ctrlKey&&['u','s','a'].includes(e.key))) e.preventDefault();
 });
-window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue=''; });
+function _beforeUnload(e) { e.preventDefault(); e.returnValue = ''; }
+window.addEventListener('beforeunload', _beforeUnload);
+function allowLeave() { window.removeEventListener('beforeunload', _beforeUnload); }
 </script>
 </body></html>
