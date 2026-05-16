@@ -13,14 +13,18 @@ exports.getDashboard = async (req, res) => {
     const groupMemberships = await GroupMember.findAll({ where: { userId: studentId, role: 'student' } });
     const groupIds = groupMemberships.map(gm => gm.groupId);
 
-    // Get tests assigned to those groups
-    const testGroups = await TestGroup.findAll({ where: { groupId: { [Op.in]: groupIds } } });
-    const testIds = [...new Set(testGroups.map(tg => tg.testId))];
-
-    const availableTests = await Test.findAll({
-      where: { id: { [Op.in]: testIds }, status: { [Op.in]: ['published', 'active'] } },
-      order: [['createdAt', 'DESC']],
-    });
+    // Get tests assigned to those groups (guard empty array — Op.in([]) crashes MySQL)
+    let availableTests = [];
+    if (groupIds.length > 0) {
+      const testGroups = await TestGroup.findAll({ where: { groupId: { [Op.in]: groupIds } } });
+      const testIds = [...new Set(testGroups.map(tg => tg.testId))];
+      if (testIds.length > 0) {
+        availableTests = await Test.findAll({
+          where: { id: { [Op.in]: testIds }, status: { [Op.in]: ['published', 'active'] } },
+          order: [['createdAt', 'DESC']],
+        });
+      }
+    }
 
     // Completed tests
     const completedResults = await Result.findAll({
@@ -71,13 +75,17 @@ exports.getTests = async (req, res) => {
 
     const groupMemberships = await GroupMember.findAll({ where: { userId: studentId } });
     const groupIds = groupMemberships.map(gm => gm.groupId);
-    const testGroups = await TestGroup.findAll({ where: { groupId: { [Op.in]: groupIds } } });
-    const testIds = [...new Set(testGroups.map(tg => tg.testId))];
-
-    const tests = await Test.findAll({
-      where: { id: { [Op.in]: testIds }, status: { [Op.in]: ['published', 'active', 'closed'] } },
-      order: [['createdAt', 'DESC']],
-    });
+    let tests = [];
+    if (groupIds.length > 0) {
+      const testGroups = await TestGroup.findAll({ where: { groupId: { [Op.in]: groupIds } } });
+      const testIds = [...new Set(testGroups.map(tg => tg.testId))];
+      if (testIds.length > 0) {
+        tests = await Test.findAll({
+          where: { id: { [Op.in]: testIds }, status: { [Op.in]: ['published', 'active', 'closed'] } },
+          order: [['createdAt', 'DESC']],
+        });
+      }
+    }
 
     const results = await Result.findAll({
       where: { studentId },

@@ -46,10 +46,10 @@ exports.getLogin = (req, res) => {
 exports.postLogin = async (req, res) => {
   try {
     const { identifier, password, role } = req.body;
-    // Only allow admin and student
-    if (!['admin', 'student'].includes(role)) {
-      req.flash('error', 'Invalid role.');
-      return res.redirect('/auth/login');
+    // /auth/login is STUDENT-ONLY — admin must use /auth/admin
+    if (role !== 'student') {
+      req.flash('error', 'Please use the admin login page.');
+      return res.redirect('/auth/admin');
     }
     const where = role === 'student'
       ? { rollNo: identifier, role: 'student' }

@@ -179,8 +179,8 @@ new Chart(document.getElementById('subjectChart'), {
     labels: <%- JSON.stringify(Object.keys(result.subjectScores)) %>,
     datasets: [
       { label: 'Your %', data: <%- JSON.stringify(Object.values(result.subjectScores).map(d=>d.total>0?parseFloat(((d.marks||0)/d.total*100).toFixed(1)):0)) %>, backgroundColor: 'rgba(79,70,229,0.7)', borderRadius: 6 },
-      <% if (topperResult && topperResult.subjectScores) { %>
-      { label: 'Topper %', data: <%- JSON.stringify(Object.keys(result.subjectScores).map(s=>{ const d=topperResult.subjectScores[s]; return d&&d.total>0?parseFloat((d.marks||0)/d.total*100).toFixed(1):0; })) %>, backgroundColor: 'rgba(245,158,11,0.7)', borderRadius: 6 },
+      <% if (topperResult && topperResult.subjectScores && result.subjectScores) { %>
+      { label: 'Topper %', data: <%- JSON.stringify(Object.keys(result.subjectScores).map(s=>{ const d=(topperResult.subjectScores||{})[s]; return d&&d.total>0?parseFloat((d.marks||0)/d.total*100).toFixed(1):0; })) %>, backgroundColor: 'rgba(245,158,11,0.7)', borderRadius: 6 },
       <% } %>
     ]
   },

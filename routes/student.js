@@ -6,13 +6,11 @@ const { isAuthenticated, requireRole, requirePasswordChange } = require('../midd
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('student')];
 
-router.get('/dashboard', ...guard, sc.getDashboard);
-router.get('/tests', ...guard, sc.getTests);
-router.get('/results', ...guard, sc.getResults);
+router.get('/dashboard',     ...guard, sc.getDashboard);
+router.get('/tests',         ...guard, sc.getTests);
+router.get('/results',       ...guard, sc.getResults);
 router.get('/notifications', ...guard, sc.getNotifications);
+router.get('/documents',     ...guard, sc.getDocuments);
+router.post('/documents',    ...guard, sc.uploadDocument);
 
 module.exports = router;
-
-// Documents (with auth guard)
-router.get('/documents',  ...guard, sc.getDocuments);
-router.post('/documents', ...guard, sc.uploadDocument);

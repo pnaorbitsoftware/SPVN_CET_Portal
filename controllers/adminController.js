@@ -428,6 +428,12 @@ exports.getCreateTest = async (req, res) => {
 
 exports.createTest = async (req, res) => {
   try {
+    const questionIds_raw = req.body.questionIds;
+    const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
+    if (selectedQIds.length === 0) {
+      req.flash('error', 'Please select at least one question for the test.');
+      return res.redirect('/admin/tests/create');
+    }
     const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions,
             startTime, endTime, instructions, groupIds, questionIds, course, subject, topic, subtopic, marksPerQuestion } = req.body;
     const selected = Array.isArray(questionIds) ? questionIds : (questionIds ? [questionIds] : []);
