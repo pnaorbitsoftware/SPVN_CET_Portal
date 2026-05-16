@@ -190,10 +190,9 @@ exports.reportViolation = async (req, res) => {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const { type } = req.body;
-    const examSession = req.session.examSession?.[testId];
-    if (!examSession) return res.json({ success: false });
 
-    const result = await Result.findOne({ where: { id: examSession.resultId, studentId, status: 'in_progress' } });
+    // Find in-progress result directly from DB (no session dependency)
+    const result = await Result.findOne({ where: { studentId, testId, status: 'in_progress' } });
     if (!result) return res.json({ success: false });
 
     const test = await Test.findByPk(testId);
