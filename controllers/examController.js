@@ -337,11 +337,17 @@ exports.getResult = async (req, res) => {
       include: [{ model: Test, as: 'test', attributes: ['title'] }],
       order: [['submittedAt','ASC']], limit: 10,
     });
+    const totalAttempted = await Result.count({
+      where: { testId: result.testId, status: { [Op.in]: ['submitted','auto_submitted'] } },
+    });
+
+    const percentage = result.totalMarks > 0
+      ? parseFloat(((result.score / result.totalMarks) * 100).toFixed(1))
+      : 0;
 
     res.render('exam/result', {
       title: 'Exam Result', result,
-      percentage: result.totalMarks > 0 ? ((result.score / result.totalMarks) * 100).toFixed(1) : '0.0',
-      topperResult, trend,
+      percentage, topperResult, trend, totalAttempted,
     });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/dashboard'); }
 };

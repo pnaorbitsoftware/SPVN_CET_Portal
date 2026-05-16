@@ -153,7 +153,7 @@
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
         <div><span class="text-slate-500">Student</span><p class="font-semibold"><%= result.student.name %></p></div>
         <div><span class="text-slate-500">Roll No</span><p class="font-semibold font-mono"><%= result.student.rollNo %></p></div>
-        <div><span class="text-slate-500">Time Taken</span><p class="font-semibold"><%= Math.floor(result.timeTaken/60) %>m <%= result.timeTaken%60 %>s</p></div>
+        <div><span class="text-slate-500">Time Taken</span><p class="font-semibold"><%= Math.floor((result.timeTaken||0)/60) %>m <%= (result.timeTaken||0)%60 %>s</p></div>
         <div><span class="text-slate-500">Out of</span><p class="font-semibold"><%= totalAttempted %> students</p></div>
         <div><span class="text-slate-500">Submitted</span><p class="font-semibold"><%= result.submittedAt?new Date(result.submittedAt).toLocaleString('en-IN'):'—' %></p></div>
         <div><span class="text-slate-500">Violations</span><p class="font-semibold <%= result.violationCount>0?'text-red-600':'' %>"><%= result.violationCount||0 %></p></div>
