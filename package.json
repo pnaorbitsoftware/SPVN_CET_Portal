@@ -12,6 +12,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "connect-flash": "^0.1.1",
+    "connect-session-sequelize": "^8.0.6",
     "csv-parse": "^5.5.3",
     "csv-writer": "^1.6.0",
     "dotenv": "^16.3.1",

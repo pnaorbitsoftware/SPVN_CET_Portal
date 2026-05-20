@@ -8,6 +8,10 @@ const methodOverride = require('method-override');
 const path         = require('path');
 
 const { testConnection, sequelize } = require('./config/database');
+const SequelizeStore = require('connect-session-sequelize')(session.Store);
+
+// Persistent session store — works across Vercel serverless invocations
+const sessionStore = new SequelizeStore({ db: sequelize, checkExpirationInterval: 15 * 60 * 1000, expiration: 24 * 60 * 60 * 1000 });
 require('./models'); // register all models & associations
 
 const { attachUser, errorHandler, notFound } = require('./middleware/auth');
@@ -29,7 +33,13 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'xyz_college_secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: parseInt(process.env.SESSION_MAX_AGE) || 86400000, httpOnly: true },
+  store: sessionStore,
+  cookie: {
+    maxAge: parseInt(process.env.SESSION_MAX_AGE) || 86400000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
+    sameSite: 'lax',
+  },
 }));
 
 app.use(flash());
