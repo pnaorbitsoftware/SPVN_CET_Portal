@@ -11,16 +11,16 @@ async function seed() {
     // Admin
     const admin = await User.create({
       name: 'System Administrator',
-      email: 'admin@xyzcollege.edu.in',
-      password: 'Admin@XYZ2024',
+      email: process.env.COLLEGE_EMAIL || 'admin@xyzcollege.edu.in',
+      password: process.env.ADMIN_DEFAULT_PASSWORD || 'Admin@XYZ2024',
       role: 'admin',
       isFirstLogin: false,
     });
     console.log('✅ Admin created');
 
     // Groups
-    const groupA = await Group.create({ name: 'PCM Batch-A 2024', description: 'Physics Chemistry Mathematics', academicYear: '2024-2025' });
-    const groupB = await Group.create({ name: 'PCB Batch-B 2024', description: 'Physics Chemistry Biology', academicYear: '2024-2025' });
+    const groupA = await Group.create({ name: 'PCM Batch-A 2024', description: 'Physics Chemistry Mathematics', academicYear: process.env.ACADEMIC_YEAR || '2024-2025' });
+    const groupB = await Group.create({ name: 'PCB Batch-B 2024', description: 'Physics Chemistry Biology', academicYear: process.env.ACADEMIC_YEAR || '2024-2025' });
     console.log('✅ Groups created');
 
     // Students
@@ -32,7 +32,8 @@ async function seed() {
       { name: 'Kiran Kumar',  rollNo: '2024CE005', groupId: groupB.id },
     ];
     for (const s of studentRows) {
-      const pw = `CET@${s.rollNo.slice(-4)}`;
+      const prefix = process.env.PASSWORD_PREFIX || 'CET@';
+      const pw = `${prefix}${s.rollNo.slice(-4)}`;
       const student = await User.create({ name: s.name, rollNo: s.rollNo, role: 'student', password: pw, isFirstLogin: true });
       await GroupMember.create({ groupId: s.groupId, userId: student.id, role: 'student' });
     }
