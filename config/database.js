@@ -1,6 +1,4 @@
 // config/database.js
-// Sequelize database configuration for XYZ College CET System
-
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
 
@@ -13,24 +11,20 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 3306,
     dialect: 'mysql',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-      max: 10,
-      min: 0,
-      acquire: 30000,
-      idle: 10000,
-    },
-    define: {
-      timestamps: true,
-      underscored: false,
-    },
+    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+    define: { timestamps: true, underscored: false },
+
+    // SSL support for hosted/cloud MySQL (Aiven, Railway, PlanetScale, etc.)
+    dialectOptions: process.env.DB_SSL === 'true' ? {
+      ssl: { rejectUnauthorized: false }
+    } : {},
   }
 );
 
-// Test DB connection
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Database connected successfully to:', process.env.DB_NAME);
+    console.log('✅ Database connected:', process.env.DB_HOST, '/', process.env.DB_NAME);
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
     process.exit(1);
