@@ -58,19 +58,27 @@ app.get('/', (req, res) => {
   res.redirect('/auth/login');
 });
 
-// ── Error handling ────────────────────────────────────────────────────────────
-app.use(notFound);
-app.use(errorHandler);
-
-// ── Start server ──────────────────────────────────────────────────────────────
+// ── Boot: DB sync + auto-seed admin ──────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
-(async () => {
-  await testConnection();
-  await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-  console.log('✅ Models synced');
+let booted = false;
 
-  // ── Auto-seed admin from .env (only if no admin exists) ──────────────────
+async function boot() {
+  if (booted) return;
+  booted = true;
+
+  await testConnection();
+
+  // Never alter/force in production — just sync missing tables
+  if (process.env.NODE_ENV === 'production') {
+    await sequelize.sync();
+  } else {
+    await sequelize.sync({ alter: true });
+  }
+  await sessionStore.sync();
+  console.log('✅ DB ready');
+
+  // ── Auto-seed admin from env vars (safe — skips if admin exists) ──────────
   try {
     const { User } = require('./models');
     const exists = await User.findOne({ where: { role: 'admin' } });
@@ -78,17 +86,39 @@ const PORT = process.env.PORT || 3000;
       const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@college.edu';
       const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1234';
       const adminName     = process.env.ADMIN_NAME     || 'Administrator';
-      await User.create({ name: adminName, email: adminEmail, password: adminPassword, role: 'admin', isActive: true, isFirstLogin: false });
-      console.log(`✅ Admin seeded — email: ${adminEmail}`);
-      console.log(`   ⚠  Change ADMIN_PASSWORD in .env after first login!`);
+      await User.create({
+        name: adminName, email: adminEmail, password: adminPassword,
+        role: 'admin', isActive: true, isFirstLogin: false,
+      });
+      console.log(`✅ Admin created → ${adminEmail}`);
     }
   } catch (e) {
     console.error('Admin seed error:', e.message);
   }
+}
 
-  app.listen(PORT, () => {
-    console.log(`\n${process.env.APP_NAME || 'CET Exam Portal'}`);
-    console.log(`   Running at: http://localhost:${PORT}`);
-    console.log(`   Environment: ${process.env.NODE_ENV}\n`);
-  });
-})();
+// Vercel/serverless: boot on first request
+app.use(async (req, res, next) => {
+  try { await boot(); next(); }
+  catch (e) {
+    console.error('Boot error:', e.message);
+    res.status(500).send('Server initialisation failed: ' + e.message);
+  }
+});
+
+// ── Error handling ──────────────────────────────────────────────────────────
+app.use(notFound);
+app.use(errorHandler);
+
+// ── Export for Vercel/serverless ────────────────────────────────────────────
+module.exports = app;
+
+// ── Traditional server (Render, Railway, local) ─────────────────────────────
+if (require.main === module) {
+  boot().then(() => {
+    app.listen(PORT, () => {
+      console.log(`\n🚀 ${process.env.APP_NAME || 'CET Exam Portal'}`);
+      console.log(`   http://localhost:${PORT}  [${process.env.NODE_ENV}]`);
+    });
+  }).catch(e => { console.error(e); process.exit(1); });
+}
