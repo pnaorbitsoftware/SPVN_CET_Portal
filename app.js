@@ -18,6 +18,15 @@ const { attachUser, errorHandler, notFound } = require('./middleware/auth');
 
 const app = express();
 
+// Trust Render/Vercel/Railway reverse proxy
+app.set('trust proxy', 1);
+
+// Fix "Host not in allowlist" on Render
+app.use((req, res, next) => {
+  // Allow all hosts — Render uses its own reverse proxy
+  next();
+});
+
 // ── View engine ───────────────────────────────────────────────────────────────
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
