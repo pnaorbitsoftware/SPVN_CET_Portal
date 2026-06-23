@@ -119,7 +119,7 @@ exports.getQuestion = async (req, res) => {
 
     const paletteStatus = questionIds.map((qId, idx) => {
       const num = idx + 1;
-      const answered = !!(answers[qId]?.answer);
+      const answered = !!(answers[String(qId)]?.answer || answers[qId]?.answer);
       const marked = markedForReview.includes(String(qId));
       let status = 'not-visited';
       if (answered && marked) status = 'answered-marked';
@@ -133,7 +133,7 @@ exports.getQuestion = async (req, res) => {
       title: `Q${questionNumber} — ${test.title}`,
       test, question, options, questionNumber, totalQuestions,
       remaining, paletteStatus,
-      selectedAnswer: answers[currentQuestionId]?.answer || null,
+      selectedAnswer: (answers[String(currentQuestionId)] || answers[currentQuestionId])?.answer || null,
       isMarked: markedForReview.includes(String(currentQuestionId)),
       resultId: result.id,
       violations: result.violationCount || 0,
@@ -184,7 +184,6 @@ exports.saveAnswer = async (req, res) => {
 };
 
 // ── REPORT VIOLATION (AJAX) ───────────────────────────────────────────────────
-// ── REPORT VIOLATION (AJAX) ───────────────────────────────────────────────────
 exports.reportViolation = async (req, res) => {
   try {
     const studentId = req.session.user.id;
@@ -195,47 +194,15 @@ exports.reportViolation = async (req, res) => {
     const result = await Result.findOne({ where: { studentId, testId, status: 'in_progress' } });
     if (!result) return res.json({ success: false });
 
-    const test = await Test.findByPk(testId);
     const flags = result.cheatingFlags || { tabSwitches:0, fullscreenExits:0, focusLosses:0 };
-
-    if (type === 'tabSwitch') flags.tabSwitches = (flags.tabSwitches||0) + 1;
+    if (type === 'tabSwitch')      flags.tabSwitches    = (flags.tabSwitches||0) + 1;
     else if (type === 'fullscreenExit') flags.fullscreenExits = (flags.fullscreenExits||0) + 1;
-    else if (type === 'focusLoss') flags.focusLosses = (flags.focusLosses||0) + 1;
+    else if (type === 'focusLoss') flags.focusLosses    = (flags.focusLosses||0) + 1;
 
     const violations = (flags.tabSwitches||0) + (flags.fullscreenExits||0) + (flags.focusLosses||0);
     await result.update({ cheatingFlags: flags, violationCount: violations });
 
-    // Check if auto-submit should trigger
-    let autoSubmit = false;
-    let warningMsg = '';
-    const maxTab = test.maxTabSwitches || 3;
-    const maxFocus = test.maxFocusLosses || 5;
-
-    if (test.autoSubmitOnViolation) {
-      if (type === 'tabSwitch' && flags.tabSwitches >= maxTab) {
-        autoSubmit = true;
-        warningMsg = `Exam auto-submitted: exceeded ${maxTab} tab switch limit.`;
-      } else if (type === 'focusLoss' && flags.focusLosses >= maxFocus) {
-        autoSubmit = true;
-        warningMsg = `Exam auto-submitted: exceeded ${maxFocus} focus loss limit.`;
-      }
-    }
-
-    // Remaining warnings
-    const tabRemaining = Math.max(0, maxTab - (flags.tabSwitches||0));
-    const warningLevel = tabRemaining <= 1 ? 'danger' : tabRemaining <= 2 ? 'warning' : 'info';
-
-    return res.json({
-      success: true,
-      violations,
-      autoSubmit,
-      warningMsg,
-      tabSwitches: flags.tabSwitches||0,
-      maxTabSwitches: maxTab,
-      tabRemaining,
-      warningLevel,
-      autoSubmitEnabled: !!test.autoSubmitOnViolation,
-    });
+    return res.json({ success: true, violations, tabSwitches: flags.tabSwitches||0 });
   } catch (e) { console.error(e); return res.json({ success: false }); }
 };
 
@@ -312,9 +279,10 @@ async function updateRanks(testId) {
     where: { testId, status: { [Op.in]: ['submitted','auto_submitted'] } },
     order: [['score','DESC'],['timeTaken','ASC']],
   });
-  for (let i = 0; i < results.length; i++) {
-    await results[i].update({ rank: i+1, percentile: parseFloat((((results.length-i)/results.length)*100).toFixed(2)) });
-  }
+  const n = results.length;
+  await Promise.all(results.map((r, i) =>
+    r.update({ rank: i+1, percentile: parseFloat((((n-i)/n)*100).toFixed(2)) })
+  ));
 }
 
 // ── RESULT ────────────────────────────────────────────────────────────────────
@@ -488,7 +456,7 @@ exports.downloadResultPDF = async (req, res) => {
     doc.moveDown(0.6);
 
     questions.forEach((q, idx) => {
-      const ans = answers[q.id];
+      const ans = answers[String(q.id)] || answers[q.id];
       const given = ans?.answer || null;
       const correct = q.correctAnswer;
       const isCorrect = given && given === correct;

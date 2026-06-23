@@ -35,9 +35,11 @@ exports.getDashboard = async (req, res) => {
     });
 
     const completedTestIds = completedResults.map(r => r.testId);
-
-    // Pending tests
-    const pendingTests = availableTests.filter(t => !completedTestIds.includes(t.id));
+    // Also exclude in-progress (already started)
+    const inProgressResults = await Result.findAll({ where: { studentId, status: 'in_progress' }, attributes: ['testId'] });
+    const inProgressTestIds = inProgressResults.map(r => r.testId);
+    const nonPendingIds = new Set([...completedTestIds, ...inProgressTestIds]);
+    const pendingTests = availableTests.filter(t => !nonPendingIds.has(t.id));
 
     // Unread notifications
     const notifications = await Notification.findAll({
@@ -55,7 +57,7 @@ exports.getDashboard = async (req, res) => {
         pending: pendingTests.length,
         completed: completedResults.length,
         avgScore: completedResults.length
-          ? (completedResults.reduce((s, r) => s + (r.score / r.totalMarks) * 100, 0) / completedResults.length).toFixed(1)
+          ? (completedResults.reduce((s, r) => s + (r.totalMarks > 0 ? (r.score / r.totalMarks) * 100 : 0), 0) / completedResults.length).toFixed(1)
           : 0,
       },
     });
