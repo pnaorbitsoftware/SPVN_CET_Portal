@@ -455,82 +455,98 @@ exports.downloadResultPDF = async (req, res) => {
     });
     doc.moveDown(0.6);
 
+    const PAGE_H = 750, MARGIN = 45, W = 505;
+
     questions.forEach((q, idx) => {
-      const ans = answers[String(q.id)] || answers[q.id];
-      const given = ans?.answer || null;
+      const ans     = answers[String(q.id)] || answers[q.id];
+      const given   = ans?.answer || null;
       const correct = q.correctAnswer;
       const isCorrect = given && given === correct;
-      const isWrong = given && given !== correct;
-      const isSkipped = !given;
-
-      const statusColor = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : '#d97706';
-      const statusLabel = isCorrect ? '✓ Correct' : isWrong ? '✗ Wrong' : '○ Skipped';
-      const bgColor = isCorrect ? '#f0fdf4' : isWrong ? '#fff1f2' : '#fffbeb';
-      const borderColor = isCorrect ? '#86efac' : isWrong ? '#fca5a5' : '#fcd34d';
-
-      // Check if new page needed
-      if (doc.y > 700) doc.addPage();
-
-      const qY = doc.y;
-      const optMap = { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
-      const optLines = Object.entries(optMap).map(([k,v]) => `${k}) ${safe(v)}`);
+      const optMap  = { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
       const bodyText = safe(q.question);
 
-      // Estimate height
-      const textHeight = Math.ceil(bodyText.length / 85) * 12 + optLines.length * 11 + 18 + (q.explanation ? 20 : 0);
-      const boxH = Math.max(textHeight, 50);
+      const statusLabel = isCorrect ? 'CORRECT' : given ? 'WRONG' : 'NOT ATTEMPTED';
+      const statusColor = isCorrect ? '#16a34a' : given ? '#dc2626' : '#b45309';
+      const bgColor     = isCorrect ? '#f0fdf4'  : given ? '#fff1f2'  : '#fffbeb';
+      const borderColor = isCorrect ? '#bbf7d0'  : given ? '#fecaca'  : '#fde68a';
 
-      if (doc.y + boxH > 750) doc.addPage();
-      const qY2 = doc.y;
+      // Estimate content height to decide if new page needed
+      const estQLines  = Math.max(1, Math.ceil(bodyText.length / 80));
+      const estOptH    = Object.values(optMap).reduce((s,v) => s + Math.max(1, Math.ceil(safe(v||'').length/80)) * 11, 0);
+      const estExpH    = q.explanation ? Math.max(1, Math.ceil(safe(q.explanation).length / 80)) * 10 + 8 : 0;
+      const estH       = estQLines * 13 + estOptH + 36 + estExpH + 16;
+      if (doc.y + Math.min(estH, 120) > PAGE_H) doc.addPage();
 
-      // Box background
-      doc.rect(45, qY2, 505, boxH).fillColor(bgColor).fill();
-      doc.rect(45, qY2, 505, boxH).strokeColor(borderColor).lineWidth(0.5).stroke();
-      doc.lineWidth(1);
+      const startY = doc.y;
 
-      // Q number + status
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e293b')
-         .text(`Q${idx + 1}.`, 52, qY2 + 5, { continued: true });
+      // ── Question number + text ──────────────────────────────────────────
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e1f5e')
+         .text(`Q${idx + 1}`, MARGIN + 2, startY, { continued: true, width: 30 });
       doc.font('Helvetica').fillColor('#1e293b')
-         .text(` ${bodyText}`, { width: 390 });
+         .text(`  ${bodyText}`, { width: W - 80 });
 
-      // Status badge (top right)
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(statusColor)
-         .text(statusLabel, 430, qY2 + 5, { width: 110, align: 'right' });
+      // Status badge inline (right side)
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(statusColor)
+         .text(statusLabel, MARGIN + W - 90, startY, { width: 88, align: 'right' });
 
-      // Options
-      doc.moveDown(0.1);
-      optLines.forEach(opt => {
-        const key = opt[0];
-        const isAnswered = given === key;
+      doc.moveDown(0.3);
+
+      // ── Options ──────────────────────────────────────────────────────────
+      ['A','B','C','D'].forEach(key => {
+        const val = safe(optMap[key] || '');
+        if (!val) return;
+        const isGiven   = given === key;
         const isCorrectOpt = correct === key;
-        const optColor = isCorrectOpt ? '#16a34a' : (isAnswered && !isCorrectOpt) ? '#dc2626' : '#475569';
-        const fontWeight = (isAnswered || isCorrectOpt) ? 'Helvetica-Bold' : 'Helvetica';
-        doc.fontSize(8).font(fontWeight).fillColor(optColor)
-           .text(`  ${opt}`, 58, doc.y, { width: 460 });
+        const mark      = isCorrectOpt ? '✓' : (isGiven && !isCorrectOpt) ? '✗' : ' ';
+        const color     = isCorrectOpt ? '#16a34a' : (isGiven && !isCorrectOpt) ? '#dc2626' : '#374151';
+        const weight    = (isCorrectOpt || isGiven) ? 'Helvetica-Bold' : 'Helvetica';
+        doc.fontSize(8).font(weight).fillColor(color)
+           .text(`  ${mark} ${key})  ${val}`, MARGIN + 10, doc.y, { width: W - 20 });
       });
 
-      // Correct answer + student answer line
-      doc.moveDown(0.15);
-      const ansY = doc.y;
-      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#16a34a')
-         .text(`Correct: ${correct}) ${safe(optMap[correct])}`, 58, ansY, { width: 220 });
-      if (given) {
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(isCorrect ? '#16a34a' : '#dc2626')
-           .text(`Your Answer: ${given}) ${safe(optMap[given])}`, 280, ansY, { width: 260 });
-      } else {
-        doc.fontSize(7.5).font('Helvetica').fillColor('#d97706')
-           .text('Your Answer: Not Attempted', 280, ansY, { width: 260 });
-      }
+      doc.moveDown(0.25);
 
-      // Explanation if any
+      // ── Answer summary line ───────────────────────────────────────────────
+      const summaryY = doc.y;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#16a34a')
+         .text(`Correct Answer: ${correct})  ${safe(optMap[correct] || '')}`, MARGIN + 10, summaryY, { width: W / 2 - 10 });
+      const yourAnsText = given
+        ? `Your Answer: ${given})  ${safe(optMap[given] || '')}`
+        : 'Your Answer: Not Attempted';
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(isCorrect ? '#16a34a' : given ? '#dc2626' : '#b45309')
+         .text(yourAnsText, MARGIN + W / 2 + 5, summaryY, { width: W / 2 - 10 });
+
+      // ── Explanation ────────────────────────────────────────────────────────
       if (q.explanation) {
-        doc.moveDown(0.15);
-        doc.fontSize(7).font('Helvetica').fillColor('#475569')
-           .text(`Explanation: ${safe(q.explanation)}`, 58, doc.y, { width: 460 });
+        doc.moveDown(0.25);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#6d28d9').text('Explanation:', MARGIN + 10, doc.y, { continued: true });
+        doc.font('Helvetica').fillColor('#4b5563').text(`  ${safe(q.explanation)}`, { width: W - 20 });
       }
 
-      doc.y = qY2 + boxH + 5;
+      // ── Subject / Topic / Marks tags ───────────────────────────────────────
+      doc.moveDown(0.2);
+      const tagY = doc.y;
+      const tags = [
+        q.subject    && `Subject: ${q.subject}`,
+        q.topic      && `Topic: ${q.topic}`,
+        q.difficulty && `Difficulty: ${q.difficulty}`,
+        `Marks: ${q.marks || 1}`,
+      ].filter(Boolean);
+      doc.fontSize(7).font('Helvetica').fillColor('#94a3b8')
+         .text(tags.join('  |  '), MARGIN + 10, tagY, { width: W - 20 });
+
+      const endY = doc.y + 6;
+
+      // ── Draw coloured box BEHIND the content (go back via doc.y manipulation) ──
+      // We can't go back in pdfkit without bufferPages trick, so draw border only
+      doc.rect(MARGIN, startY - 4, W, endY - startY + 8)
+         .fillAndStroke(bgColor, borderColor);
+      // Re-render text on top of box (pdfkit renders in order — re-draw needed)
+      // Instead use simple left border stripe
+      doc.rect(MARGIN, startY - 4, 3, endY - startY + 8)
+         .fillColor(statusColor).fill();
+
+      doc.y = endY + 8;
     });
 
     // ── Footer on each page ──────────────────────────────────────────────────
