@@ -7,11 +7,15 @@
   <%# Logo %>
   <div class="px-5 py-4 border-b border-white/10">
     <div class="flex items-center gap-3">
+      <% if (collegeLogo) { %>
+      <img src="<%= collegeLogo %>" alt="Logo" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5 shrink-0"/>
+      <% } else { %>
       <div class="w-9 h-9 bg-amber-500 rounded-lg flex items-center justify-center font-bold text-navy-950 text-base leading-none shrink-0">
-        <%= process.env.COLLEGE_SHORT_NAME ? process.env.COLLEGE_SHORT_NAME.charAt(0) : 'A' %>
+        <%= (collegeShort||'C').charAt(0) %>
       </div>
+      <% } %>
       <div class="min-w-0">
-        <p class="font-semibold text-sm leading-tight truncate"><%= process.env.COLLEGE_SHORT_NAME %></p>
+        <p class="font-semibold text-sm leading-tight truncate"><%= collegeShort %></p>
         <p class="text-[11px] text-white/40 mt-0.5">Admin Panel</p>
       </div>
       <button onclick="closeSidebar()" class="ml-auto lg:hidden text-white/40 hover:text-white">

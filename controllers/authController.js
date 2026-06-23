@@ -4,7 +4,7 @@ const { User } = require('../models');
 
 // ── ADMIN LOGIN (separate URL: /auth/admin) ───────────────────────────────
 exports.getAdminLogin = (req, res) => {
-  res.render('auth/admin-login', { title: 'Admin Login — ' + (process.env.COLLEGE_SHORT_NAME || 'Exam') + ' Portal' });
+  res.render('auth/admin-login', { title: 'Admin Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal' });
 };
 
 exports.postAdminLogin = async (req, res) => {
@@ -40,7 +40,7 @@ exports.postAdminLogin = async (req, res) => {
 };
 
 exports.getLogin = (req, res) => {
-  res.render('auth/login', { title: 'Login — ' + (process.env.COLLEGE_SHORT_NAME || 'Exam') + ' Portal' });
+  res.render('auth/login', { title: 'Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal' });
 };
 
 exports.postLogin = async (req, res) => {

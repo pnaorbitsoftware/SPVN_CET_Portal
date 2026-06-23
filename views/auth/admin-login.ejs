@@ -10,10 +10,10 @@
       <div class="flex items-center gap-4 mb-10 justify-center lg:justify-start">
         <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-slate-900"
              style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-          <%= (process.env.COLLEGE_SHORT_NAME||'X').charAt(0) %>
+          <%= (collegeShort||'X').charAt(0) %>
         </div>
         <div>
-          <p class="text-white font-bold text-base"><%= process.env.COLLEGE_SHORT_NAME %></p>
+          <p class="text-white font-bold text-base"><%= collegeShort %></p>
           <p class="text-slate-500 text-xs">Admin Control Panel</p>
         </div>
       </div>
@@ -113,7 +113,7 @@
       </div>
 
       <p class="text-center text-xs text-slate-700 mt-5">
-        © <%= new Date().getFullYear() %> <%= process.env.COLLEGE_NAME %>
+        © <%= new Date().getFullYear() %> <%= collegeName %>
       </p>
     </div>
   </div>
@@ -142,15 +142,17 @@
       </h2>
       <div class="space-y-4">
         <% [
-          ['👨‍🎓', 'Manage Students & Groups'],
-          ['📝', 'Create & Schedule Tests'],
-          ['📊', 'View Analytics & Results'],
-          ['🔒', 'Anti-Cheat & Proctoring'],
-        ].forEach(([icon, text]) => { %>
+          ['M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z', 'Manage Students & Batches'],
+          ['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', 'Create & Schedule Tests'],
+          ['M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'View Analytics & Results'],
+          ['M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 'Anti-Cheat & Proctoring'],
+        ].forEach(([path, text]) => { %>
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.2);">
-            <%= icon %>
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="<%= path %>"/>
+            </svg>
           </div>
           <span class="text-slate-300 text-sm font-medium"><%= text %></span>
         </div>
@@ -159,7 +161,7 @@
     </div>
 
     <p class="relative z-10 text-stone-700 text-xs">
-      <%= process.env.COLLEGE_ADDRESS %>
+      <%= collegeAddress %>
     </p>
   </div>
 

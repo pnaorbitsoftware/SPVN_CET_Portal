@@ -58,14 +58,16 @@ const requireRole = (roles) => {
  * Attach user data to res.locals for use in all views
  */
 const attachUser = (req, res, next) => {
-  res.locals.currentUser = req.session.user || null;
-  res.locals.collegeName = process.env.COLLEGE_NAME || 'XYZ College';
-  res.locals.collegeShort = process.env.COLLEGE_SHORT_NAME || 'XYZCE';
-  res.locals.academicYear = process.env.ACADEMIC_YEAR || '2024-2025';
+  res.locals.currentUser    = req.session.user || null;
+  res.locals.collegeName    = process.env.COLLEGE_NAME       || 'CET Exam Portal';
+  res.locals.collegeShort   = process.env.COLLEGE_SHORT_NAME || 'CET';
+  res.locals.academicYear   = process.env.ACADEMIC_YEAR      || '2024-25';
+  res.locals.collegeLogo    = process.env.COLLEGE_LOGO_PATH  || null;
+  res.locals.collegeAddress = process.env.COLLEGE_ADDRESS    || '';
   res.locals.successMsg = req.flash('success');
-  res.locals.errorMsg = req.flash('error');
+  res.locals.errorMsg   = req.flash('error');
   res.locals.warningMsg = req.flash('warning');
-  res.locals.infoMsg = req.flash('info');
+  res.locals.infoMsg    = req.flash('info');
   next();
 };
 

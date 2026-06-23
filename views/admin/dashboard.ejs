@@ -9,7 +9,7 @@
       </button>
       <div class="flex-1 min-w-0">
         <h1 class="text-lg font-bold text-slate-900 leading-tight">Dashboard</h1>
-        <p class="text-xs text-slate-400 hidden sm:block"><%= process.env.COLLEGE_NAME %> &middot; AY <%= process.env.ACADEMIC_YEAR %></p>
+        <p class="text-xs text-slate-400 hidden sm:block"><%= collegeName %> &middot; AY <%= academicYear %></p>
       </div>
       <span class="text-xs text-slate-400 hidden md:block"><%= new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short',year:'numeric'}) %></span>
     </header>

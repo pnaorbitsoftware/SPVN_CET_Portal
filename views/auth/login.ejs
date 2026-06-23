@@ -16,10 +16,10 @@
     <div class="relative z-10 flex items-center gap-4">
       <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-slate-900"
            style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-        <%= (process.env.COLLEGE_SHORT_NAME||'X').charAt(0) %>
+        <%= (collegeShort||'X').charAt(0) %>
       </div>
       <div>
-        <p class="text-white font-bold text-base leading-tight"><%= process.env.COLLEGE_SHORT_NAME %></p>
+        <p class="text-white font-bold text-base leading-tight"><%= collegeShort %></p>
         <p class="text-indigo-300 text-xs">Student Examination Portal</p>
       </div>
     </div>
@@ -36,7 +36,7 @@
         System
       </h1>
       <p class="text-slate-400 text-base leading-relaxed max-w-sm">
-        Secure, real-time MCQ examinations for <%= process.env.COLLEGE_NAME %>.
+        Secure, real-time MCQ examinations for <%= collegeName %>.
       </p>
     </div>
 
@@ -55,7 +55,7 @@
       <% }) %>
     </div>
 
-    <p class="relative z-10 text-slate-600 text-xs">© <%= new Date().getFullYear() %> <%= process.env.COLLEGE_NAME %></p>
+    <p class="relative z-10 text-slate-600 text-xs">© <%= new Date().getFullYear() %> <%= collegeName %></p>
   </div>
 
   <!-- Right Panel — Login Form -->
@@ -66,10 +66,10 @@
       <div class="lg:hidden flex items-center gap-3 mb-8 justify-center">
         <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-slate-900 text-lg"
              style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-          <%= (process.env.COLLEGE_SHORT_NAME||'X').charAt(0) %>
+          <%= (collegeShort||'X').charAt(0) %>
         </div>
         <div>
-          <p class="font-bold text-slate-900"><%= process.env.COLLEGE_SHORT_NAME %></p>
+          <p class="font-bold text-slate-900"><%= collegeShort %></p>
           <p class="text-slate-400 text-xs">Student Portal</p>
         </div>
       </div>
@@ -163,7 +163,7 @@
       </div>
 
       <p class="text-center text-xs text-slate-400 mt-5">
-        <%= process.env.COLLEGE_NAME %> · Academic Year <%= process.env.ACADEMIC_YEAR %>
+        <%= collegeName %> · Academic Year <%= academicYear %>
       </p>
     </div>
   </div>
