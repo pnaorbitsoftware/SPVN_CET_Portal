@@ -268,7 +268,7 @@ exports.submitExam = async (req, res) => {
       if (!topicScores[topic])  topicScores[topic]  = { correct:0, wrong:0, skipped:0 };
       subjectScores[subj].total += question.marks;
 
-      const given = answers[question.id]?.answer;
+      const given = (answers[String(question.id)] || answers[question.id])?.answer;
       if (!given) {
         skipped++; subjectScores[subj].skipped++; topicScores[topic].skipped++;
       } else if (given === question.correctAnswer) {
