@@ -26,7 +26,10 @@ const testConnection = async () => {
     await sequelize.authenticate();
     console.log('✅ Database connected:', process.env.DB_HOST, '/', process.env.DB_NAME);
   } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
+    console.error("❌ Database connection failed");
+    console.error(error);
+    console.error(error.message);
+    console.error(error.stack);
     process.exit(1);
   }
 };
