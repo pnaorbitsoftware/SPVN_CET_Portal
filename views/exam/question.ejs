@@ -86,23 +86,41 @@
       </div>
 
       <!-- Navigation -->
-      <div class="border-t border-slate-100 px-5 py-4 flex items-center justify-between bg-white flex-shrink-0">
+      <div class="border-t border-slate-100 px-5 py-4 flex items-center bg-white flex-shrink-0 relative">
+
+        <!-- Prev Button (Left) -->
         <% if (questionNumber > 1) { %>
         <a href="/exam/<%= test.id %>/question/<%= questionNumber-1 %>" onclick="saveAndNav(event, this.href)"
-          class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
+          class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm absolute left-5">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Prev
         </a>
-        <% } else { %><div></div><% } %>
+        <% } %>
 
-        <div class="flex items-center gap-2">
-          <button onclick="submitConfirm()" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">Submit Exam</button>
+        <!-- Center: Save & Next OR Save & Review -->
+        <div class="mx-auto">
           <% if (questionNumber < totalQuestions) { %>
-          <a href="/exam/<%= test.id %>/question/<%= questionNumber+1 %>" onclick="saveAndNav(event, this.href)"
-            class="flex items-center gap-2 bg-navy-950 hover:bg-navy-900 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm">
-            Save &amp; Next <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-          </a>
+            <!-- Normal: Save & Next -->
+            <a href="/exam/<%= test.id %>/question/<%= questionNumber+1 %>" onclick="saveAndNav(event, this.href)"
+              class="flex items-center gap-2 bg-navy-950 hover:bg-navy-900 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors text-sm">
+              Save &amp; Next <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </a>
+          <% } else { %>
+            <!-- Last Question: Save & Review -->
+            <button onclick="openReviewModal()" 
+              class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors text-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              Save &amp; Review
+            </button>
           <% } %>
         </div>
+
+        <!-- Right: Submit Exam (only on last question) -->
+        <% if (questionNumber === totalQuestions) { %>
+        <button onclick="submitConfirm()" class="absolute right-5 bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Submit Exam
+        </button>
+        <% } %>
       </div>
     </div>
 
@@ -138,6 +156,56 @@
         <div class="flex justify-between"><span>Marked</span><span class="font-bold text-violet-600"><%= marked %></span></div>
         <div class="flex justify-between border-t border-slate-100 pt-1.5"><span>Total</span><span class="font-bold"><%= totalQuestions %></span></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Review Modal -->
+<div id="reviewModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between mb-4 flex-shrink-0">
+      <h3 class="text-lg font-bold text-slate-900">Review Your Answers</h3>
+      <button onclick="closeReviewModal()" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="bg-slate-50 rounded-xl p-4 mb-4 grid grid-cols-3 gap-3 text-center text-sm flex-shrink-0">
+      <div>
+        <p class="text-2xl font-bold text-emerald-600"><%= paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p>
+        <p class="text-xs text-slate-500">Answered</p>
+      </div>
+      <div>
+        <p class="text-2xl font-bold text-rose-500"><%= totalQuestions - paletteStatus.filter(p=>['answered','answered-marked'].includes(p.status)).length %></p>
+        <p class="text-xs text-slate-500">Unanswered</p>
+      </div>
+      <div>
+        <p class="text-2xl font-bold text-violet-600"><%= paletteStatus.filter(p=>['marked','answered-marked'].includes(p.status)).length %></p>
+        <p class="text-xs text-slate-500">Marked</p>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto mb-4 space-y-1">
+      <% paletteStatus.forEach(p => { 
+        const statusColor = p.status==='answered'?'text-emerald-600':p.status==='marked'?'text-violet-600':p.status==='answered-marked'?'text-purple-700':p.status==='not-answered'?'text-rose-500':'text-slate-400';
+        const statusText = p.status==='answered'?'Answered':p.status==='marked'?'Marked':p.status==='answered-marked'?'Ans+Marked':p.status==='not-answered'?'Not Answered':'Not Visited';
+      %>
+      <a href="/exam/<%= test.id %>/question/<%= p.num %>" onclick="saveAndNav(event, this.href); closeReviewModal();" 
+        class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+        <div class="flex items-center gap-3">
+          <span class="w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center <%= p.status==='answered'?'bg-emerald-500 text-white':p.status==='marked'?'bg-violet-500 text-white':p.status==='answered-marked'?'bg-purple-700 text-white':p.status==='not-answered'?'bg-rose-500 text-white':'bg-slate-200 text-slate-500' %>">
+            <%= p.num %>
+          </span>
+          <span class="text-sm font-medium text-slate-700">Question <%= p.num %></span>
+        </div>
+        <span class="text-xs font-semibold <%= statusColor %>"><%= statusText %></span>
+      </a>
+      <% }) %>
+    </div>
+
+    <div class="flex gap-3 flex-shrink-0">
+      <button onclick="closeReviewModal()" class="flex-1 border-2 border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">Back to Exam</button>
+      <button onclick="submitConfirm(); closeReviewModal();" class="flex-1 bg-rose-600 text-white font-bold py-2.5 rounded-xl hover:bg-rose-700 transition-colors text-sm">Submit Exam</button>
     </div>
   </div>
 </div>
@@ -313,6 +381,18 @@ function saveAndNav(e, href) {
 
 // ── Submit confirm ─────────────────────────────────────────────────────────
 function submitConfirm() { document.getElementById('submitModal').classList.remove('hidden'); }
+
+// ── Review Modal Functions ────────────────────────────────────────────────
+function openReviewModal() {
+  // Save current answer first
+  saveToServer(currentAnswer).then(() => {
+    document.getElementById('reviewModal').classList.remove('hidden');
+  });
+}
+
+function closeReviewModal() {
+  document.getElementById('reviewModal').classList.add('hidden');
+}
 
 // ── Fullscreen ─────────────────────────────────────────────────────────────
 function toggleFullscreen() {
