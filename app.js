@@ -40,8 +40,8 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // ── Body / file parsers ───────────────────────────────────────────────────────
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb', parameterLimit: 20000 }));
+app.use(express.json({ limit: '10mb' }));
 app.use(methodOverride('_method'));
 app.use(fileUpload({
   limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024 },

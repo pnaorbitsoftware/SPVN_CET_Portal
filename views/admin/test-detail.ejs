@@ -93,7 +93,7 @@
         <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-6 py-4 border-b flex items-center justify-between">
             <h3 class="font-semibold text-slate-900">Student Results</h3>
-            <a href="/admin/results/export" class="text-xs text-navy-600 hover:underline font-medium">Export Excel</a>
+            <a href="/admin/results/export?testId=<%= test.id %>" class="text-xs text-navy-600 hover:underline font-medium">Export This Test to Excel</a>
           </div>
           <% if (!results.length) { %>
           <p class="px-6 py-12 text-center text-slate-400">No submissions yet.</p>
@@ -101,13 +101,16 @@
           <div class="overflow-x-auto">
             <table class="w-full text-xs sm:text-sm">
               <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
-                <tr><th class="px-5 py-3 text-left">Rank</th><th class="px-5 py-3 text-left">Student</th><th class="px-5 py-3 text-left">Score</th><th class="px-5 py-3 text-left">%</th><th class="px-5 py-3 text-left">Action</th></tr>
+                <tr><th class="px-5 py-3 text-left">Rank</th><th class="px-5 py-3 text-left">Student</th><th class="px-5 py-3 text-left">Physics</th><th class="px-5 py-3 text-left">Chemistry</th><th class="px-5 py-3 text-left">Mathematics</th><th class="px-5 py-3 text-left">Total</th><th class="px-5 py-3 text-left">%</th><th class="px-5 py-3 text-left">Action</th></tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                <% results.forEach((r,i) => { const pct=((r.score/r.totalMarks)*100).toFixed(1) %>
+                <% results.forEach((r,i) => { const pct=r.totalMarks>0?((r.score/r.totalMarks)*100).toFixed(1):0 %>
                 <tr class="hover:bg-slate-50">
                   <td class="px-5 py-3"><%= i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1) %></td>
                   <td class="px-5 py-3"><p class="font-medium"><%= r.student?.name %></p><p class="text-xs text-slate-400"><%= r.student?.rollNo %></p></td>
+                  <% ['Physics','Chemistry','Mathematics'].forEach(subject => { const subjectResult=r.subjectScores?.[subject]; %>
+                  <td class="px-5 py-3 text-xs font-semibold <%= subjectResult?.status==='ABSENT'?'text-rose-600':'text-slate-600' %>"><%= subjectResult?.status==='ABSENT'?'ABSENT':subjectResult?`${subjectResult.marks||0}/${subjectResult.total||0}`:'—' %></td>
+                  <% }) %>
                   <td class="px-5 py-3 font-bold"><%= r.score %>/<%= r.totalMarks %></td>
                   <td class="px-5 py-3 font-semibold <%= pct>=60?'text-green-600':pct>=40?'text-yellow-600':'text-red-500' %>"><%= pct %>%</td>
                   <td class="px-5 py-3"><a href="/results/<%= r.id %>" class="text-navy-600 hover:underline text-xs font-medium">View</a></td>

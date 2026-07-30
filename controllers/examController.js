@@ -1,5 +1,12 @@
 // controllers/examController.js — MongoDB / Mongoose
 const { Test, Question, Result, GroupMember, User } = require('../models');
+const {
+  CET_SECTION_ORDER,
+  buildQuestionOrder,
+  buildSectionState,
+  isCetSectionTest,
+  orderedSectionNames,
+} = require('../utils/cetExam');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
@@ -14,7 +21,25 @@ exports.getInstructions = async (req, res) => {
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
     if (submitted) { req.flash('info','Already submitted.'); return res.redirect(`/results/${submitted._id}`); }
-    res.render('exam/instructions', { title: `${test.title} — Instructions`, test, questionCount: test.questions.length, inProgress: !!inProgress });
+    const cetSectionFlow = isCetSectionTest(test, test.questions);
+    const sectionSummary = cetSectionFlow
+      ? orderedSectionNames(test.questions).map(subject => {
+          const questions = test.questions.filter(question => question.subject === subject);
+          return {
+            subject,
+            questionCount: questions.length,
+            totalMarks: questions.reduce((sum, question) => sum + question.marks, 0),
+          };
+        })
+      : [];
+    res.render('exam/instructions', {
+      title: `${test.title} — Instructions`,
+      test,
+      questionCount: test.questions.length,
+      inProgress: !!inProgress,
+      cetSectionFlow,
+      sectionSummary,
+    });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
 
@@ -23,7 +48,7 @@ exports.startExam = async (req, res) => {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const [test, submitted] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] } }).populate('questions', '_id'),
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] } }).populate('questions', '_id subject'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
@@ -31,10 +56,9 @@ exports.startExam = async (req, res) => {
 
     let result = await Result.findOne({ studentId, testId, status: 'in_progress' });
     if (!result) {
-      let questionIds = test.questions.map(q => q._id.toString());
-      if (test.shuffleQuestions) questionIds = shuffle(questionIds);
+      const questionIds = buildQuestionOrder(test, test.questions);
       result = await Result.create({
-        studentId, testId, score: 0, totalMarks: test.totalMarks,
+        studentId, testId, score: 0, totalMarks: test.totalMarks, fullTotalMarks: test.totalMarks,
         answers: {}, questionTimings: {},
         cheatingFlags: { tabSwitches:0, fullscreenExits:0, focusLosses:0 },
         violationCount: 0, status: 'in_progress', startedAt: new Date(),
@@ -71,7 +95,25 @@ exports.getQuestion = async (req, res) => {
     const totalQuestions = questionIds.length;
     if (questionNumber < 1 || questionNumber > totalQuestions) return res.redirect(`/exam/${testId}/question/1`);
 
+    const questionRows = await Question.find(
+      { _id: { $in: questionIds } },
+      '_id subject'
+    );
+    const cetSectionFlow = isCetSectionTest(test, questionRows);
+    const sectionState = cetSectionFlow
+      ? buildSectionState(questionIds, questionRows, result.answers || {})
+      : null;
     const currentQuestionId = questionIds[questionNumber - 1];
+    const requestedSubject = sectionState?.subjectById.get(String(currentQuestionId));
+    const requestedSectionIndex = sectionState?.sections
+      .findIndex(section => section.name === requestedSubject);
+    if (
+      cetSectionFlow &&
+      requestedSectionIndex > sectionState.unlockedSectionIndex
+    ) {
+      return res.redirect(`/exam/${testId}/question/${sectionState.firstPendingQuestionNumber}`);
+    }
+
     const question = await Question.findById(currentQuestionId);
     if (!question) { req.flash('error','Question not found.'); return res.redirect('/student/tests'); }
 
@@ -86,16 +128,32 @@ exports.getQuestion = async (req, res) => {
     const answers = result.answers || {};
     const markedForReview = result.markedForReview || [];
 
-    const paletteStatus = questionIds.map((qId, idx) => {
-      const answered = !!(answers[String(qId)]?.answer);
-      const marked   = markedForReview.includes(String(qId));
+    const paletteStatus = questionIds.map((questionId, questionIndex) => {
+      const id = String(questionId);
+      const answered = !!(answers[id]?.answer);
+      const marked   = markedForReview.includes(id);
+      const subject = sectionState?.subjectById.get(id) || question.subject;
+      const sectionIndex = sectionState?.sections.findIndex(section => section.name === subject) ?? 0;
       let status = 'not-visited';
       if (answered && marked) status = 'answered-marked';
       else if (answered)      status = 'answered';
       else if (marked)        status = 'marked';
-      else if (idx + 1 < questionNumber) status = 'not-answered';
-      return { num: idx + 1, qId, status };
+      else if (questionIndex + 1 < questionNumber) status = 'not-answered';
+      return {
+        num: questionIndex + 1,
+        qId: questionId,
+        status,
+        subject,
+        locked: cetSectionFlow && sectionIndex > sectionState.unlockedSectionIndex,
+      };
     });
+
+    const currentSection = cetSectionFlow
+      ? sectionState.sections.find(section => section.name === question.subject)
+      : null;
+    const sectionQuestionNumber = currentSection
+      ? currentSection.questionNumbers.indexOf(questionNumber) + 1
+      : questionNumber;
 
     res.render('exam/question', {
       title: `Q${questionNumber} — ${test.title}`,
@@ -106,6 +164,10 @@ exports.getQuestion = async (req, res) => {
       resultId: result._id,
       violations: result.violationCount || 0,
       result,
+      cetSectionFlow,
+      sectionState,
+      currentSection,
+      sectionQuestionNumber,
     });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
@@ -197,11 +259,12 @@ exports.submitExam = async (req, res) => {
     const answers = result.answers || {};
     let score = 0, correct = 0, wrong = 0, skipped = 0;
     const subjectScores = {}, topicScores = {};
+    const negativeMarking = parseFloat(test.negativeMarking) || 0;
 
     for (const question of test.questions) {
       const subj  = question.subject || 'General';
       const topic = question.topic   || 'General';
-      if (!subjectScores[subj])  subjectScores[subj]  = { correct:0, wrong:0, skipped:0, marks:0, total:0 };
+      if (!subjectScores[subj])  subjectScores[subj]  = { correct:0, wrong:0, skipped:0, marks:0, total:0, attempted:false, status:'NOT_ATTEMPTED' };
       if (!topicScores[topic])   topicScores[topic]   = { correct:0, wrong:0, skipped:0 };
       subjectScores[subj].total += question.marks;
 
@@ -209,22 +272,43 @@ exports.submitExam = async (req, res) => {
       if (!given) {
         skipped++; subjectScores[subj].skipped++; topicScores[topic].skipped++;
       } else if (given === question.correctAnswer) {
+        subjectScores[subj].attempted = true;
+        subjectScores[subj].status = 'ATTEMPTED';
         score += question.marks; correct++;
         subjectScores[subj].correct++; subjectScores[subj].marks += question.marks;
         topicScores[topic].correct++;
       } else {
-        score -= (parseFloat(test.negativeMarking) || 0); wrong++;
+        subjectScores[subj].attempted = true;
+        subjectScores[subj].status = 'ATTEMPTED';
+        score -= negativeMarking; wrong++;
+        subjectScores[subj].marks -= negativeMarking;
         subjectScores[subj].wrong++; topicScores[topic].wrong++;
       }
     }
 
+    const cetSectionFlow = isCetSectionTest(test, test.questions);
+    const attemptedSubjects = [];
+    const absentSubjects = [];
+    let attemptedTotalMarks = 0;
+    Object.entries(subjectScores).forEach(([subject, data]) => {
+      data.marks = parseFloat(data.marks.toFixed(2));
+      if (cetSectionFlow && !data.attempted) {
+        data.status = 'ABSENT';
+        absentSubjects.push(subject);
+        return;
+      }
+      if (data.attempted) attemptedSubjects.push(subject);
+      attemptedTotalMarks += data.total;
+    });
+
     score = Math.max(0, parseFloat(score.toFixed(2)));
+    const resultTotalMarks = cetSectionFlow ? attemptedTotalMarks : test.totalMarks;
     const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
 
     await Result.findByIdAndUpdate(result._id, {
-      score, totalMarks: test.totalMarks,
+      score, totalMarks: resultTotalMarks, fullTotalMarks: test.totalMarks,
       correctAnswers: correct, wrongAnswers: wrong, skippedAnswers: skipped,
-      timeTaken, subjectScores, topicScores,
+      timeTaken, subjectScores, topicScores, attemptedSubjects, absentSubjects,
       status: isAutoSubmit ? 'auto_submitted' : 'submitted',
       submittedAt: new Date(),
     });
@@ -351,6 +435,28 @@ exports.downloadResultPDF = async (req, res) => {
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(`${label}: `, { continued: true });
       doc.font('Helvetica').fillColor('#1e293b').text(val);
     });
+
+    const subjectScores = result.subjectScores || {};
+    const subjectNames = [
+      ...CET_SECTION_ORDER.filter(subject => subjectScores[subject]),
+      ...Object.keys(subjectScores).filter(subject => !CET_SECTION_ORDER.includes(subject)),
+    ];
+    if (subjectNames.length) {
+      doc.moveDown(0.8);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('SUBJECT-WISE MARKS');
+      subjectNames.forEach(subject => {
+        const data = subjectScores[subject];
+        const value = data.status === 'ABSENT'
+          ? 'ABSENT'
+          : `${data.marks || 0} / ${data.total || 0}`;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(`${subject}: `, { continued: true });
+        doc.font('Helvetica').fillColor(data.status === 'ABSENT' ? '#dc2626' : '#1e293b').text(value);
+      });
+      if (result.absentSubjects?.length) {
+        doc.fontSize(8).font('Helvetica').fillColor('#64748b')
+          .text(`Total uses attempted subjects only. Full test marks: ${result.fullTotalMarks || test.totalMarks}.`);
+      }
+    }
 
     doc.addPage();
     doc.fontSize(11).font('Helvetica-Bold').text('QUESTION-BY-QUESTION ANSWERS', { align: 'center' });
