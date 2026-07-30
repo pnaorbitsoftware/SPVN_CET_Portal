@@ -10,6 +10,9 @@
         <p class="text-white/70 text-sm mb-1 truncate"><%= result.test.title %></p>
         <div class="text-5xl sm:text-7xl font-bold mb-2"><%= percentage %>%</div>
         <p class="text-xl sm:text-2xl font-semibold"><%= result.score %> / <%= result.totalMarks %> Marks</p>
+        <% if (result.absentSubjects?.length) { %>
+        <p class="text-white/80 text-xs mt-2">Percentage uses attempted subjects only · Full test: <%= result.fullTotalMarks || result.test.totalMarks %> marks</p>
+        <% } %>
         <div class="flex items-center justify-center gap-2 mt-2">
           <% if (result.status === 'auto_submitted') { %>
           <svg class="w-4 h-4 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -83,14 +86,20 @@
         <canvas id="subjectChart" class="max-h-44 mb-4"></canvas>
         <div class="space-y-3">
           <% Object.entries(result.subjectScores).forEach(([subj, data]) => {
+            const isAbsent = data.status === 'ABSENT';
             const pct = data.total > 0 ? ((data.marks||0)/data.total*100).toFixed(0) : 0;
             const clr = pct>=60?'emerald':pct>=40?'amber':'rose';
           %>
           <div>
             <div class="flex justify-between text-sm mb-1">
               <span class="font-medium text-slate-700 truncate mr-2"><%= subj %></span>
+              <% if (isAbsent) { %>
+              <span class="font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full shrink-0">ABSENT</span>
+              <% } else { %>
               <span class="font-bold text-<%= clr %>-600 shrink-0"><%= data.marks||0 %>/<%= data.total||0 %> (<%= pct %>%)</span>
+              <% } %>
             </div>
+            <% if (!isAbsent) { %>
             <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
               <div class="h-2 rounded-full bg-<%= clr %>-500" style="width:<%= pct %>%"></div>
             </div>
@@ -99,6 +108,9 @@
               <span class="text-rose-500"><%= data.wrong %> wrong</span>
               <span><%= data.skipped %> skipped</span>
             </div>
+            <% } else { %>
+            <p class="text-xs text-rose-500">No answer was attempted in this subject. Its marks are excluded from the total.</p>
+            <% } %>
           </div>
           <% }) %>
         </div>
@@ -147,7 +159,7 @@
         <div class="space-y-1.5">
           <% Object.entries(result.subjectScores).forEach(([subj, data]) => {
             const td = topperResult.subjectScores[subj];
-            if (!td) return;
+            if (!td || data.status==='ABSENT') return;
             const myPct  = data.total>0?Math.round((data.marks||0)/data.total*100):0;
             const topPct = td.total>0?Math.round((td.marks||0)/td.total*100):0;
           %>

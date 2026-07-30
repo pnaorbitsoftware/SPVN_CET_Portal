@@ -19,6 +19,9 @@
       <span class="font-bold text-sm hidden sm:block text-white/80 shrink-0"><%= collegeShort %></span>
       <span class="text-white/30 hidden sm:block">|</span>
       <span class="text-sm font-medium truncate"><%= test.title %></span>
+      <% if (cetSectionFlow && currentSection) { %>
+      <span class="hidden sm:inline-flex bg-indigo-500/30 border border-indigo-300/30 text-indigo-100 text-[10px] font-bold px-2.5 py-1 rounded-full"><%= currentSection.name %> Section</span>
+      <% } %>
     </div>
     <div class="flex items-center gap-3 shrink-0">
       <div id="violationBar" class="<%= violations>0?'flex':'hidden' %> items-center gap-1.5 bg-rose-600 rounded-lg px-3 py-1.5 text-xs font-bold">
@@ -39,6 +42,11 @@
 
   <!-- Warn banner -->
   <div id="warnBanner" class="hidden bg-rose-600 text-white text-center text-sm font-semibold py-2 px-4 flex-shrink-0"></div>
+  <% if (cetSectionFlow && currentSection && sectionQuestionNumber===1) { %>
+  <div class="bg-indigo-50 border-b border-indigo-100 text-indigo-800 text-center text-xs font-semibold py-2 px-4 flex-shrink-0">
+    <%= currentSection.index===0 ? 'CET section flow started with Physics.' : `${currentSection.name} section started automatically.` %>
+  </div>
+  <% } %>
 
   <div class="flex flex-1 overflow-hidden">
     <!-- Question panel -->
@@ -48,6 +56,9 @@
       <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0">
         <div class="flex items-center gap-2.5">
           <span class="bg-navy-950 text-white text-xs font-bold px-3 py-1 rounded-full">Q <%= questionNumber %> / <%= totalQuestions %></span>
+          <% if (cetSectionFlow && currentSection) { %>
+          <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full"><%= currentSection.name %> <%= sectionQuestionNumber %>/<%= currentSection.questionIds.length %></span>
+          <% } %>
           <span class="text-xs text-slate-400 hidden sm:block"><%= question.subject %><% if(question.topic){%> &rsaquo; <%= question.topic %><% } %> &middot; <%= question.difficulty %> &middot; <%= question.marks %> mark(s)</span>
         </div>
         <div class="flex items-center gap-2">
@@ -102,7 +113,10 @@
             <!-- Normal: Save & Next -->
             <a href="/exam/<%= test.id %>/question/<%= questionNumber+1 %>" onclick="saveAndNav(event, this.href)"
               class="flex items-center gap-2 bg-navy-950 hover:bg-navy-900 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors text-sm">
-              Save &amp; Next <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+              <% const isSectionLast = cetSectionFlow && currentSection && currentSection.questionNumbers[currentSection.questionNumbers.length-1]===questionNumber; %>
+              <% const nextSection = isSectionLast ? sectionState.sections[currentSection.index+1] : null; %>
+              <%= nextSection ? `Complete ${currentSection.name} & Start ${nextSection.name}` : 'Save & Next' %>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </a>
           <% } else { %>
             <!-- Last Question: Save & Review -->
@@ -136,16 +150,25 @@
         </div>
       </div>
       <div class="flex-1 overflow-y-auto p-3">
-        <div class="flex flex-wrap gap-1.5">
-          <% paletteStatus.forEach(p => {
+        <div class="<%= cetSectionFlow?'space-y-3':'flex flex-wrap gap-1.5' %>">
+          <% let paletteSubject=''; paletteStatus.forEach(p => {
             const bg = p.status==='answered'?'background:#10b981;color:#fff':p.status==='marked'?'background:#8b5cf6;color:#fff':p.status==='answered-marked'?'background:#6d28d9;color:#fff':p.status==='not-answered'?'background:#f43f5e;color:#fff':'background:#e2e8f0;color:#475569';
           %>
+          <% if (cetSectionFlow && p.subject!==paletteSubject) { paletteSubject=p.subject; %>
+          <% if (p.num!==1) { %></div><% } %>
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5"><%= p.subject %> <%= p.locked?'🔒':'' %></p>
+            <div class="flex flex-wrap gap-1.5">
+          <% } %>
+          <% if (p.locked) { %>
+          <span class="palette-btn bg-slate-100 text-slate-300 cursor-not-allowed" title="Complete the previous CET section first"><%= p.num %></span>
+          <% } else { %>
           <a href="/exam/<%= test.id %>/question/<%= p.num %>" onclick="saveAndNav(event, this.href)"
             class="palette-btn <%= p.num===questionNumber?'ring-2 ring-offset-1 ring-navy-950 scale-110':'' %>"
-            style="<%= bg %>">
-            <%= p.num %>
-          </a>
+            style="<%= bg %>"><%= p.num %></a>
+          <% } %>
           <% }) %>
+          <% if (cetSectionFlow && paletteStatus.length) { %></div></div><% } %>
         </div>
       </div>
       <div class="border-t border-slate-100 p-4 text-xs text-slate-600 space-y-1.5">

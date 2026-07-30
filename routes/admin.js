@@ -1,6 +1,7 @@
 const express        = require('express');
 const router         = express.Router();
 const c              = require('../controllers/adminController');
+const questionImport = require('../controllers/questionImportController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -40,6 +41,11 @@ router.get('/ajax/topics',           ...guard, c.getTopicsForSubject);
 router.get('/ajax/subtopics',        ...guard, c.getSubtopicsForTopic);
 
 // Questions
+router.get('/questions/smart-import',                    ...guard, questionImport.getSmartImport);
+router.post('/questions/smart-import/scan',              ...guard, questionImport.scanQuestionFiles);
+router.get('/questions/smart-import/:id/review',         ...guard, questionImport.getSmartImportReview);
+router.post('/questions/smart-import/:id/commit',        ...guard, questionImport.commitSmartImport);
+router.post('/questions/smart-import/:id/discard',       ...guard, questionImport.discardSmartImport);
 router.get('/questions',                       ...guard, c.getQuestions);
 router.post('/questions',                      ...guard, c.createQuestion);
 router.post('/questions/bulk-import',          ...guard, c.bulkImportQuestions);
@@ -49,7 +55,7 @@ router.post('/questions/:id/delete',           ...guard, c.deleteQuestion);
 
 // Tests
 router.get('/tests',                      ...guard, c.getTests);
-router.get('/tests/upload',            ...guard, c.getUploadTest);
+router.get('/tests/upload',                ...guard, (req, res) => res.redirect('/admin/questions/smart-import'));
 router.get('/tests/create',               ...guard, c.getCreateTest);
 router.post('/tests',                     ...guard, c.createTest);
 router.post('/tests/upload-pdf',          ...guard, c.uploadPdfTest);

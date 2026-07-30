@@ -21,6 +21,36 @@ const loadTopics = (course, subject) => {
   return Topic.find(q).sort({ name: 1 });
 };
 
+const completedResultStatus = { $in: ['submitted', 'auto_submitted'] };
+
+async function resultQueryFrom(filters = {}) {
+  const query = { status: completedResultStatus };
+  if (filters.testId) query.testId = filters.testId;
+  if (filters.groupId) {
+    const memberships = await GroupMember.find(
+      { groupId: filters.groupId, role: 'student' },
+      'userId'
+    );
+    query.studentId = { $in: memberships.map(membership => membership.userId) };
+  }
+  return query;
+}
+
+function subjectResultValue(result, subject) {
+  const data = result.subjectScores?.[subject];
+  if (!data) return '';
+  if (data.status === 'ABSENT') return 'ABSENT';
+  return Number(data.marks || 0);
+}
+
+function safeFilenamePart(value, fallback) {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || fallback;
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
@@ -356,7 +386,7 @@ exports.getCreateTest = async (req, res) => {
       Question.find(q).sort({ subject:1, difficulty:1 }),
       loadTopics(course, subject),
     ]);
-    res.render('admin/create-test', { title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics, filterSubject:subject||'', filterCourse:course||'' });
+    res.render('admin/create-test', { title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics, filterSubject:subject||'', filterCourse:course||'', aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY) });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -425,26 +455,97 @@ exports.publishTest = async (req, res) => {
 // ── RESULTS ───────────────────────────────────────────────────────────────────
 exports.getAllResults = async (req, res) => {
   try {
-    const results = await Result.find().sort({ createdAt:-1 }).populate('studentId','name rollNo').populate('testId','title course subject');
-    res.render('admin/results', { title:'All Results', results });
+    const selectedGroupId = String(req.query.groupId || '');
+    const selectedTestId = String(req.query.testId || '');
+    const query = await resultQueryFrom({
+      groupId: selectedGroupId,
+      testId: selectedTestId,
+    });
+    const [results, groups, tests] = await Promise.all([
+      Result.find(query)
+        .sort({ createdAt:-1 })
+        .populate('studentId','name rollNo')
+        .populate('testId','title course subject'),
+      Group.find({ isActive:true }).sort({ name:1 }),
+      Test.find().select('title groups status').sort({ createdAt:-1 }),
+    ]);
+    res.render('admin/results', {
+      title:'Batch-wise Results',
+      results,
+      groups,
+      tests,
+      selectedGroupId,
+      selectedTestId,
+    });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.exportResultsExcel = async (req, res) => {
   try {
-    const results = await Result.find().sort({ createdAt:-1 }).populate('studentId','name rollNo').populate('testId','title');
+    const selectedGroupId = String(req.query.groupId || '');
+    const selectedTestId = String(req.query.testId || '');
+    const query = await resultQueryFrom({
+      groupId: selectedGroupId,
+      testId: selectedTestId,
+    });
+    const results = await Result.find(query)
+      .sort({ createdAt:-1 })
+      .populate('studentId','name rollNo')
+      .populate('testId','title');
+
+    const studentIds = results
+      .map(result => result.studentId?._id)
+      .filter(Boolean);
+    const memberships = studentIds.length
+      ? await GroupMember.find({ userId: { $in: studentIds }, role:'student' })
+          .populate('groupId','name')
+      : [];
+    const batchesByStudent = new Map();
+    memberships.forEach(membership => {
+      const studentId = membership.userId.toString();
+      const batchNames = batchesByStudent.get(studentId) || [];
+      if (membership.groupId?.name && !batchNames.includes(membership.groupId.name)) {
+        batchNames.push(membership.groupId.name);
+      }
+      batchesByStudent.set(studentId, batchNames);
+    });
+
     const data = results.map(r => ({
-      'Roll No':r.studentId?.rollNo, Name:r.studentId?.name, Test:r.testId?.title,
-      Score:r.score, 'Total Marks':r.totalMarks,
+      'Roll No':r.studentId?.rollNo,
+      Name:r.studentId?.name,
+      Batch:batchesByStudent.get(r.studentId?._id?.toString())?.join(', ') || '',
+      Test:r.testId?.title,
+      'Physics Marks':subjectResultValue(r, 'Physics'),
+      'Chemistry Marks':subjectResultValue(r, 'Chemistry'),
+      'Mathematics Marks':subjectResultValue(r, 'Mathematics'),
+      'Total Marks Obtained':r.score,
+      'Maximum Marks (Attempted Subjects)':r.totalMarks,
+      'Full Test Marks':r.fullTotalMarks || r.totalMarks,
       Percentage:r.totalMarks>0?((r.score/r.totalMarks)*100).toFixed(1)+'%':'0%',
       Rank:r.rank||'', Status:r.status,
       Date:r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'',
     }));
     const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(data), 'Results');
+    const ws = xlsx.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch:14 }, { wch:24 }, { wch:24 }, { wch:32 },
+      { wch:18 }, { wch:20 }, { wch:22 }, { wch:21 },
+      { wch:36 }, { wch:18 }, { wch:13 }, { wch:9 },
+      { wch:16 }, { wch:13 },
+    ];
+    xlsx.utils.book_append_sheet(wb, ws, 'Results');
     const buf = xlsx.write(wb, { type:'buffer', bookType:'xlsx' });
+    const [selectedGroup, selectedTest] = await Promise.all([
+      selectedGroupId ? Group.findById(selectedGroupId).select('name') : null,
+      selectedTestId ? Test.findById(selectedTestId).select('title') : null,
+    ]);
+    const filename = [
+      selectedGroup ? safeFilenamePart(selectedGroup.name, 'batch') : null,
+      selectedTest ? safeFilenamePart(selectedTest.title, 'test') : null,
+      'results',
+    ].filter(Boolean).join('_') + '.xlsx';
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition','attachment; filename=results.xlsx');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
     res.send(buf);
   } catch (e) { req.flash('error','Export failed.'); res.redirect('/admin/results'); }
 };

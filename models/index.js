@@ -8,8 +8,9 @@ const Result          = require('./Result');
 const Notification    = require('./Notification');
 const Topic           = require('./Topic');
 const StudentDocument = require('./StudentDocument');
+const QuestionImport  = require('./QuestionImport');
 
 module.exports = {
   User, Group, GroupMember, Question, Test,
-  Result, Notification, Topic, StudentDocument,
+  Result, Notification, Topic, StudentDocument, QuestionImport,
 };

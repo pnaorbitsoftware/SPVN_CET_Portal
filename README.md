@@ -1,204 +1,75 @@
-# 🎓 XYZ College — CET Online Examination System
+# SPVN Exam Portal
 
-A full-stack CET-style exam portal built with **Node.js + Express + Sequelize + MySQL + EJS + Tailwind CSS**.
+MongoDB-based online MCQ examination portal for Shardabai Pawar Vidya Niketan.
 
----
+## Main Features
 
-## 📁 Project Structure
+- Admin dashboard, students and batches
+- Manual and CSV/Excel Question Bank import
+- Smart Question Scan for PDF, Word, scans and handwritten photos
+- Editable scan review with confidence and answer-source indicators
+- Test creation, batch assignment and immediate publishing
+- Student dashboard, CET-style exam flow, scoring and results
 
-```
-cet-exam-system/
-├── app.js                  # Entry point
-├── .env                    # Environment config (college details)
-├── config/
-│   └── database.js         # Sequelize DB config
-├── models/
-│   ├── index.js            # Model registry + associations
-│   ├── User.js             # Admin / Teacher / Student
-│   ├── Group.js            # Batches/Groups
-│   ├── Question.js         # MCQ Questions
-│   ├── Test.js             # Exam definition
-│   ├── TestQuestion.js     # Test ↔ Question junction
-│   ├── Result.js           # Student exam results
-│   ├── GroupMember.js      # User ↔ Group junction
-│   ├── TestGroup.js        # Test ↔ Group junction
-│   └── Notification.js     # In-app notifications
-├── controllers/
-│   ├── authController.js
-│   ├── adminController.js
-│   ├── teacherController.js
-│   ├── studentController.js
-│   └── examController.js
-├── routes/
-│   ├── auth.js
-│   ├── admin.js
-│   ├── teacher.js
-│   ├── student.js
-│   ├── exam.js
-│   └── results.js
-├── middleware/
-│   └── auth.js             # isAuthenticated, requireRole, attachUser
-├── views/
-│   ├── partials/           # head, flash, sidebars
-│   ├── auth/               # login, change-password
-│   ├── admin/              # dashboard, students, teachers, groups, results
-│   ├── teacher/            # dashboard, questions, tests, performance
-│   ├── student/            # dashboard, tests, results, notifications
-│   └── exam/               # instructions, question, result, leaderboard
-├── utils/
-│   └── passwordHelper.js
-└── seeders/
-    └── seed.js
-```
+## Requirements
 
----
+- Node.js 18 or newer
+- MongoDB connection string
+- OpenAI API key for PDF, Word and handwritten-image scanning
 
-## ⚙️ Setup Instructions
+## Setup
 
-### 1. Prerequisites
-- Node.js v18+
-- MySQL 8.0+
-
-### 2. Clone & Install
 ```bash
-git clone <repo>
-cd cet-exam-system
 npm install
-```
-
-### 3. Configure Environment
-Edit `.env` with your MySQL credentials:
-```
-DB_HOST=localhost
-DB_NAME=xyz_cet_exam
-DB_USER=root
-DB_PASSWORD=your_password
-```
-
-### 4. Create Database
-```sql
-CREATE DATABASE xyz_cet_exam CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### 5. Run Seed (creates tables + demo data)
-```bash
-cd seeders && node seed.js
-```
-
-### 6. Start Server
-```bash
-# Development (auto-reload)
 npm run dev
+```
 
-# Production
+Open `http://localhost:5000` when `PORT=5000` is configured in `.env`.
+
+For a normal production-style start:
+
+```bash
 npm start
 ```
 
-Open: **http://localhost:3000**
+## Environment
 
----
+Required values:
 
-## 🔐 Default Login Credentials
-
-| Role    | Username                     | Password            |
-|---------|------------------------------|---------------------|
-| Admin   | admin@xyzcollege.edu.in      | Admin@XYZ2024       |
-| Teacher | priya@xyzcollege.edu.in      | Teacher@Priya2024   |
-| Student | Roll No: **2024CE001**       | CET@0001            |
-| Student | Roll No: **2024CE002**       | CET@0002            |
-
-> **First login forces password change.**
-
----
-
-## 🧑‍💼 Role Features
-
-### Admin
-- Dashboard with stats (students, teachers, tests, groups)
-- Create Teacher accounts (auto-password: `Teacher@Name1234`)
-- Create Student accounts (auto-password: `CET@XXXX`)
-- Bulk import students via CSV/Excel
-- Create groups/batches, assign members
-- View all results
-
-### Teacher
-- Create MCQ tests (title, duration, negative marking, shuffle)
-- Build question bank manually or via CSV import
-- Assign tests to groups and publish
-- View student performance & leaderboard
-
-### Student
-- View assigned tests with status
-- CET-style exam interface:
-  - Countdown timer (auto-submit on expiry)
-  - Question palette (color-coded)
-  - Mark for review
-  - Real-time AJAX answer saving
-  - Next/Previous navigation
-- View result card with rank & percentile
-- Download result as PDF
-
----
-
-## 📋 CSV Import Format
-
-### Students CSV
-```
-name,rollNo,email
-Arjun Mehta,2024CE006,arjun@example.com
+```env
+MONGO_URI=mongodb+srv://...
+SESSION_SECRET=use_a_long_random_secret
+PORT=5000
+NODE_ENV=development
 ```
 
-### Questions CSV
+Smart scanner:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_OCR_MODEL=gemini-3.5-flash
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_OCR_MODEL=gpt-5.6
+OPENAI_OCR_REASONING_EFFORT=high
 ```
-question,optionA,optionB,optionC,optionD,correctAnswer,subject,difficulty,marks
-What is H₂O?,Water,Oxygen,Hydrogen,Salt,A,Chemistry,Easy,1
-```
 
----
+The scanner prefers Gemini when `GEMINI_API_KEY` is available and falls back to OpenAI. Neither AI key is required for the deterministic CSV/Excel parser.
 
-## 🛣️ Routes
+## Smart Question Scan
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET/POST | /auth/login | Login |
-| GET/POST | /auth/change-password | Change password |
-| GET | /admin/dashboard | Admin dashboard |
-| GET | /admin/students | Student management |
-| GET | /teacher/tests/create | Create test |
-| GET | /exam/:id/instructions | Exam instructions |
-| GET | /exam/:id/question/:n | Exam question page |
-| POST | /exam/:id/save-answer | AJAX save answer |
-| POST | /exam/:id/submit | Submit exam |
-| GET | /results/:id | Result card |
-| GET | /results/:id/pdf | Download PDF |
-| GET | /results/leaderboard/:testId | Leaderboard |
+1. Sign in as admin.
+2. Open **Smart Question Scan** from the sidebar.
+3. Upload one or more supported files together.
+4. Review every extracted question and correct low-confidence fields.
+5. Save to Question Bank, or create a test and select batches.
+6. Choose **Publish now** to show the test on assigned student dashboards.
 
----
+Supported inputs:
 
-## 🔧 Tech Stack
+- PDF: typed or scanned, any number of questions per page
+- Word: `.doc`, `.docx`, `.rtf`, `.odt`
+- Spreadsheet: `.csv`, `.xls`, `.xlsx`
+- Images: `.jpg`, `.png`, `.webp`, `.gif`, `.heic`, `.tiff`, `.bmp`
+- Text: `.txt`, `.md`
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Node.js 18+ |
-| Framework | Express.js 4 |
-| ORM | Sequelize 6 |
-| Database | MySQL 8 |
-| Templating | EJS |
-| Styling | Tailwind CSS (CDN) |
-| Auth | express-session + bcryptjs |
-| PDF | pdfkit |
-| File Import | xlsx (SheetJS) |
-| File Upload | express-fileupload |
-
----
-
-## 📝 Password Policy
-
-- **Students**: `CET@` + last 4 digits of roll number (e.g. `CET@1001`)
-- **Teachers**: `Teacher@` + FirstName + random 4 digits
-- All passwords hashed with **bcrypt** (12 rounds)
-- First login forces password change
-
----
-
-*XYZ College of Engineering & Technology — Exam Cell*
+For best handwriting results, use a sharp, straight, well-lit photo and keep question numbers plus A/B/C/D labels clearly visible. AI extraction must be reviewed before publishing.

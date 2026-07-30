@@ -11,6 +11,10 @@
         <p class="text-sm text-slate-500"><%= typeof total !== "undefined" ? total : questions.length %> questions</p>
       </div>
       <div class="flex gap-2">
+        <a href="/admin/questions/smart-import"
+          class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+          ✨ Smart Scan
+        </a>
         <button onclick="document.getElementById('addQModal').classList.remove('hidden')"
           class="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors">
           + Add Question
