@@ -3,6 +3,7 @@ const { User, Group, Question, Test, GroupMember, Result, Notification, Topic, S
 const xlsx = require('xlsx');
 const fs   = require('fs');
 const path = require('path');
+const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -404,11 +405,14 @@ exports.createTest = async (req, res) => {
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
+    const parsedStartTime = parseLocalDateTime(startTime);
+    const parsedEndTime = parseLocalDateTime(endTime);
+    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     const test = await Test.create({
       title, description, duration:parseInt(duration)||180,
       negativeMarking:parseFloat(negativeMarking)||0.25, passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
-      startTime:startTime||null, endTime:endTime||null, instructions,
+      startTime:parsedStartTime, endTime:parsedEndTime, instructions,
       totalMarks, createdBy:req.session.user.id, status:'draft',
       course: courseArr, subject: subjectArr, topic:topic||null, subtopic:subtopic||null,
       marksPerQuestion:parseFloat(marksPerQuestion)||1,
@@ -652,7 +656,7 @@ exports.getEditTest = async (req, res) => {
       Question.find({ isActive:true }).sort({ subject:1, difficulty:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
-    res.render('admin/edit-test', { title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS });
+    res.render('admin/edit-test', { title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, formatDateTimeLocal });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -666,12 +670,15 @@ exports.updateTest = async (req, res) => {
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
+    const parsedStartTime = parseLocalDateTime(startTime);
+    const parsedEndTime = parseLocalDateTime(endTime);
+    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     await Test.findByIdAndUpdate(req.params.id, {
       title, description, duration:parseInt(duration)||180,
       negativeMarking:parseFloat(negativeMarking)||0.25,
       passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
-      startTime:startTime||null, endTime:endTime||null, instructions,
+      startTime:parsedStartTime, endTime:parsedEndTime, instructions,
       course: courseArr, subject: subjectArr, groups, totalMarks,
       autoSubmitOnViolation:req.body.autoSubmitOnViolation==='on',
       maxTabSwitches:parseInt(req.body.maxTabSwitches)||3,
@@ -740,9 +747,12 @@ exports.uploadPdfTest = async (req, res) => {
     const groups=Array.isArray(groupIds)?groupIds:(groupIds?[groupIds]:[]);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
+    const parsedStartTime = parseLocalDateTime(startTime);
+    const parsedEndTime = parseLocalDateTime(endTime);
+    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     const test = await Test.create({
       title:title.trim(), description:description||null, duration:parseInt(duration)||180,
-      negativeMarking:parseFloat(negativeMarking)||0.25, startTime:startTime||null, endTime:endTime||null,
+      negativeMarking:parseFloat(negativeMarking)||0.25, startTime:parsedStartTime, endTime:parsedEndTime,
       instructions:instructions||null, totalMarks, createdBy:req.session.user.id, status:'draft',
       course:courseArr, subject:subjectArr, marksPerQuestion:mpq,
       questionPdfPath, solutionPdfPath, groups,

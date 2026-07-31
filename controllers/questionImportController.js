@@ -13,6 +13,7 @@ const {
   extractQuestionFiles,
   normalizeQuestion,
 } = require('../utils/questionImporter');
+const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -60,12 +61,6 @@ function selectedValues(value) {
   return Array.isArray(value) ? value : [value];
 }
 
-function safeDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function testDefaultsFrom(body) {
   if (body.fromCreateTest !== '1') return {};
   return {
@@ -73,8 +68,8 @@ function testDefaultsFrom(body) {
     description: String(body.testDescription || '').trim(),
     duration: Math.max(5, Number.parseInt(body.testDuration, 10) || 180),
     negativeMarking: Math.max(0, Number(body.testNegativeMarking) || 0),
-    startTime: safeDate(body.testStartTime),
-    endTime: safeDate(body.testEndTime),
+    startTime: parseLocalDateTime(body.testStartTime),
+    endTime: parseLocalDateTime(body.testEndTime),
     instructions: String(body.testInstructions || '').trim(),
     courses: selectedValues(body.testCourses).filter(course => COURSES.includes(course)),
     groupIds: selectedValues(body.testGroupIds),
@@ -160,6 +155,7 @@ exports.getSmartImportReview = async (req, res) => {
       groups,
       COURSES,
       SUBJECTS,
+      formatDateTimeLocal,
     });
   } catch (error) {
     req.flash('error', `Unable to open review: ${error.message}`);
@@ -222,8 +218,8 @@ exports.commitSmartImport = async (req, res) => {
       throw new Error('Test title is required.');
     }
 
-    const startTime = safeDate(req.body.startTime);
-    const endTime = safeDate(req.body.endTime);
+    const startTime = parseLocalDateTime(req.body.startTime);
+    const endTime = parseLocalDateTime(req.body.endTime);
     if (startTime && endTime && endTime <= startTime) {
       throw new Error('Test end time must be after start time.');
     }
