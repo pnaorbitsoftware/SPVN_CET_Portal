@@ -57,7 +57,11 @@
           function tick() {
             const diff = target - Date.now();
             if (!el) return;
-            if (diff <= 0) { el.textContent = 'Now!'; return; }
+            if (diff <= 0) {
+              el.textContent = 'Now!';
+              window.location.reload();
+              return;
+            }
             const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
             el.textContent = h > 0 ? `in ${h}h ${m}m` : m > 0 ? `in ${m}m ${s}s` : `in ${s}s`;
             setTimeout(tick, 1000);
@@ -217,11 +221,11 @@
                 </div>
                 <% if (test.startTime && !started) { %>
                 <p class="text-[10px] text-amber-600 font-semibold mt-0.5">
-                  Opens: <%= new Date(test.startTime).toLocaleDateString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) %>
+                  Opens: <%= new Date(test.startTime).toLocaleDateString('en-IN',{timeZone:appTimeZone,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) %>
                 </p>
                 <% } else if (test.endTime) { %>
                 <p class="text-[10px] text-rose-500 font-semibold mt-0.5">
-                  Due: <%= new Date(test.endTime).toLocaleDateString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) %>
+                  Due: <%= new Date(test.endTime).toLocaleDateString('en-IN',{timeZone:appTimeZone,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) %>
                 </p>
                 <% } %>
               </div>

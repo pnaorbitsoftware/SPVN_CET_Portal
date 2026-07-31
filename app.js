@@ -11,6 +11,7 @@ const helmet         = require('helmet');
 const { MongoStore } = require('connect-mongo');
 
 const { connect } = require('./config/database');
+const { APP_TIME_ZONE } = require('./utils/dateTime');
 require('./models'); // register all schemas
 
 const { attachUser, errorHandler, notFound } = require('./middleware/auth');
@@ -27,6 +28,7 @@ app.use(compression({ level: 6, threshold: 1024 }));
 // ── View engine ───────────────────────────────────────────────────────────────
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.locals.appTimeZone = APP_TIME_ZONE;
 
 // ── Static files ──────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public'), {
