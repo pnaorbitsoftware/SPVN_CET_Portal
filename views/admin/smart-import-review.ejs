@@ -44,7 +44,8 @@
       </details>
       <% } %>
 
-      <form id="reviewForm" action="/admin/questions/smart-import/<%= importDraft._id %>/commit" method="POST" onsubmit="return validateAndSubmit()">
+      <form id="reviewForm" action="/admin/questions/smart-import/<%= importDraft._id %>/commit" method="POST" onsubmit="return validateAndSubmit(event)">
+        <input id="importActionInput" type="hidden" name="importAction" value=""/>
         <div class="sticky top-[73px] z-10 bg-slate-50/95 backdrop-blur border border-slate-200 rounded-xl p-3 mb-4 shadow-sm flex flex-wrap items-center gap-2">
           <span id="selectedCount" class="text-sm font-bold text-slate-800 mr-2"></span>
           <button type="button" onclick="setSelection('all')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50">Select all</button>
@@ -135,13 +136,13 @@
         </div>
 
         <section class="mt-7 bg-white border border-indigo-200 rounded-2xl shadow-sm overflow-hidden">
-          <label class="flex items-start gap-3 p-5 lg:p-6 bg-indigo-50 cursor-pointer">
-            <input id="createTest" type="checkbox" name="createTest" value="on" checked onchange="toggleTestPanel()" class="mt-1 rounded w-4 h-4"/>
+          <div class="flex items-start gap-3 p-5 lg:p-6 bg-indigo-50">
+            <span class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">🚀</span>
             <span>
-              <strong class="block text-indigo-950">Create a test from these questions</strong>
-              <span class="block text-xs text-indigo-700 mt-1">Select batches and publish now to make the test appear immediately on student dashboards.</span>
+              <strong class="block text-indigo-950">Test details for publishing</strong>
+              <span class="block text-xs text-indigo-700 mt-1">These details are used only when you click “Save &amp; Publish Test”.</span>
             </span>
-          </label>
+          </div>
 
           <div id="testPanel" class="p-5 lg:p-6 space-y-5">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,7 +188,7 @@
                 <% }) %>
               </div>
               <% } else { %>
-              <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">No active batch exists. The test can be saved as draft, but create a batch before publishing.</p>
+              <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">No active batch exists. You can still save to Question Bank, but create a batch before publishing a test.</p>
               <% } %>
             </div>
 
@@ -206,20 +207,19 @@
             <div class="flex flex-wrap gap-5 pt-2 border-t border-slate-100">
               <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" name="shuffleQuestions" value="on" checked class="rounded"/> Shuffle questions</label>
               <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" name="shuffleOptions" value="on" class="rounded"/> Shuffle options</label>
-              <label class="flex items-center gap-2 text-sm font-bold text-emerald-700 cursor-pointer">
-                <input id="publishNow" type="checkbox" name="publishNow" value="on" data-groups-available="<%= groups.length ? '1' : '0' %>" <%= groups.length ? 'checked' : 'disabled' %> class="rounded"/>
-                Publish now to student dashboards
-              </label>
             </div>
           </div>
         </section>
 
-        <div class="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-950 rounded-2xl p-4 lg:p-5 text-white">
+        <div class="mt-6 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-slate-950 rounded-2xl p-4 lg:p-5 text-white">
           <div>
-            <p class="font-bold">Ready after review?</p>
-            <p class="text-xs text-slate-300 mt-1">Only selected and valid questions will be saved.</p>
+            <p class="font-bold">Choose what to do with the selected questions</p>
+            <p class="text-xs text-slate-300 mt-1">Save only to Question Bank, or create and publish a test to students.</p>
           </div>
-          <button id="saveButton" type="submit" class="w-full sm:w-auto bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl px-6 py-3 transition-colors">Save &amp; Publish Test</button>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <button id="saveQuestionsButton" type="submit" value="save_questions" class="w-full sm:w-auto bg-white hover:bg-slate-100 text-slate-950 font-bold rounded-xl px-6 py-3 transition-colors">Save to Question Bank</button>
+            <button id="publishTestButton" type="submit" value="publish_test" class="w-full sm:w-auto bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl px-6 py-3 transition-colors">Save &amp; Publish Test</button>
+          </div>
         </div>
       </form>
     </div>
@@ -229,8 +229,8 @@
 <div id="saveOverlay" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6">
   <div class="bg-white rounded-2xl p-7 max-w-sm w-full text-center shadow-2xl">
     <div class="w-14 h-14 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto mb-5"></div>
-    <h3 class="font-bold text-slate-900 text-lg">Saving questions…</h3>
-    <p class="text-sm text-slate-500 mt-2">Question Bank and assigned student dashboards are being updated safely.</p>
+    <h3 id="saveOverlayTitle" class="font-bold text-slate-900 text-lg">Saving questions…</h3>
+    <p id="saveOverlayText" class="text-sm text-slate-500 mt-2">Your selected questions are being saved safely.</p>
   </div>
 </div>
 
@@ -240,7 +240,6 @@ const questionCards = Array.from(document.querySelectorAll('.question-card'));
 function updateSelectionCount() {
   const selected = document.querySelectorAll('.question-select:checked').length;
   document.getElementById('selectedCount').textContent = `${selected} of ${questionCards.length} selected`;
-  updateSaveButton();
 }
 
 function setSelection(mode) {
@@ -260,28 +259,9 @@ function filterAttention() {
   });
 }
 
-function toggleTestPanel() {
-  const enabled = document.getElementById('createTest').checked;
-  const panel = document.getElementById('testPanel');
-  panel.classList.toggle('hidden', !enabled);
-  panel.querySelectorAll('input,textarea,select').forEach(field => field.disabled = !enabled);
-  const publishNow = document.getElementById('publishNow');
-  if (enabled && publishNow.dataset.groupsAvailable === '0') publishNow.disabled = true;
-  updateSaveButton();
-}
-
-function updateSaveButton() {
-  const createTest = document.getElementById('createTest').checked;
-  const publishNow = document.getElementById('publishNow');
-  const button = document.getElementById('saveButton');
-  if (!createTest) button.textContent = 'Save to Question Bank';
-  else if (publishNow && publishNow.checked) button.textContent = 'Save & Publish Test';
-  else button.textContent = 'Save & Create Draft Test';
-}
-
-document.getElementById('publishNow')?.addEventListener('change', updateSaveButton);
-
-function validateAndSubmit() {
+function validateAndSubmit(event) {
+  const action = event.submitter?.value || 'save_questions';
+  document.getElementById('importActionInput').value = action;
   const selectedCards = questionCards.filter(card => card.querySelector('.question-select').checked);
   questionCards.forEach(card => card.classList.remove('ring-2','ring-rose-500'));
   if (!selectedCards.length) {
@@ -301,24 +281,27 @@ function validateAndSubmit() {
     return false;
   }
 
-  if (document.getElementById('createTest').checked) {
+  if (action === 'publish_test') {
     if (!document.getElementById('testTitle').value.trim()) {
       alert('Enter a test title.');
       return false;
     }
-    const publishNow = document.getElementById('publishNow');
     const selectedGroups = document.querySelectorAll('.group-checkbox:checked').length;
-    if (publishNow && publishNow.checked && !selectedGroups) {
+    if (!selectedGroups) {
       alert('Select at least one batch before publishing to student dashboards.');
       return false;
     }
   }
 
-  document.getElementById('saveButton').disabled = true;
+  document.getElementById('saveQuestionsButton').disabled = true;
+  document.getElementById('publishTestButton').disabled = true;
+  document.getElementById('saveOverlayTitle').textContent = action === 'publish_test' ? 'Publishing test…' : 'Saving to Question Bank…';
+  document.getElementById('saveOverlayText').textContent = action === 'publish_test'
+    ? 'Questions are being saved and the test is being sent to selected student dashboards.'
+    : 'Questions are being saved without creating or publishing a test.';
   document.getElementById('saveOverlay').classList.remove('hidden');
   return true;
 }
 
 updateSelectionCount();
-toggleTestPanel();
 </script>

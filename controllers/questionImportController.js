@@ -208,8 +208,12 @@ exports.commitSmartImport = async (req, res) => {
       throw new Error(`Fix missing text/options/answers in selected question(s): ${invalidRows.slice(0, 12).join(', ')}.`);
     }
 
-    const createTest = req.body.createTest === 'on';
-    const publishNow = createTest && req.body.publishNow === 'on';
+    const importAction = req.body.importAction;
+    if (!['save_questions', 'publish_test'].includes(importAction)) {
+      throw new Error('Choose Save to Question Bank or Save & Publish Test.');
+    }
+    const createTest = importAction === 'publish_test';
+    const publishNow = createTest;
     const groupIds = selectedValues(req.body.groupIds);
     if (publishNow && !groupIds.length) {
       throw new Error('Select at least one batch before publishing to student dashboards.');
@@ -218,8 +222,8 @@ exports.commitSmartImport = async (req, res) => {
       throw new Error('Test title is required.');
     }
 
-    const startTime = parseLocalDateTime(req.body.startTime);
-    const endTime = parseLocalDateTime(req.body.endTime);
+    const startTime = createTest ? parseLocalDateTime(req.body.startTime) : null;
+    const endTime = createTest ? parseLocalDateTime(req.body.endTime) : null;
     if (startTime && endTime && endTime <= startTime) {
       throw new Error('Test end time must be after start time.');
     }
@@ -304,7 +308,7 @@ exports.commitSmartImport = async (req, res) => {
     }
 
     const message = createdTest
-      ? `${selectedQuestions.length} questions saved and test ${publishNow ? 'published to students' : 'created as draft'}.`
+      ? `${selectedQuestions.length} questions saved and test published to students.`
       : `${selectedQuestions.length} questions saved to Question Bank.`;
     req.flash('success', message);
     res.redirect(createdTest ? `/admin/tests/${createdTest._id}` : '/admin/questions');
