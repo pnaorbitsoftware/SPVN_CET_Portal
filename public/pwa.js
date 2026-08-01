@@ -22,67 +22,78 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ── Install Prompt (Add to Home Screen) ──────────────────────────────────────
+// ── Login-page Install Prompt (Android WebAPK / Add to Home Screen) ──────────
 let deferredInstallPrompt = null;
 
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  // Never nag to install while a student is actively taking an exam
-  if (/^\/exam\/[^/]+\/question\//.test(window.location.pathname)) return;
-  showInstallBanner();
+function installButton() {
+  return document.getElementById('pwa-install-trigger');
+}
+
+function installStatus() {
+  return document.getElementById('pwa-install-status');
+}
+
+function isInstalledApp() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function setInstallStatus(message, installed = false) {
+  const status = installStatus();
+  if (status) {
+    status.textContent = message;
+    status.className = `mt-2 text-center text-[11px] leading-relaxed ${installed ? 'text-emerald-700' : 'text-indigo-700'}`;
+  }
+  const button = installButton();
+  if (button && installed) {
+    button.disabled = true;
+    button.classList.add('opacity-70', 'cursor-default');
+    button.lastChild.textContent = ' App Installed';
+  }
+}
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  if (installButton()) setInstallStatus('Ready to install. Tap the button to continue.');
 });
 
-function showInstallBanner() {
-  // Only show if not already installed
-  if (window.matchMedia('(display-mode: standalone)').matches) return;
+async function requestAppInstall() {
+  if (isInstalledApp()) {
+    setInstallStatus('SPVN App is already installed on this device.', true);
+    return;
+  }
 
-  // Respect a previous "Not now" dismissal (don't show again for 3 days)
-  const dismissedUntil = parseInt(localStorage.getItem('pwa-dismissed') || '0', 10);
-  if (dismissedUntil && Date.now() < dismissedUntil) return;
-
-  // Avoid stacking duplicate banners if one is already on screen
-  if (document.getElementById('pwa-install-banner')) return;
-
-  const banner = document.createElement('div');
-  banner.id = 'pwa-install-banner';
-  banner.className = 'fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 bg-slate-900 text-white rounded-2xl shadow-2xl p-4 z-50 border border-slate-700 flex items-start gap-3';
-  banner.innerHTML = `
-    <img src="/icons/icon-72x72.png" class="w-12 h-12 rounded-xl shrink-0" alt="App icon"/>
-    <div class="flex-1 min-w-0">
-      <p class="font-bold text-sm">Install CET Exam App</p>
-      <p class="text-xs text-slate-400 mt-0.5">Add to home screen for faster access & offline support</p>
-      <div class="flex gap-2 mt-3">
-        <button id="pwa-install-btn" class="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold text-xs py-2 px-3 rounded-lg transition-colors">
-          📲 Install App
-        </button>
-        <button id="pwa-dismiss-btn" class="px-3 py-2 text-slate-400 hover:text-white text-xs transition-colors">
-          Not now
-        </button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(banner);
-
-  document.getElementById('pwa-install-btn').addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
+  if (deferredInstallPrompt) {
     deferredInstallPrompt.prompt();
     const { outcome } = await deferredInstallPrompt.userChoice;
     console.log('[PWA] Install outcome:', outcome);
     deferredInstallPrompt = null;
-    banner.remove();
-  });
+    setInstallStatus(
+      outcome === 'accepted'
+        ? 'Installation started. The SPVN App will appear on your home screen.'
+        : 'Installation was cancelled. You can try again from the browser menu.'
+    );
+    return;
+  }
 
-  document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
-    banner.remove();
-    // Don't show again for 3 days
-    localStorage.setItem('pwa-dismissed', Date.now() + 3 * 24 * 3600 * 1000);
-  });
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  setInstallStatus(
+    isIOS
+      ? 'On iPhone/iPad: tap Share, then choose Add to Home Screen.'
+      : 'On Android Chrome: open the ⋮ menu and tap Install app or Add to Home screen.'
+  );
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const button = installButton();
+  if (!button) return;
+  button.addEventListener('click', requestAppInstall);
+  if (isInstalledApp()) setInstallStatus('SPVN App is already installed on this device.', true);
+});
 
 window.addEventListener('appinstalled', () => {
   console.log('[PWA] App installed!');
-  document.getElementById('pwa-install-banner')?.remove();
+  setInstallStatus('SPVN App installed successfully.', true);
 });
 
 // ── Update Banner ─────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 {
-  "name": "XYZ College CET Examination Portal",
-  "short_name": "CET Exam",
-  "description": "Online CET Examination System for XYZ College of Engineering & Technology",
-  "start_url": "/?source=pwa",
+  "name": "SPVN CET Examination Portal",
+  "short_name": "SPVN CET",
+  "description": "Online CET Examination System for Shardabai Pawar Vidya Niketan",
+  "start_url": "/auth/login?source=pwa",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#131330",
@@ -21,10 +21,6 @@
     { "src": "/icons/icon-192x192.png","sizes": "192x192", "type": "image/png", "purpose": "maskable any" },
     { "src": "/icons/icon-384x384.png","sizes": "384x384", "type": "image/png", "purpose": "maskable any" },
     { "src": "/icons/icon-512x512.png","sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
-  ],
-  "screenshots": [
-    { "src": "/icons/screenshot-wide.png",   "sizes": "1280x720", "type": "image/png", "form_factor": "wide"   },
-    { "src": "/icons/screenshot-mobile.png", "sizes": "390x844",  "type": "image/png", "form_factor": "narrow" }
   ],
   "shortcuts": [
     {

@@ -45,9 +45,17 @@ const MIME_BY_EXTENSION = {
   '.bmp': 'image/bmp',
 };
 
+const VisualBoxSchema = z.object({
+  x: z.number().min(0).max(1000),
+  y: z.number().min(0).max(1000),
+  width: z.number().min(1).max(1000),
+  height: z.number().min(1).max(1000),
+}).nullable();
+
 const MCQSchema = z.object({
   question: z.string(),
   questionImageSource: z.string(),
+  questionImageBox: VisualBoxSchema,
   optionA: z.string(),
   optionB: z.string(),
   optionC: z.string(),
@@ -154,11 +162,29 @@ function normalizeMarks(value, fallback = 1) {
   return Number.isFinite(fallbackMarks) && fallbackMarks > 0 ? fallbackMarks : 1;
 }
 
+function normalizeVisualBox(value) {
+  if (!value || typeof value !== 'object') return null;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+
+  const left = Math.max(0, Math.min(999, x));
+  const top = Math.max(0, Math.min(999, y));
+  const boundedWidth = Math.max(1, Math.min(1000 - left, width));
+  const boundedHeight = Math.max(1, Math.min(1000 - top, height));
+  if (boundedWidth >= 950 && boundedHeight >= 950) return null;
+
+  return { x: left, y: top, width: boundedWidth, height: boundedHeight };
+}
+
 function normalizeQuestion(raw, defaults = {}) {
   const normalized = {
     question: cleanText(raw.question),
     questionImage: cleanText(raw.questionImage || raw.questionImageUrl) || null,
     questionImageSource: cleanText(raw.questionImageSource) || null,
+    questionImageBox: normalizeVisualBox(raw.questionImageBox),
     sourceDocument: cleanText(raw.sourceDocument) || null,
     sourcePage: Number.isInteger(Number(raw.sourcePage)) && Number(raw.sourcePage) > 0
       ? Number(raw.sourcePage)
@@ -354,7 +380,7 @@ function sourceMatches(hint, sourceName) {
 }
 
 function questionNeedsVisual(question) {
-  if (question.questionImageSource) return true;
+  if (question.questionImageSource || question.questionImageBox) return true;
   return /(diagram|figure|graph|chart|image|map|table|circuit|structure|आकृती|चित्र|नकाशा|तक्ता)/i
     .test(question.question || '');
 }
@@ -364,7 +390,7 @@ async function renderPdfPage(pdfPath, pageNumber, outputPrefix) {
   try {
     await execFileAsync('pdftoppm', [
       '-jpeg',
-      '-r', '150',
+      '-r', '220',
       '-f', String(pageNumber),
       '-l', String(pageNumber),
       '-singlefile',
@@ -375,6 +401,34 @@ async function renderPdfPage(pdfPath, pageNumber, outputPrefix) {
   } catch {
     return null;
   }
+}
+
+async function cropVisualRegion(sourcePath, visualBox, outputPath) {
+  const box = normalizeVisualBox(visualBox);
+  if (!box) return null;
+
+  const metadata = await sharp(sourcePath).metadata();
+  if (!metadata.width || !metadata.height) return null;
+
+  const padding = 10;
+  const x1 = Math.max(0, box.x - padding);
+  const y1 = Math.max(0, box.y - padding);
+  const x2 = Math.min(1000, box.x + box.width + padding);
+  const y2 = Math.min(1000, box.y + box.height + padding);
+  const left = Math.max(0, Math.floor((x1 / 1000) * metadata.width));
+  const top = Math.max(0, Math.floor((y1 / 1000) * metadata.height));
+  const right = Math.min(metadata.width, Math.ceil((x2 / 1000) * metadata.width));
+  const bottom = Math.min(metadata.height, Math.ceil((y2 / 1000) * metadata.height));
+  const width = right - left;
+  const height = bottom - top;
+  if (width < 20 || height < 20) return null;
+
+  await sharp(sourcePath)
+    .extract({ left, top, width, height })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 94, chromaSubsampling: '4:4:4' })
+    .toFile(outputPath);
+  return outputPath;
 }
 
 async function preserveQuestionVisuals(files, questions, importId) {
@@ -397,11 +451,12 @@ async function preserveQuestionVisuals(files, questions, importId) {
     if (IMAGE_EXTENSIONS.has(extension)) {
       try {
         const image = await prepareImage(file);
-        const fileName = `${assetPrefix}.jpg`;
-        fs.writeFileSync(path.join(outputDir, fileName), image.data);
+        const fileName = `${assetPrefix}-source.jpg`;
+        const filePath = path.join(outputDir, fileName);
+        fs.writeFileSync(filePath, image.data);
         standaloneImages.push({
           sourceName: file.name,
-          url: `/${relativeDir}/${fileName}`,
+          filePath,
         });
       } catch (error) {
         warnings.push(`${file.name}: source image could not be preserved (${error.message}).`);
@@ -410,13 +465,12 @@ async function preserveQuestionVisuals(files, questions, importId) {
     }
 
     if (extension === '.pdf') {
-      const fileName = `${assetPrefix}.pdf`;
+      const fileName = `${assetPrefix}-source.pdf`;
       const filePath = path.join(outputDir, fileName);
       fs.writeFileSync(filePath, file.data);
       pdfAssets.push({
         sourceName: file.name,
         filePath,
-        url: `/${relativeDir}/${fileName}`,
         prefix: assetPrefix,
         renderedPages: new Map(),
       });
@@ -439,15 +493,26 @@ async function preserveQuestionVisuals(files, questions, importId) {
   }
 
   const enrichedQuestions = [];
-  for (const originalQuestion of questions) {
+  for (const [questionIndex, originalQuestion] of questions.entries()) {
     const question = { ...originalQuestion };
     const hint = `${question.sourceLabel || ''} ${question.questionImageSource || ''}`;
     const matchedInputFile = files.find(file => sourceMatches(hint, file.name));
 
-    if (!question.questionImage && standaloneImages.length) {
+    if (!question.questionImage && standaloneImages.length && questionNeedsVisual(question)) {
       const sourceImage = standaloneImages.find(asset => sourceMatches(hint, asset.sourceName))
         || (files.length === 1 && standaloneImages.length === 1 ? standaloneImages[0] : null);
-      if (sourceImage) question.questionImage = sourceImage.url;
+      if (sourceImage && question.questionImageBox) {
+        const cropName = `${safeAssetName(path.basename(sourceImage.sourceName, path.extname(sourceImage.sourceName)))}-q-${questionIndex + 1}.jpg`;
+        const cropPath = path.join(outputDir, cropName);
+        try {
+          const croppedPath = await cropVisualRegion(sourceImage.filePath, question.questionImageBox, cropPath);
+          if (croppedPath) question.questionImage = `/${relativeDir}/${cropName}`;
+        } catch (error) {
+          warnings.push(`${question.sourceLabel || sourceImage.sourceName}: diagram crop failed (${error.message}).`);
+        }
+      } else if (sourceImage) {
+        warnings.push(`${question.sourceLabel || sourceImage.sourceName}: diagram coordinates were unavailable, so the full page was not attached.`);
+      }
     }
 
     if (!question.questionImage && embeddedImages.length && questionNeedsVisual(question)) {
@@ -461,27 +526,46 @@ async function preserveQuestionVisuals(files, questions, importId) {
       || (files.length === 1 && pdfAssets.length === 1 ? pdfAssets[0] : null);
     if (pdfAsset) {
       const pageNumber = sourcePageNumber(question);
-      question.sourceDocument = pdfAsset.url;
-      question.sourcePage = pageNumber;
-
       if (!question.questionImage && pageNumber && questionNeedsVisual(question)) {
-        if (!pdfAsset.renderedPages.has(pageNumber)) {
-          const outputPrefix = path.join(outputDir, `${pdfAsset.prefix}-page-${pageNumber}`);
-          const renderedPath = await renderPdfPage(pdfAsset.filePath, pageNumber, outputPrefix);
-          pdfAsset.renderedPages.set(
-            pageNumber,
-            renderedPath ? `/${relativeDir}/${path.basename(renderedPath)}` : null
-          );
-        }
-        question.questionImage = pdfAsset.renderedPages.get(pageNumber) || null;
-        if (!question.questionImage) {
-          warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: visual retained through the original PDF page because page rasterization was unavailable.`);
+        if (!question.questionImageBox) {
+          warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: diagram coordinates were unavailable, so the full PDF page was not attached.`);
+        } else {
+          if (!pdfAsset.renderedPages.has(pageNumber)) {
+            const outputPrefix = path.join(outputDir, `${pdfAsset.prefix}-page-${pageNumber}`);
+            const renderedPath = await renderPdfPage(pdfAsset.filePath, pageNumber, outputPrefix);
+            pdfAsset.renderedPages.set(pageNumber, renderedPath);
+          }
+          const renderedPath = pdfAsset.renderedPages.get(pageNumber);
+          if (renderedPath) {
+            const cropName = `${pdfAsset.prefix}-page-${pageNumber}-q-${questionIndex + 1}.jpg`;
+            const cropPath = path.join(outputDir, cropName);
+            try {
+              const croppedPath = await cropVisualRegion(renderedPath, question.questionImageBox, cropPath);
+              if (croppedPath) question.questionImage = `/${relativeDir}/${cropName}`;
+            } catch (error) {
+              warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: diagram crop failed (${error.message}).`);
+            }
+          }
+          if (!question.questionImage) {
+            warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: the diagram could not be cropped and no full-page fallback was attached.`);
+          }
         }
       }
     }
 
+    question.sourceDocument = null;
+    question.sourcePage = null;
+
     enrichedQuestions.push(question);
   }
+
+  standaloneImages.forEach(asset => fs.rmSync(asset.filePath, { force: true }));
+  pdfAssets.forEach(asset => {
+    fs.rmSync(asset.filePath, { force: true });
+    asset.renderedPages.forEach(renderedPath => {
+      if (renderedPath) fs.rmSync(renderedPath, { force: true });
+    });
+  });
 
   return { questions: enrichedQuestions, warnings: [...new Set(warnings)] };
 }
@@ -513,7 +597,8 @@ Rules:
    difficulty=${normalizeDifficulty(defaults.difficulty)}
    marks=${normalizeMarks(defaults.marks)}
 10. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the question depends on a diagram, graph, figure, map, table, or other visual. Otherwise use an empty string.
-11. explanation may be empty. topic and subtopic may be empty.
+11. questionImageBox must be null when no visual is required. When a visual is required, return the tight bounding box of ONLY that question's diagram/graph/figure/map/table in the source page or image as x, y, width, and height normalized from 0 to 1000. Exclude page margins, headings, question text, options, answers, and all neighbouring questions. Never return the whole page.
+12. explanation may be empty. topic and subtopic may be empty.
 
 Attached source names: ${fileNames.join(', ')}`;
 }
