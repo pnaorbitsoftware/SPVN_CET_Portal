@@ -12,6 +12,8 @@ const {
   extensionOf,
   extractQuestionFiles,
   normalizeQuestion,
+  preserveQuestionVisuals,
+  removeQuestionImportAssets,
 } = require('../utils/questionImporter');
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
 
@@ -117,8 +119,9 @@ exports.scanQuestionFiles = async (req, res) => {
       throw new Error('No MCQ questions were detected. Check file quality and ensure every question has A/B/C/D options.');
     }
 
-    importDraft.questions = result.questions.map(question => ({ ...question, isSelected: true }));
-    importDraft.warnings = result.warnings;
+    const visualResult = await preserveQuestionVisuals(files, result.questions, importDraft._id);
+    importDraft.questions = visualResult.questions.map(question => ({ ...question, isSelected: true }));
+    importDraft.warnings = [...new Set([...result.warnings, ...visualResult.warnings])];
     importDraft.extractionMethod = result.method;
     importDraft.extractionModel = result.model;
     importDraft.status = 'review';
@@ -180,6 +183,10 @@ exports.commitSmartImport = async (req, res) => {
       const original = importDraft.questions[index];
       const normalized = normalizeQuestion({
         ...row,
+        questionImage: row.questionImage || original.questionImage,
+        questionImageSource: original.questionImageSource,
+        sourceDocument: row.sourceDocument || original.sourceDocument,
+        sourcePage: row.sourcePage || original.sourcePage,
         confidence: original.confidence,
         sourceLabel: original.sourceLabel,
         answerSource: original.answerSource,
@@ -234,6 +241,9 @@ exports.commitSmartImport = async (req, res) => {
       await session.withTransaction(async () => {
         const questionDocuments = selectedQuestions.map(question => ({
           question: question.question,
+          questionImage: question.questionImage || null,
+          sourceDocument: question.sourceDocument || null,
+          sourcePage: question.sourcePage || null,
           optionA: question.optionA,
           optionB: question.optionB,
           optionC: question.optionC,
@@ -321,10 +331,11 @@ exports.commitSmartImport = async (req, res) => {
 
 exports.discardSmartImport = async (req, res) => {
   try {
-    await QuestionImport.deleteOne({
+    const discarded = await QuestionImport.findOneAndDelete({
       ...ownImportQuery(req, req.params.id),
       status: { $in: ['review','failed'] },
     });
+    if (discarded) removeQuestionImportAssets(discarded._id);
     req.flash('success', 'Import draft discarded.');
   } catch (error) {
     req.flash('error', `Could not discard import: ${error.message}`);

@@ -22,6 +22,7 @@ const resultSchema = new mongoose.Schema({
   violationCount:  { type: Number, default: 0 },
   status:          { type: String, enum: ['in_progress','submitted','auto_submitted','terminated'], default: 'in_progress' },
   questionOrder:   { type: [mongoose.Schema.Types.Mixed], default: [] },
+  visitedQuestionIds:{ type: [mongoose.Schema.Types.Mixed], default: [] },
   markedForReview: { type: [mongoose.Schema.Types.Mixed], default: [] },
   startedAt:       { type: Date, default: null },
   submittedAt:     { type: Date, default: null },

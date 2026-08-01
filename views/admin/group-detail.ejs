@@ -24,6 +24,13 @@
     <div class="p-5 lg:p-8">
       <%- include('../partials/flash') %>
       <div class="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <label class="relative flex-1">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+            <input id="studentSearch" type="search" oninput="filterStudents()" placeholder="Search student name, roll number or parent contact…" class="w-full border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/>
+          </label>
+          <p class="text-xs text-slate-500 px-2"><strong id="visibleStudentCount" class="text-slate-800"><%= members.length %></strong> of <%= members.length %> students</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-xs sm:text-sm">
             <thead class="bg-slate-50">
@@ -38,7 +45,7 @@
             </thead>
             <tbody class="divide-y divide-slate-50">
               <% members.forEach((s, i) => { %>
-              <tr class="hover:bg-slate-50 transition-colors">
+              <tr class="student-row hover:bg-slate-50 transition-colors" data-search="<%= [s.name,s.rollNo,s.parentContact].filter(Boolean).join(' ').toLowerCase() %>">
                 <td class="px-6 py-4 text-slate-400 text-xs"><%= i + 1 %></td>
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
@@ -65,6 +72,7 @@
               <% if (members.length === 0) { %>
               <tr><td colspan="6" class="px-6 py-16 text-center text-slate-400">No students in this batch yet.</td></tr>
               <% } %>
+              <tr id="noStudentResults" class="hidden"><td colspan="6" class="px-6 py-12 text-center text-slate-400">No matching student found.</td></tr>
             </tbody>
           </table>
         </div>
@@ -140,6 +148,18 @@
 </div>
 
 <script>
+function filterStudents() {
+  const query = document.getElementById('studentSearch').value.trim().toLowerCase();
+  const rows = Array.from(document.querySelectorAll('.student-row'));
+  let visible = 0;
+  rows.forEach(row => {
+    const show = !query || row.dataset.search.includes(query);
+    row.classList.toggle('hidden', !show);
+    if (show) visible += 1;
+  });
+  document.getElementById('visibleStudentCount').textContent = visible;
+  document.getElementById('noStudentResults').classList.toggle('hidden', visible !== 0 || rows.length === 0);
+}
 function openMoveStudent(studentId, name) {
   document.getElementById('moveStudentForm').action = '/admin/groups/<%= group.id %>/students/' + studentId + '/move';
   document.getElementById('moveStudentName').textContent = name;

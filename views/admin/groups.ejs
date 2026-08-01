@@ -26,11 +26,34 @@
 
     <div class="p-5 lg:p-8">
       <%- include('../partials/flash') %>
-      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+      <%
+        const totalAssignedStudents = groups.reduce((sum, group) => sum + (group.members?.length || 0), 0);
+        const courseCount = new Set(groups.map(group => group.course).filter(Boolean)).size;
+      %>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+        <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm"><p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Batches</p><p class="text-2xl font-bold text-slate-900 mt-1"><%= groups.length %></p></div>
+        <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm"><p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Assigned Students</p><p class="text-2xl font-bold text-navy-700 mt-1"><%= totalAssignedStudents %></p></div>
+        <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm"><p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Courses</p><p class="text-2xl font-bold text-indigo-600 mt-1"><%= courseCount %></p></div>
+      </div>
+
+      <div class="bg-white border border-slate-100 rounded-2xl shadow-sm p-3 mb-6 flex flex-col sm:flex-row gap-3">
+        <label class="relative flex-1">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+          <input id="batchSearch" type="search" oninput="filterBatches()" placeholder="Search batch, student name or roll number…" class="w-full border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/>
+        </label>
+        <select id="batchCourseFilter" onchange="filterBatches()" class="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy-500">
+          <option value="">All courses</option>
+          <% COURSES.forEach(course => { %><option value="<%= course.toLowerCase() %>"><%= course %></option><% }) %>
+        </select>
+        <div class="flex items-center px-3 text-xs text-slate-500"><strong id="visibleBatchCount" class="text-slate-800 mr-1"><%= groups.length %></strong> shown</div>
+      </div>
+
+      <div id="batchGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
         <% groups.forEach(g => {
           const studentCount = g.members ? g.members.filter(m => m.GroupMember?.role === 'student').length : 0;
+          const searchText = [g.name, g.description, g.academicYear, g.course, ...(g.members || []).flatMap(member => [member.name, member.rollNo])].filter(Boolean).join(' ').toLowerCase();
         %>
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-card p-5 card-lift">
+        <div class="batch-card bg-white rounded-2xl border border-slate-100 shadow-card p-5 card-lift cursor-pointer focus:outline-none focus:ring-2 focus:ring-navy-500" role="link" tabindex="0" data-search="<%= searchText %>" data-course="<%= (g.course || '').toLowerCase() %>" onclick="openBatchCard(event, '/admin/groups/<%= g.id %>')" onkeydown="if(event.key==='Enter'||event.key===' '){openBatchCard(event, '/admin/groups/<%= g.id %>')}">
           <!-- Top: edit/delete icons -->
           <div class="flex items-start justify-between mb-4">
             <div class="w-10 h-10 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
@@ -52,6 +75,7 @@
           <!-- Clickable body → group detail -->
           <a href="/admin/groups/<%= g.id %>" class="block hover:opacity-80 transition-opacity">
             <h3 class="font-bold text-slate-900 mb-1"><%= g.name %></h3>
+            <% if (g.course) { %><span class="inline-flex text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full mb-2"><%= g.course %></span><% } %>
             <p class="text-xs text-slate-400 mb-4 leading-relaxed"><%= g.description || 'No description' %></p>
             <div class="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-50">
               <span class="flex items-center gap-1.5">
@@ -100,6 +124,10 @@
           <p class="font-medium text-slate-500">No groups yet.</p>
         </div>
         <% } %>
+        <div id="noBatchResults" class="hidden col-span-full py-16 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+          <p class="font-semibold text-slate-600">No matching batch found.</p>
+          <p class="text-xs text-slate-400 mt-1">Try another batch, student, roll number or course.</p>
+        </div>
       </div>
     </div>
   </main>
@@ -499,6 +527,25 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <script>
+function openBatchCard(event, url) {
+  if (event.target.closest('button,a,form,input,select,textarea')) return;
+  window.location.href = url;
+}
+function filterBatches() {
+  const query = document.getElementById('batchSearch').value.trim().toLowerCase();
+  const course = document.getElementById('batchCourseFilter').value;
+  const cards = Array.from(document.querySelectorAll('.batch-card'));
+  let visible = 0;
+  cards.forEach(card => {
+    const matchesSearch = !query || card.dataset.search.includes(query);
+    const matchesCourse = !course || card.dataset.course === course;
+    const show = matchesSearch && matchesCourse;
+    card.classList.toggle('hidden', !show);
+    if (show) visible += 1;
+  });
+  document.getElementById('visibleBatchCount').textContent = visible;
+  document.getElementById('noBatchResults').classList.toggle('hidden', visible !== 0 || cards.length === 0);
+}
 function openEditGroup(id, name, description, academicYear) {
   document.getElementById('editGroupForm').action = '/admin/groups/' + id;
   document.getElementById('editGroupName').value = name;

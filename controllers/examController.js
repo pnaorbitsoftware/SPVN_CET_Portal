@@ -15,7 +15,7 @@ exports.getInstructions = async (req, res) => {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const [test, submitted, inProgress] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] } }).populate('questions'),
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
       Result.findOne({ studentId, testId, status: 'in_progress' }),
     ]);
@@ -48,7 +48,7 @@ exports.startExam = async (req, res) => {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const [test, submitted] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] } }).populate('questions', '_id subject'),
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions', '_id subject'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
@@ -114,6 +114,18 @@ exports.getQuestion = async (req, res) => {
       return res.redirect(`/exam/${testId}/question/${sectionState.firstPendingQuestionNumber}`);
     }
 
+    const visitedQuestionIds = new Set(
+      (result.visitedQuestionIds || []).map(questionId => String(questionId))
+    );
+    const currentQuestionKey = String(currentQuestionId);
+    if (!visitedQuestionIds.has(currentQuestionKey)) {
+      visitedQuestionIds.add(currentQuestionKey);
+      await Result.updateOne(
+        { _id:result._id },
+        { $addToSet:{ visitedQuestionIds:currentQuestionKey } }
+      );
+    }
+
     const question = await Question.findById(currentQuestionId);
     if (!question) { req.flash('error','Question not found.'); return res.redirect('/student/tests'); }
 
@@ -138,7 +150,7 @@ exports.getQuestion = async (req, res) => {
       if (answered && marked) status = 'answered-marked';
       else if (answered)      status = 'answered';
       else if (marked)        status = 'marked';
-      else if (questionIndex + 1 < questionNumber) status = 'not-answered';
+      else if (visitedQuestionIds.has(id)) status = 'not-answered';
       return {
         num: questionIndex + 1,
         qId: questionId,
@@ -193,7 +205,11 @@ exports.saveAnswer = async (req, res) => {
     if (markForReview === 'true' || markForReview === true) { if (idx === -1) markedForReview.push(String(questionId)); }
     else { if (idx !== -1) markedForReview.splice(idx, 1); }
 
-    await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview });
+    const visitedQuestionIds = [...new Set([
+      ...(result.visitedQuestionIds || []).map(value => String(value)),
+      String(questionId),
+    ])];
+    await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds });
     return res.json({ success: true, answeredCount: Object.values(answers).filter(a => a.answer).length });
   } catch (e) { console.error(e); return res.json({ success: false, message: e.message }); }
 };
@@ -347,7 +363,11 @@ exports.leaveExam = async (req, res) => {
       if (markForReview === 'true') { if (idx === -1) markedForReview.push(String(questionId)); }
       else { if (idx !== -1) markedForReview.splice(idx, 1); }
 
-      await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview });
+      const visitedQuestionIds = [...new Set([
+        ...(result.visitedQuestionIds || []).map(value => String(value)),
+        String(questionId),
+      ])];
+      await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds });
     }
 
     // Note: do NOT auto-submit here. This fires on any page unload —

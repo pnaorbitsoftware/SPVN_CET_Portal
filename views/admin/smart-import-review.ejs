@@ -79,6 +79,23 @@
                 <textarea name="questions[<%= index %>][question]" rows="2" class="review-field w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"><%= q.question %></textarea>
               </div>
 
+              <input type="hidden" name="questions[<%= index %>][questionImage]" value="<%= q.questionImage || '' %>"/>
+              <input type="hidden" name="questions[<%= index %>][sourceDocument]" value="<%= q.sourceDocument || '' %>"/>
+              <input type="hidden" name="questions[<%= index %>][sourcePage]" value="<%= q.sourcePage || '' %>"/>
+              <% if (q.questionImage) { %>
+              <div class="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                <p class="text-xs font-bold text-indigo-700 mb-2">Detected question image / diagram</p>
+                <img src="<%= q.questionImage %>" alt="Detected visual for question <%= index + 1 %>" class="max-h-72 max-w-full rounded-lg border border-white bg-white object-contain"/>
+              </div>
+              <% } else if (q.sourceDocument) { %>
+              <details class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <summary class="text-xs font-bold text-slate-600 cursor-pointer">View original PDF page<%= q.sourcePage ? ` ${q.sourcePage}` : '' %></summary>
+                <object data="<%= q.sourceDocument %>#page=<%= q.sourcePage || 1 %>&view=FitH" type="application/pdf" class="w-full h-80 rounded-lg border border-slate-200 bg-white mt-3">
+                  <a href="<%= q.sourceDocument %>#page=<%= q.sourcePage || 1 %>" target="_blank" class="text-indigo-600">Open original source page</a>
+                </object>
+              </details>
+              <% } %>
+
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <% ['A','B','C','D'].forEach(letter => { %>
                 <div>

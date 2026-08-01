@@ -22,7 +22,7 @@ exports.getDashboard = async (req, res) => {
     // Fetch tests for those groups + in-progress in parallel
     const [availableTests, inProgressResults] = await Promise.all([
       groupIds.length
-        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] } }, 'id title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
+        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] }, isActive:{ $ne:false } }, 'id title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
         : Promise.resolve([]),
       Result.find({ studentId, status: 'in_progress' }, 'testId'),
     ]);
@@ -89,7 +89,7 @@ exports.getTests = async (req, res) => {
     ]);
     const groupIds = memberships.map(m => m.groupId);
     const tests = groupIds.length
-      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active','closed'] } }).sort({ createdAt: -1 })
+      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active','closed'] }, isActive:{ $ne:false } }).sort({ createdAt: -1 })
       : [];
 
     const resultMap = {};

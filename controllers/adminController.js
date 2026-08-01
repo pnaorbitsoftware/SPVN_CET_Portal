@@ -127,7 +127,7 @@ exports.bulkImportStudents = async (req, res) => {
 exports.getGroups = async (req, res) => {
   try {
     const [groups, students, memberships] = await Promise.all([
-      Group.find().sort({ createdAt:-1 }),
+      Group.find({ isActive:{ $ne:false } }).sort({ createdAt:-1 }),
       User.find({ role:'student', isActive:true }).sort({ rollNo:1 }),
       GroupMember.find().populate('userId','name rollNo').populate('groupId','name'),
     ]);
@@ -139,7 +139,11 @@ exports.getGroups = async (req, res) => {
       if (!memberMap[gid]) memberMap[gid] = [];
       memberMap[gid].push({ ...m.userId?.toObject(), GroupMember:{ role: m.role } });
     });
-    const groupsWithMembers = groups.map(g => ({ ...g.toObject(), members: memberMap[g._id.toString()]||[] }));
+    const groupsWithMembers = groups.map(g => ({
+      ...g.toObject(),
+      id: g._id.toString(),
+      members: memberMap[g._id.toString()] || [],
+    }));
     res.render('admin/groups', { title:'Batches', groups: groupsWithMembers, students, COURSES });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
@@ -369,7 +373,7 @@ exports.deleteQuestion = async (req, res) => {
 exports.getTests = async (req, res) => {
   try {
     const { subject, course } = req.query;
-    const q = {};
+    const q = { isActive:{ $ne:false } };
     if (subject) q.subject = subject;
     if (course)  q.course  = course;
     const tests = await Test.find(q).populate('groups','name').sort({ createdAt:-1 });
@@ -443,7 +447,7 @@ exports.getTestDetail = async (req, res) => {
 
 exports.publishTest = async (req, res) => {
   try {
-    const test = await Test.findById(req.params.id);
+    const test = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false } });
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
     await Test.findByIdAndUpdate(test._id, { status:'published' });
     // Notify all students in assigned groups
@@ -694,7 +698,12 @@ exports.updateTest = async (req, res) => {
 
 exports.deleteTest = async (req, res) => {
   try {
-    await Test.findByIdAndUpdate(req.params.id, { isActive: false });
+    const test = await Test.findOneAndUpdate(
+      { _id:req.params.id, isActive:{ $ne:false } },
+      { isActive:false, status:'closed', groups:[] },
+      { returnDocument:'after' }
+    );
+    if (!test) { req.flash('error','Test not found or already deleted.'); return res.redirect('/admin/tests'); }
     req.flash('success','Test deleted.');
     res.redirect('/admin/tests');
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
