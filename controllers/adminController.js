@@ -630,13 +630,36 @@ exports.moveStudentToGroup = async (req, res) => {
 // ── DELETE STUDENT ─────────────────────────────────────────────────────────
 exports.deleteStudent = async (req, res) => {
   try {
-    await GroupMember.deleteMany({ userId: req.params.id });
-    await User.findByIdAndUpdate(req.params.id, { isActive: false });
-    req.flash('success', 'Student deleted.');
-    res.redirect('/admin/students');
-  } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/students'); }
-};
+    const studentId = req.params.id;
 
+    const student = await User.findById(studentId);
+
+    if (!student) {
+      req.flash("error", "Student not found.");
+      return res.redirect("/admin/students");
+    }
+
+    // Delete student from groups
+    await GroupMember.deleteMany({
+      $or: [
+        { userId: studentId },
+        { user: studentId },
+        { studentId: studentId }
+      ]
+    });
+
+    // Permanently delete student
+    await User.findByIdAndDelete(studentId);
+
+    req.flash("success", "Student deleted successfully.");
+    return res.redirect("/admin/students");
+  } catch (error) {
+    console.error("Delete student error:", error);
+
+    req.flash("error", "Failed to delete student.");
+    return res.redirect("/admin/students");
+  }
+};
 // ── VIEW STUDENT PROFILE ──────────────────────────────────────────────────
 exports.viewStudentProfile = async (req, res) => {
   try {
