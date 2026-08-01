@@ -1,5 +1,8 @@
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const xlsx = require('xlsx');
 const sharp = require('sharp');
 const AdmZip = require('adm-zip');
@@ -7,6 +10,8 @@ const OpenAI = require('openai');
 const { GoogleGenAI } = require('@google/genai');
 const { z } = require('zod');
 const { zodTextFormat } = require('openai/helpers/zod');
+
+const execFileAsync = promisify(execFile);
 
 const SPREADSHEET_EXTENSIONS = new Set(['.csv','.xls','.xlsx']);
 const DOCUMENT_EXTENSIONS = new Set(['.pdf','.doc','.docx','.rtf','.odt','.txt','.md']);
@@ -42,6 +47,7 @@ const MIME_BY_EXTENSION = {
 
 const MCQSchema = z.object({
   question: z.string(),
+  questionImageSource: z.string(),
   optionA: z.string(),
   optionB: z.string(),
   optionC: z.string(),
@@ -110,6 +116,7 @@ const FIELD_ALIASES = {
   difficulty: ['difficulty','level'],
   marks: ['marks','mark','points'],
   explanation: ['explanation','solution','reason'],
+  questionImage: ['questionimageurl','questionimage','imageurl','image','diagramurl','figureurl'],
 };
 
 function normalizeDifficulty(value, fallback = 'Medium') {
@@ -150,6 +157,12 @@ function normalizeMarks(value, fallback = 1) {
 function normalizeQuestion(raw, defaults = {}) {
   const normalized = {
     question: cleanText(raw.question),
+    questionImage: cleanText(raw.questionImage || raw.questionImageUrl) || null,
+    questionImageSource: cleanText(raw.questionImageSource) || null,
+    sourceDocument: cleanText(raw.sourceDocument) || null,
+    sourcePage: Number.isInteger(Number(raw.sourcePage)) && Number(raw.sourcePage) > 0
+      ? Number(raw.sourcePage)
+      : null,
     optionA: cleanText(raw.optionA),
     optionB: cleanText(raw.optionB),
     optionC: cleanText(raw.optionC),
@@ -227,6 +240,7 @@ function extractSpreadsheetQuestions(files, defaults = {}) {
   allRows.forEach(({ row, sourceLabel }) => {
     const rawQuestion = {
       question: firstValue(row, FIELD_ALIASES.question),
+      questionImage: firstValue(row, FIELD_ALIASES.questionImage),
       optionA: firstValue(row, FIELD_ALIASES.optionA),
       optionB: firstValue(row, FIELD_ALIASES.optionB),
       optionC: firstValue(row, FIELD_ALIASES.optionC),
@@ -317,6 +331,167 @@ function docxImages(file) {
   }
 }
 
+function safeAssetName(value, fallback = 'source') {
+  const cleaned = String(value || '')
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 100);
+  return cleaned || fallback;
+}
+
+function sourcePageNumber(question) {
+  const text = `${question.sourceLabel || ''} ${question.questionImageSource || ''}`;
+  const match = text.match(/(?:page|pg|p\.?)[\s:#-]*(\d{1,4})/i);
+  return match ? Number(match[1]) : null;
+}
+
+function sourceMatches(hint, sourceName) {
+  const lowerHint = String(hint || '').toLowerCase();
+  const lowerName = String(sourceName || '').toLowerCase();
+  const baseName = path.basename(lowerName);
+  return Boolean(lowerHint && (lowerHint.includes(lowerName) || lowerHint.includes(baseName)));
+}
+
+function questionNeedsVisual(question) {
+  if (question.questionImageSource) return true;
+  return /(diagram|figure|graph|chart|image|map|table|circuit|structure|आकृती|चित्र|नकाशा|तक्ता)/i
+    .test(question.question || '');
+}
+
+async function renderPdfPage(pdfPath, pageNumber, outputPrefix) {
+  const outputPath = `${outputPrefix}.jpg`;
+  try {
+    await execFileAsync('pdftoppm', [
+      '-jpeg',
+      '-r', '150',
+      '-f', String(pageNumber),
+      '-l', String(pageNumber),
+      '-singlefile',
+      pdfPath,
+      outputPrefix,
+    ], { timeout: 120000, maxBuffer: 1024 * 1024 });
+    return fs.existsSync(outputPath) ? outputPath : null;
+  } catch {
+    return null;
+  }
+}
+
+async function preserveQuestionVisuals(files, questions, importId) {
+  const importKey = safeAssetName(String(importId), crypto.randomUUID());
+  const publicRoot = path.join(__dirname, '..', 'public');
+  const relativeDir = path.posix.join('uploads', 'questions', 'scans', importKey);
+  const outputDir = path.join(publicRoot, ...relativeDir.split('/'));
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const standaloneImages = [];
+  const embeddedImages = [];
+  const pdfAssets = [];
+  const warnings = [];
+
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+    const file = files[fileIndex];
+    const extension = extensionOf(file);
+    const assetPrefix = `${fileIndex + 1}-${safeAssetName(path.basename(file.name, extension), 'source')}`;
+
+    if (IMAGE_EXTENSIONS.has(extension)) {
+      try {
+        const image = await prepareImage(file);
+        const fileName = `${assetPrefix}.jpg`;
+        fs.writeFileSync(path.join(outputDir, fileName), image.data);
+        standaloneImages.push({
+          sourceName: file.name,
+          url: `/${relativeDir}/${fileName}`,
+        });
+      } catch (error) {
+        warnings.push(`${file.name}: source image could not be preserved (${error.message}).`);
+      }
+      continue;
+    }
+
+    if (extension === '.pdf') {
+      const fileName = `${assetPrefix}.pdf`;
+      const filePath = path.join(outputDir, fileName);
+      fs.writeFileSync(filePath, file.data);
+      pdfAssets.push({
+        sourceName: file.name,
+        filePath,
+        url: `/${relativeDir}/${fileName}`,
+        prefix: assetPrefix,
+        renderedPages: new Map(),
+      });
+    }
+
+    for (const [imageIndex, embeddedImage] of docxImages(file).entries()) {
+      try {
+        const image = await prepareImage(embeddedImage);
+        const fileName = `${assetPrefix}-embedded-${imageIndex + 1}.jpg`;
+        fs.writeFileSync(path.join(outputDir, fileName), image.data);
+        embeddedImages.push({
+          documentName: file.name,
+          sourceName: embeddedImage.name,
+          url: `/${relativeDir}/${fileName}`,
+        });
+      } catch (error) {
+        warnings.push(`${embeddedImage.name}: embedded image could not be preserved (${error.message}).`);
+      }
+    }
+  }
+
+  const enrichedQuestions = [];
+  for (const originalQuestion of questions) {
+    const question = { ...originalQuestion };
+    const hint = `${question.sourceLabel || ''} ${question.questionImageSource || ''}`;
+    const matchedInputFile = files.find(file => sourceMatches(hint, file.name));
+
+    if (!question.questionImage && standaloneImages.length) {
+      const sourceImage = standaloneImages.find(asset => sourceMatches(hint, asset.sourceName))
+        || (files.length === 1 && standaloneImages.length === 1 ? standaloneImages[0] : null);
+      if (sourceImage) question.questionImage = sourceImage.url;
+    }
+
+    if (!question.questionImage && embeddedImages.length && questionNeedsVisual(question)) {
+      const embeddedImage = embeddedImages.find(asset => sourceMatches(hint, asset.sourceName))
+        || embeddedImages.find(asset => matchedInputFile?.name === asset.documentName
+          && embeddedImages.filter(item => item.documentName === asset.documentName).length === 1);
+      if (embeddedImage) question.questionImage = embeddedImage.url;
+    }
+
+    const pdfAsset = pdfAssets.find(asset => sourceMatches(hint, asset.sourceName))
+      || (files.length === 1 && pdfAssets.length === 1 ? pdfAssets[0] : null);
+    if (pdfAsset) {
+      const pageNumber = sourcePageNumber(question);
+      question.sourceDocument = pdfAsset.url;
+      question.sourcePage = pageNumber;
+
+      if (!question.questionImage && pageNumber && questionNeedsVisual(question)) {
+        if (!pdfAsset.renderedPages.has(pageNumber)) {
+          const outputPrefix = path.join(outputDir, `${pdfAsset.prefix}-page-${pageNumber}`);
+          const renderedPath = await renderPdfPage(pdfAsset.filePath, pageNumber, outputPrefix);
+          pdfAsset.renderedPages.set(
+            pageNumber,
+            renderedPath ? `/${relativeDir}/${path.basename(renderedPath)}` : null
+          );
+        }
+        question.questionImage = pdfAsset.renderedPages.get(pageNumber) || null;
+        if (!question.questionImage) {
+          warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: visual retained through the original PDF page because page rasterization was unavailable.`);
+        }
+      }
+    }
+
+    enrichedQuestions.push(question);
+  }
+
+  return { questions: enrichedQuestions, warnings: [...new Set(warnings)] };
+}
+
+function removeQuestionImportAssets(importId) {
+  const importKey = safeAssetName(String(importId));
+  const outputDir = path.join(__dirname, '..', 'public', 'uploads', 'questions', 'scans', importKey);
+  fs.rmSync(outputDir, { recursive: true, force: true });
+}
+
 function extractionPrompt(defaults, fileNames) {
   return `You are a high-accuracy exam question digitization engine.
 
@@ -337,7 +512,8 @@ Rules:
    subtopic=${cleanText(defaults.subtopic)}
    difficulty=${normalizeDifficulty(defaults.difficulty)}
    marks=${normalizeMarks(defaults.marks)}
-10. explanation may be empty. topic and subtopic may be empty.
+10. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the question depends on a diagram, graph, figure, map, table, or other visual. Otherwise use an empty string.
+11. explanation may be empty. topic and subtopic may be empty.
 
 Attached source names: ${fileNames.join(', ')}`;
 }
@@ -566,6 +742,8 @@ module.exports = {
   IMAGE_EXTENSIONS,
   extensionOf,
   normalizeQuestion,
+  preserveQuestionVisuals,
+  removeQuestionImportAssets,
   extractSpreadsheetQuestions,
   extractWithOpenAI,
   extractWithGemini,

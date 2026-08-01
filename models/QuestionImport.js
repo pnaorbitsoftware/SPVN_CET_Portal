@@ -28,6 +28,10 @@ const testDefaultsSchema = new mongoose.Schema({
 
 const importedQuestionSchema = new mongoose.Schema({
   question:      { type: String, default: '' },
+  questionImage: { type: String, default: null },
+  questionImageSource:{ type: String, default: null },
+  sourceDocument:{ type: String, default: null },
+  sourcePage:    { type: Number, default: null },
   optionA:       { type: String, default: '' },
   optionB:       { type: String, default: '' },
   optionC:       { type: String, default: '' },

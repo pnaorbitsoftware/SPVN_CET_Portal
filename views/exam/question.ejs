@@ -76,6 +76,13 @@
         <p class="text-base font-medium text-slate-900 leading-relaxed mb-4"><%= question.question %></p>
         <% if (question.questionImage) { %>
         <img src="<%= question.questionImage %>" alt="Question" class="max-w-full max-h-52 rounded-xl border border-slate-200 object-contain mb-4"/>
+        <% } else if (question.sourceDocument) { %>
+        <details class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+          <summary class="text-xs font-bold text-indigo-700 cursor-pointer">View original scanned page / diagram</summary>
+          <object data="<%= question.sourceDocument %>#page=<%= question.sourcePage || 1 %>&view=FitH" type="application/pdf" class="w-full h-80 rounded-lg border border-slate-200 bg-white mt-3">
+            <a href="<%= question.sourceDocument %>#page=<%= question.sourcePage || 1 %>" target="_blank" class="text-indigo-600">Open source PDF</a>
+          </object>
+        </details>
         <% } %>
 
         <div class="space-y-3" id="optionsContainer">

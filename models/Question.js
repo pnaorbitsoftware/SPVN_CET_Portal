@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const questionSchema = new mongoose.Schema({
   question:         { type: String, required: true },
   questionImage:    { type: String, default: null },
+  sourceDocument:   { type: String, default: null },
+  sourcePage:       { type: Number, default: null },
   optionA:          { type: String, required: true },
   optionB:          { type: String, required: true },
   optionC:          { type: String, required: true },
