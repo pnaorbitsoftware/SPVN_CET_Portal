@@ -233,7 +233,7 @@
               data-text="<%= q.question.toLowerCase() %>" data-idx="<%= i %>">
               <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0" <%= (test.questions||[]).map(x=>x.id||x.toString()).includes(q.id)?'checked':'' %>/>
               <div class="flex-1 min-w-0">
-                <p class="math-content text-sm text-slate-800 leading-snug"><%= q.question.length>120?q.question.substring(0,120)+'...':q.question %></p>
+                <p class="math-content math-clamp-2 text-sm text-slate-800 leading-snug"><%= q.question %></p>
                 <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
                   <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium"><%= q.subject %></span>
                   <% if (q.topic) { %><span class="text-slate-300 text-xs">›</span><span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded"><%= q.topic %></span><% } %>

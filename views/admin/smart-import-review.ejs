@@ -32,7 +32,7 @@
         <div class="bg-white border border-slate-200 rounded-xl p-4"><p class="text-2xl font-bold text-slate-900"><%= importDraft.questions.length %></p><p class="text-xs text-slate-500">Detected questions</p></div>
         <div class="bg-white border border-slate-200 rounded-xl p-4"><p class="text-2xl font-bold text-emerald-600"><%= importDraft.questions.filter(q => q.confidence >= 0.85 && q.correctAnswer !== 'UNKNOWN').length %></p><p class="text-xs text-slate-500">High confidence</p></div>
         <div class="bg-white border border-slate-200 rounded-xl p-4"><p class="text-2xl font-bold text-amber-600"><%= importDraft.questions.filter(q => q.confidence < 0.85 || q.correctAnswer === 'UNKNOWN').length %></p><p class="text-xs text-slate-500">Needs attention</p></div>
-        <div class="bg-white border border-slate-200 rounded-xl p-4"><p class="text-sm font-bold text-indigo-700 truncate mt-1"><%= importDraft.extractionMethod === 'openai' ? importDraft.extractionModel : 'Direct parser' %></p><p class="text-xs text-slate-500 mt-1">Extraction method</p></div>
+        <div class="bg-white border border-slate-200 rounded-xl p-4"><p class="text-sm font-bold text-indigo-700 truncate mt-1"><%= ['openai','gemini'].includes(importDraft.extractionMethod) ? importDraft.extractionModel : 'Direct parser' %></p><p class="text-xs text-slate-500 mt-1">Extraction method</p></div>
       </div>
 
       <% if (importDraft.warnings.length) { %>
@@ -137,7 +137,10 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                   <input type="text" name="questions[<%= index %>][topic]" value="<%= q.topic || '' %>" placeholder="Topic" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"/>
                   <input type="text" name="questions[<%= index %>][subtopic]" value="<%= q.subtopic || '' %>" placeholder="Subtopic" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"/>
-                  <textarea name="questions[<%= index %>][explanation]" rows="2" placeholder="Explanation (optional)" class="math-input md:col-span-2 border border-slate-200 rounded-xl px-3 py-2.5 text-sm"><%= q.explanation || '' %></textarea>
+                  <div data-math-field class="md:col-span-2">
+                    <textarea name="questions[<%= index %>][explanation]" rows="2" placeholder="Explanation (optional)" class="math-input w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"><%= q.explanation || '' %></textarea>
+                    <div class="math-preview hidden mt-2 overflow-x-auto rounded-xl border border-indigo-100 bg-white px-3 py-2 text-slate-900"></div>
+                  </div>
                 </div>
               </details>
             </div>
