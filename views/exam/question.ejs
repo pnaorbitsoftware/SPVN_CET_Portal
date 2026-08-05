@@ -73,9 +73,9 @@
 
       <!-- Question content -->
       <div class="flex-1 overflow-y-auto px-5 lg:px-8 py-5">
-        <p class="text-base font-medium text-slate-900 leading-relaxed mb-4"><%= question.question %></p>
+        <p class="math-content text-base font-medium text-slate-900 leading-relaxed mb-4"><%= question.question %></p>
         <% if (question.questionImage) { %>
-        <img src="<%= question.questionImage %>" alt="Question" class="max-w-full max-h-52 rounded-xl border border-slate-200 object-contain mb-4"/>
+        <div class="overflow-x-auto mb-4"><img src="<%= question.questionImage %>" alt="Question" class="block w-auto h-auto max-w-full rounded-xl border border-slate-200 bg-white" loading="eager" decoding="async"/></div>
         <% } %>
 
         <div class="space-y-3" id="optionsContainer">
@@ -86,7 +86,7 @@
                 <%= selectedAnswer===opt.key?'bg-navy-950 border-navy-950 text-white':'border-slate-300 text-slate-500' %>">
                 <%= opt.key %>
               </span>
-              <span class="text-sm text-slate-800 leading-relaxed pt-0.5"><%= opt.value %></span>
+              <span class="math-content text-sm text-slate-800 leading-relaxed pt-0.5"><%= opt.value %></span>
             </div>
             <% if (opt.image) { %>
             <img src="<%= opt.image %>" alt="Option <%= opt.key %>" class="max-w-full max-h-36 rounded-xl border border-slate-200 object-contain mt-2 ml-10"/>

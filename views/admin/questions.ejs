@@ -129,20 +129,20 @@
             <div class="flex items-start gap-4">
               <span class="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-1 rounded mt-0.5 shrink-0"><%= ((currentPage-1)*25)+i+1 %></span>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-slate-900 mb-2 leading-snug"><%= q.question %></p>
+                <p class="math-content text-sm font-medium text-slate-900 mb-2 leading-snug"><%= q.question %></p>
                 <% if (q.questionImage) { %>
-                <div class="mb-2">
+                <div class="mb-2 overflow-x-auto">
                   <img src="<%= q.questionImage %>" alt="Question image"
-                    class="max-h-40 rounded-lg border border-slate-200 object-contain bg-slate-50"
+                    class="block w-auto h-auto max-w-full rounded-lg border border-slate-200 bg-slate-50"
                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
                   <span style="display:none" class="text-xs text-rose-500 bg-rose-50 px-2 py-1 rounded">⚠ Image failed to load</span>
                 </div>
                 <% } %>
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
-                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">A.</span> <%= q.optionA %></span>
-                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">B.</span> <%= q.optionB %></span>
-                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">C.</span> <%= q.optionC %></span>
-                  <span class="flex items-center gap-1"><span class="font-semibold text-slate-400">D.</span> <%= q.optionD %></span>
+                  <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">A.</span><span class="math-content"><%= q.optionA %></span></span>
+                  <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">B.</span><span class="math-content"><%= q.optionB %></span></span>
+                  <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">C.</span><span class="math-content"><%= q.optionC %></span></span>
+                  <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">D.</span><span class="math-content"><%= q.optionD %></span></span>
                 </div>
                 <div class="flex flex-wrap gap-2 items-center">
                   <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-semibold">✓ <%= q.correctAnswer %></span>
