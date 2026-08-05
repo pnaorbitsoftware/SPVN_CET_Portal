@@ -183,9 +183,10 @@
     <form action="/admin/questions" method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
 
       <!-- Question text -->
-      <div>
+      <div data-math-field>
         <label class="block text-sm font-semibold mb-1.5">Question *</label>
-        <textarea name="question" rows="2" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Enter question text"></textarea>
+        <textarea name="question" rows="2" required class="math-input w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Enter question text"></textarea>
+        <div class="math-preview hidden mt-2 overflow-x-auto rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 text-slate-900"></div>
       </div>
 
       <!-- Question image -->
@@ -201,9 +202,10 @@
       <!-- Options -->
       <div class="grid grid-cols-2 gap-3">
         <% ['A','B','C','D'].forEach(o => { %>
-        <div>
+        <div data-math-field>
           <label class="block text-xs font-semibold mb-1 text-slate-600">Option <%= o %> *</label>
-          <input type="text" name="option<%= o %>" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Option <%= o %>"/>
+          <input type="text" name="option<%= o %>" required class="math-input w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Option <%= o %>"/>
+          <div class="math-preview hidden mt-2 overflow-x-auto rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2 text-slate-900"></div>
         </div>
         <% }) %>
       </div>

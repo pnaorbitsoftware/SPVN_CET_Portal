@@ -78,6 +78,22 @@ const ExtractionSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+const MathVerificationItemSchema = z.object({
+  questionIndex: z.number().int().nonnegative(),
+  question: z.string(),
+  optionA: z.string(),
+  optionB: z.string(),
+  optionC: z.string(),
+  optionD: z.string(),
+  matchesSource: z.boolean(),
+  confidence: z.number().min(0).max(1),
+});
+
+const MathVerificationSchema = z.object({
+  questions: z.array(MathVerificationItemSchema),
+  warnings: z.array(z.string()),
+});
+
 function extensionOf(file) {
   return path.extname(String(file?.name || '')).toLowerCase();
 }
@@ -213,6 +229,79 @@ function normalizeQuestion(raw, defaults = {}) {
 function questionCompleteness(question) {
   const required = ['question','optionA','optionB','optionC','optionD'];
   return required.filter(field => question[field]).length / required.length;
+}
+
+function containsMathematicalTranscription(value) {
+  return /(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\\[A-Za-z]+|[¬∼∨∧→↔⇒⇔∀∃∈∉⊂⊆∪∩≤≥≠≈∞√∑∏∫∆θπαβγ±×÷]|[A-Za-z0-9)}\]]\s*[_^]\s*(?:\{|[-+A-Za-z0-9])|\[\[[\s\S]*\]\]|(?:^|\s)[A-Za-z0-9.)\]]+\s*[=<>+*/]\s*[-+A-Za-z0-9.(])/u
+    .test(String(value || '').normalize('NFKC'));
+}
+
+function mathematicalQuestionCandidates(questions) {
+  return questions.flatMap((question, questionIndex) => {
+    const fields = ['question','optionA','optionB','optionC','optionD'];
+    if (!fields.some(field => containsMathematicalTranscription(question[field]))) return [];
+    return [{
+      questionIndex,
+      sourceLabel: question.sourceLabel || `Question ${questionIndex + 1}`,
+      question: question.question,
+      optionA: question.optionA,
+      optionB: question.optionB,
+      optionC: question.optionC,
+      optionD: question.optionD,
+    }];
+  });
+}
+
+function mathVerificationPrompt(candidates) {
+  return `You are the final mathematical transcription verifier for an exam digitization system.
+
+Compare every supplied candidate with the attached original question paper at the stated source location. Return every candidate once, in the same questionIndex order.
+
+Rules:
+1. Copy the question and all four options from the source exactly. Preserve every variable, digit, sign, bracket, radical, fraction, matrix cell, subscript, superscript, logical operator, quantifier, arrow and punctuation mark.
+2. Never solve, simplify, normalize, paraphrase, or substitute symbols. In particular, never change p/q/r, x/y/z, matrix entries, powers, signs, or option order based on what seems mathematically likely.
+3. Keep ordinary prose as ordinary text. Put every mathematical expression inside \\( and \\) using valid LaTeX. Never return a bare LaTeX command such as \\sim, \\vee, \\wedge, \\frac, \\sqrt, or \\begin outside math delimiters.
+4. Matrices must use \\begin{bmatrix}, & between cells, \\\\ between rows, and \\end{bmatrix}. Preserve the exact matrix dimensions and values.
+5. Set matchesSource true only if all five returned fields already matched the source; otherwise return corrected fields and set it false.
+6. If any symbol is genuinely unreadable, preserve the best visible transcription, lower confidence, and add a specific warning. Do not guess silently.
+
+Candidates:
+${JSON.stringify(candidates)}`;
+}
+
+function applyMathVerification(questions, verification) {
+  const candidateIndexes = new Set(mathematicalQuestionCandidates(questions).map(item => item.questionIndex));
+  const verifiedByIndex = new Map();
+  for (const item of verification.questions || []) {
+    if (!candidateIndexes.has(item.questionIndex) || verifiedByIndex.has(item.questionIndex)) continue;
+    const fields = ['question','optionA','optionB','optionC','optionD'];
+    const cleaned = Object.fromEntries(fields.map(field => [field, cleanText(item[field])]));
+    if (fields.some(field => !cleaned[field])) continue;
+    verifiedByIndex.set(item.questionIndex, { ...item, ...cleaned });
+  }
+
+  let correctedCount = 0;
+  const verifiedQuestions = questions.map((question, questionIndex) => {
+    const verified = verifiedByIndex.get(questionIndex);
+    if (!verified) return question;
+    if (!verified.matchesSource) correctedCount += 1;
+    return {
+      ...question,
+      question: verified.question,
+      optionA: verified.optionA,
+      optionB: verified.optionB,
+      optionC: verified.optionC,
+      optionD: verified.optionD,
+      confidence: Math.max(0, Math.min(1, Number(verified.confidence) || question.confidence)),
+    };
+  });
+
+  return {
+    questions: verifiedQuestions,
+    verifiedCount: verifiedByIndex.size,
+    correctedCount,
+    expectedCount: candidateIndexes.size,
+  };
 }
 
 function deduplicateQuestions(questions) {
@@ -736,10 +825,11 @@ Rules:
    subtopic=${cleanText(defaults.subtopic)}
    difficulty=${normalizeDifficulty(defaults.difficulty)}
    marks=${normalizeMarks(defaults.marks)}
-10. Preserve mathematical structure using valid LaTeX inside \\( and \\) delimiters. Matrices must use \\begin{bmatrix} rows separated by \\\\ and cells separated by & \\end{bmatrix}; fractions, roots, powers, subscripts, vectors, limits, integrals and scientific notation must remain structurally correct. Keep ordinary prose outside the math delimiters.
+10. Preserve mathematical structure using valid LaTeX inside \\( and \\) delimiters. Matrices must use \\begin{bmatrix} rows separated by \\\\ and cells separated by & \\end{bmatrix}; fractions, roots, powers, subscripts, vectors, limits, integrals and scientific notation must remain structurally correct. Keep ordinary prose outside the math delimiters. Never emit bare LaTeX commands outside delimiters.
 11. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the answer depends on genuinely non-text visual information such as a circuit, graph, geometry figure, map, labelled scientific diagram, or picture. A matrix, determinant, equation, formula, symbolic expression, normal text table, or mathematical notation is NOT a question image when it can be transcribed into the question/options; for those, use an empty string.
 12. questionImageBox must be null when no genuine visual is required. When one is required, inspect at high detail and return the bounding box of the COMPLETE visual as x, y, width, and height normalized from 0 to 1000. Include every connected line, arrow, endpoint, dot, label, legend, axis, scale, caption and boundary belonging to that visual. Exclude page margins, headings, question text, options, answers and neighbouring questions. Check all four edges before returning; never return a partial visual or the whole page.
-13. explanation may be empty. topic and subtopic may be empty.
+13. For every mathematical question, compare the final question and each option character-by-character with the source before returning it. Never simplify an expression or substitute variables, digits, matrix values, operators, signs, brackets, powers or subscripts based on what seems likely.
+14. explanation may be empty. topic and subtopic may be empty.
 
 Attached source names: ${fileNames.join(', ')}`;
 }
@@ -830,6 +920,65 @@ async function buildGeminiContent(files) {
   return content;
 }
 
+async function verifyMathWithOpenAI(openai, model, files, questions, adminId = '') {
+  const candidates = mathematicalQuestionCandidates(questions);
+  if (!candidates.length || process.env.MATH_OCR_VERIFY === 'false') {
+    return { questions, warnings: [], verifiedCount: 0, correctedCount: 0, expectedCount: candidates.length };
+  }
+
+  const content = await buildOpenAIContent(files);
+  content.unshift({ type: 'input_text', text: mathVerificationPrompt(candidates) });
+  const response = await openai.responses.parse({
+    model,
+    reasoning: { effort: process.env.OPENAI_OCR_REASONING_EFFORT || 'high' },
+    max_output_tokens: Number(process.env.OPENAI_OCR_MAX_OUTPUT_TOKENS) || 64000,
+    store: false,
+    safety_identifier: crypto.createHash('sha256').update(String(adminId || 'admin')).digest('hex'),
+    input: [{ role: 'user', content }],
+    text: {
+      format: zodTextFormat(MathVerificationSchema, 'math_transcription_verification'),
+    },
+  });
+  if (!response.output_parsed) throw new Error('The mathematical verification pass returned no usable result.');
+
+  const applied = applyMathVerification(questions, response.output_parsed);
+  const warnings = response.output_parsed.warnings.map(cleanText).filter(Boolean);
+  if (applied.verifiedCount < applied.expectedCount) {
+    warnings.push(`Mathematical verification covered ${applied.verifiedCount} of ${applied.expectedCount} detected maths questions. Review the remaining formula questions manually.`);
+  }
+  return { ...applied, warnings };
+}
+
+async function verifyMathWithGemini(ai, model, files, questions) {
+  const candidates = mathematicalQuestionCandidates(questions);
+  if (!candidates.length || process.env.MATH_OCR_VERIFY === 'false') {
+    return { questions, warnings: [], verifiedCount: 0, correctedCount: 0, expectedCount: candidates.length };
+  }
+
+  const { $schema, ...responseJsonSchema } = z.toJSONSchema(MathVerificationSchema);
+  const response = await ai.models.generateContent({
+    model,
+    contents: [
+      { text: mathVerificationPrompt(candidates) },
+      ...await buildGeminiContent(files),
+    ],
+    config: {
+      responseMimeType: 'application/json',
+      responseJsonSchema,
+      maxOutputTokens: Number(process.env.GEMINI_OCR_MAX_OUTPUT_TOKENS) || 65536,
+    },
+  });
+  if (!response.text) throw new Error('The mathematical verification pass returned no usable result.');
+
+  const parsed = MathVerificationSchema.parse(JSON.parse(response.text));
+  const applied = applyMathVerification(questions, parsed);
+  const warnings = parsed.warnings.map(cleanText).filter(Boolean);
+  if (applied.verifiedCount < applied.expectedCount) {
+    warnings.push(`Mathematical verification covered ${applied.verifiedCount} of ${applied.expectedCount} detected maths questions. Review the remaining formula questions manually.`);
+  }
+  return { ...applied, warnings };
+}
+
 async function extractWithOpenAI(files, defaults = {}, adminId = '') {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is required to scan PDF, Word, or handwritten image files.');
@@ -863,8 +1012,15 @@ async function extractWithOpenAI(files, defaults = {}, adminId = '') {
     throw new Error('The AI scanner did not return a usable structured result.');
   }
 
-  const questions = response.output_parsed.questions.map(question => normalizeQuestion(question, defaults));
+  let questions = response.output_parsed.questions.map(question => normalizeQuestion(question, defaults));
   const warnings = [...response.output_parsed.warnings];
+  try {
+    const verification = await verifyMathWithOpenAI(openai, model, files, questions, adminId);
+    questions = verification.questions;
+    warnings.push(...verification.warnings);
+  } catch (error) {
+    warnings.push(`Mathematical transcription verification could not complete: ${error.message}`);
+  }
   questions.forEach(question => {
     if (question.correctAnswer === 'UNKNOWN') {
       warnings.push(`${question.sourceLabel || 'A question'}: correct answer needs manual review.`);
@@ -912,8 +1068,15 @@ async function extractWithGemini(files, defaults = {}) {
       if (!response.text) throw new Error('Gemini returned an empty response.');
 
       const parsed = ExtractionSchema.parse(JSON.parse(response.text));
-      const questions = parsed.questions.map(question => normalizeQuestion(question, defaults));
+      let questions = parsed.questions.map(question => normalizeQuestion(question, defaults));
       const warnings = [...parsed.warnings];
+      try {
+        const verification = await verifyMathWithGemini(ai, model, files, questions);
+        questions = verification.questions;
+        warnings.push(...verification.warnings);
+      } catch (error) {
+        warnings.push(`Mathematical transcription verification could not complete: ${error.message}`);
+      }
       questions.forEach(question => {
         if (question.correctAnswer === 'UNKNOWN') {
           warnings.push(`${question.sourceLabel || 'A question'}: correct answer needs manual review.`);
@@ -968,6 +1131,9 @@ module.exports = {
   IMAGE_EXTENSIONS,
   extensionOf,
   normalizeQuestion,
+  containsMathematicalTranscription,
+  mathematicalQuestionCandidates,
+  applyMathVerification,
   preserveQuestionVisuals,
   removeQuestionImportAssets,
   extractSpreadsheetQuestions,

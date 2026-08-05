@@ -79,7 +79,7 @@
           <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
             <% test.questions.forEach((q,i) => { %>
             <div class="px-5 py-3 hover:bg-slate-50">
-              <p class="text-xs text-slate-800 leading-snug"><span><%= i+1 %>.</span> <span class="math-content"><%= q.question.length>80?q.question.substring(0,80)+'...':q.question %></span></p>
+              <p class="math-clamp-2 text-xs text-slate-800 leading-snug"><span><%= i+1 %>.</span> <span class="math-content"><%= q.question %></span></p>
               <div class="flex gap-2 mt-1">
                 <span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Ans: <%= q.correctAnswer %></span>
                 <span class="text-xs text-slate-400"><%= q.subject %></span>
