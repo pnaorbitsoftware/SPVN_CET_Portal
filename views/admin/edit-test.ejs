@@ -150,31 +150,39 @@
             <span id="selCount" class="text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">0 selected</span>
           </div>
 
-          <!-- Subject → Topic → Subtopic cascade -->
+          <!-- Course → Subject → Unit → Subtopic cascade -->
           <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 mb-3">
-            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Filter by</p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Filter by syllabus hierarchy</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <!-- Course -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Course</label>
+                <select id="ctCourse" onchange="onCtCourseChange(this.value)"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                  <option value="">All Courses</option>
+                  <% COURSES.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
+                </select>
+              </div>
               <!-- Subject -->
               <div>
                 <label class="block text-xs font-semibold text-slate-500 mb-1">Subject</label>
-                <select id="ctSubject" onchange="onCtSubjectChange(this.value)"
+                <select id="ctSubject" onchange="onCtSubjectChange(this.value)" disabled
                   class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
-                  <option value="">All Subjects</option>
-                  <% SUBJECTS.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+                  <option value="">Select course first</option>
                 </select>
               </div>
-              <!-- Topic (AJAX) -->
+              <!-- Unit (AJAX) -->
               <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Topic</label>
-                <select id="ctTopic" onchange="onCtTopicChange(this.value)"
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Unit</label>
+                <select id="ctTopic" onchange="onCtTopicChange(this.value)" disabled
                   class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
-                  <option value="">All Topics</option>
+                  <option value="">All Units</option>
                 </select>
               </div>
               <!-- Subtopic (AJAX) -->
               <div>
                 <label class="block text-xs font-semibold text-slate-500 mb-1">Subtopic</label>
-                <select id="ctSubtopic" onchange="applyCtFilters()"
+                <select id="ctSubtopic" onchange="applyCtFilters()" disabled
                   class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all">
                   <option value="">All Subtopics</option>
                 </select>
@@ -182,7 +190,7 @@
             </div>
 
             <!-- Active breadcrumb + reset -->
-            <div class="flex items-center justify-between mt-2.5" id="ctBreadcrumb" style="display:none!important">
+            <div class="flex items-center justify-between mt-2.5" id="ctBreadcrumb" style="display:none">
               <div class="flex items-center gap-1.5 flex-wrap" id="ctBreadcrumbInner"></div>
               <button type="button" onclick="resetCtFilters()" class="text-xs text-slate-400 hover:text-slate-700 font-medium shrink-0 transition-colors">Clear filters</button>
             </div>
@@ -356,10 +364,11 @@ function updCount() {
 }
 
 // ── Current filter state ──────────────────────────────────────────────────
-const ctState = { subject:'', topic:'', subtopic:'', diff:'', search:'' };
+const ctState = { course:'', subject:'', topic:'', subtopic:'', diff:'', search:'' };
 
 // ── Apply all filters ─────────────────────────────────────────────────────
 function applyCtFilters() {
+  ctState.course   = document.getElementById('ctCourse').value;
   ctState.subject  = document.getElementById('ctSubject').value;
   ctState.topic    = document.getElementById('ctTopic').value;
   ctState.subtopic = document.getElementById('ctSubtopic').value;
@@ -397,14 +406,33 @@ function applyCtFilters() {
   updateBreadcrumb();
 }
 
-// ── Subject change ────────────────────────────────────────────────────────
+// ── Course and subject hierarchy ─────────────────────────────────────────
+async function onCtCourseChange(course) {
+  const subjectSelect = document.getElementById('ctSubject');
+  const topicSelect = document.getElementById('ctTopic');
+  const subtopicSelect = document.getElementById('ctSubtopic');
+  subjectSelect.innerHTML = '<option value="">All Subjects</option>';
+  topicSelect.innerHTML = '<option value="">All Units</option>';
+  subtopicSelect.innerHTML = '<option value="">All Subtopics</option>';
+  subjectSelect.disabled = !course;
+  topicSelect.disabled = true;
+  subtopicSelect.disabled = true;
+  if (course) {
+    const subjects = await fetchSubjects(course);
+    subjects.forEach(subject => subjectSelect.innerHTML += `<option value="${subject}">${subject}</option>`);
+  }
+  applyCtFilters();
+}
+
 async function onCtSubjectChange(subject) {
   const tSel  = document.getElementById('ctTopic');
   const stSel = document.getElementById('ctSubtopic');
-  tSel.innerHTML  = '<option value="">All Topics</option>';
+  tSel.innerHTML  = '<option value="">All Units</option>';
   stSel.innerHTML = '<option value="">All Subtopics</option>';
+  tSel.disabled = !subject;
+  stSel.disabled = true;
   if (subject) {
-    const topics = await fetchTopics(subject);
+    const topics = await fetchTopics(document.getElementById('ctCourse').value, subject);
     topics.forEach(t => tSel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
   }
   applyCtFilters();
@@ -413,10 +441,12 @@ async function onCtSubjectChange(subject) {
 // ── Topic change ──────────────────────────────────────────────────────────
 async function onCtTopicChange(topic) {
   const stSel = document.getElementById('ctSubtopic');
+  const course = document.getElementById('ctCourse').value;
   const subj  = document.getElementById('ctSubject').value;
   stSel.innerHTML = '<option value="">All Subtopics</option>';
+  stSel.disabled = !topic;
   if (topic) {
-    const subs = await fetchSubtopics(subj, topic);
+    const subs = await fetchSubtopics(course, subj, topic);
     subs.forEach(s => stSel.innerHTML += `<option value="${s}">${s}</option>`);
   }
   applyCtFilters();
@@ -435,9 +465,13 @@ function filterDiff(diff) {
 
 // ── Reset all filters ─────────────────────────────────────────────────────
 function resetCtFilters() {
-  document.getElementById('ctSubject').value  = '';
-  document.getElementById('ctTopic').innerHTML   = '<option value="">All Topics</option>';
+  document.getElementById('ctCourse').value = '';
+  document.getElementById('ctSubject').innerHTML = '<option value="">Select course first</option>';
+  document.getElementById('ctTopic').innerHTML   = '<option value="">All Units</option>';
   document.getElementById('ctSubtopic').innerHTML = '<option value="">All Subtopics</option>';
+  document.getElementById('ctSubject').disabled = true;
+  document.getElementById('ctTopic').disabled = true;
+  document.getElementById('ctSubtopic').disabled = true;
   document.getElementById('ctSearch').value   = '';
   document.querySelectorAll('.diff-chip').forEach(b => b.classList.remove('active','bg-slate-900','text-white'));
   document.querySelector('.diff-chip').classList.add('active','bg-slate-900','text-white');
@@ -451,6 +485,7 @@ function updateBreadcrumb() {
   const crumb = document.getElementById('ctBreadcrumb');
   const inner = document.getElementById('ctBreadcrumbInner');
   const parts = [];
+  if (ctState.course)   parts.push(`<span class="bg-slate-900 text-white px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.course}</span>`);
   if (ctState.subject)  parts.push(`<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.subject}</span>`);
   if (ctState.topic)    parts.push(`<span class="text-slate-400 text-xs">›</span><span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.topic}</span>`);
   if (ctState.subtopic) parts.push(`<span class="text-slate-400 text-xs">›</span><span class="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs font-semibold">${ctState.subtopic}</span>`);
@@ -472,16 +507,23 @@ function deselectAll() {
 }
 
 // ── AJAX topic/subtopic fetchers ──────────────────────────────────────────
-async function fetchTopics(subject) {
+async function fetchSubjects(course) {
   try {
-    const r = await fetch(`/admin/ajax/topics?subject=${encodeURIComponent(subject)}`);
+    const r = await fetch(`/admin/ajax/subjects/${encodeURIComponent(course)}`);
     return await r.json();
   } catch { return []; }
 }
 
-async function fetchSubtopics(subject, topic) {
+async function fetchTopics(course, subject) {
   try {
-    const r = await fetch(`/admin/ajax/subtopics?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}`);
+    const r = await fetch(`/admin/ajax/topics?course=${encodeURIComponent(course)}&subject=${encodeURIComponent(subject)}`);
+    return await r.json();
+  } catch { return []; }
+}
+
+async function fetchSubtopics(course, subject, topic) {
+  try {
+    const r = await fetch(`/admin/ajax/subtopics?course=${encodeURIComponent(course)}&subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}`);
     return await r.json();
   } catch { return []; }
 }

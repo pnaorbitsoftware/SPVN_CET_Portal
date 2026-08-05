@@ -32,6 +32,7 @@ router.post('/groups/:id/students/:studentId/move',   ...guard, c.moveStudentToG
 // Content hierarchy
 router.get('/topics',        ...guard, c.getTopics);
 router.post('/topics',       ...guard, c.createTopic);
+router.post('/topics/import-pdf', ...guard, c.importSyllabusPdf);
 router.post('/topics/:id',   ...guard, c.updateTopic);
 router.post('/topics/:id/delete', ...guard, c.deleteTopic);
 
