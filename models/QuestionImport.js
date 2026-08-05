@@ -26,10 +26,18 @@ const testDefaultsSchema = new mongoose.Schema({
   groupIds:        [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
 }, { _id: false });
 
+const visualBoxSchema = new mongoose.Schema({
+  x:      { type: Number, min: 0, max: 1000 },
+  y:      { type: Number, min: 0, max: 1000 },
+  width:  { type: Number, min: 1, max: 1000 },
+  height: { type: Number, min: 1, max: 1000 },
+}, { _id: false });
+
 const importedQuestionSchema = new mongoose.Schema({
   question:      { type: String, default: '' },
   questionImage: { type: String, default: null },
   questionImageSource:{ type: String, default: null },
+  questionImageBox:{ type: visualBoxSchema, default: null },
   sourceDocument:{ type: String, default: null },
   sourcePage:    { type: Number, default: null },
   optionA:       { type: String, default: '' },

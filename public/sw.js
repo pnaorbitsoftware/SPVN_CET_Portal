@@ -2,7 +2,7 @@
 // Strategy: Network-first for ALL HTML pages (fresh data on every load)
 //           Cache-first only for true static assets (icons, CDN, fonts)
 
-const CACHE_VERSION = 'v2.0';
+const CACHE_VERSION = 'v3.0';
 const STATIC_CACHE  = `cet-static-${CACHE_VERSION}`;
 const OFFLINE_URL   = '/offline.html';
 

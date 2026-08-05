@@ -151,6 +151,19 @@
           </button>
         </form>
 
+        <div class="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3.5">
+          <button id="pwa-install-trigger" type="button"
+            class="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-[.98]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14a2 2 0 002-2v-2M3 17v2a2 2 0 002 2"/>
+            </svg>
+            Install SPVN App (APK)
+          </button>
+          <p id="pwa-install-status" class="mt-2 text-center text-[11px] leading-relaxed text-indigo-700" aria-live="polite">
+            Install the complete portal on Android for quick access.
+          </p>
+        </div>
+
         <!-- Admin link -->
         <div class="mt-6 pt-5 border-t border-slate-100 text-center">
           <a href="/auth/admin" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
