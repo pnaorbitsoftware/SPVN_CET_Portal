@@ -26,6 +26,7 @@
 
   <!-- Google Fonts — display=swap avoids FOIT -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css"/>
 
   <!-- Tailwind CDN with config -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -83,3 +84,6 @@
 <body class="h-full bg-slate-50 text-slate-800">
 <!-- PWA script deferred — does not block render -->
 <script src="/pwa.js?v=3.0" defer></script>
+<script src="/vendor/katex/katex.min.js" defer></script>
+<script src="/vendor/katex/contrib/auto-render.min.js" defer></script>
+<script src="/math-render.js?v=1.0" defer></script>

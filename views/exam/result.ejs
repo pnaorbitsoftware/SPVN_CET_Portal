@@ -236,7 +236,8 @@
               <%= idx+1 %>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-slate-900 leading-relaxed mb-3"><%= q.question %></p>
+              <p class="math-content text-sm font-medium text-slate-900 leading-relaxed mb-3"><%= q.question %></p>
+              <% if (q.questionImage) { %><div class="overflow-x-auto mb-3"><img src="<%= q.questionImage %>" alt="Question <%= idx+1 %> diagram" class="block w-auto h-auto max-w-full rounded-xl border border-slate-200 bg-white"/></div><% } %>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-3">
                 <% ['A','B','C','D'].forEach(key => {
                   const val = optMap[key];
@@ -249,7 +250,7 @@
                 %>
                 <div class="flex items-start gap-2 border rounded-lg px-3 py-2 text-xs <%= cls %>">
                   <span class="font-bold shrink-0"><%= key %>.</span>
-                  <span class="leading-relaxed"><%= val %></span>
+                  <span class="math-content leading-relaxed"><%= val %></span>
                 </div>
                 <% }) %>
               </div>
@@ -260,7 +261,7 @@
               </div>
               <% if (q.explanation) { %>
               <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 leading-relaxed">
-                <strong>Explanation:</strong> <%= q.explanation %>
+                <strong>Explanation:</strong> <span class="math-content"><%= q.explanation %></span>
               </div>
               <% } %>
               <% if (q.subject || q.topic || q.difficulty) { %>

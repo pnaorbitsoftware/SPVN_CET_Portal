@@ -8,6 +8,7 @@ const sharp = require('sharp');
 const AdmZip = require('adm-zip');
 const OpenAI = require('openai');
 const { GoogleGenAI } = require('@google/genai');
+const { createCanvas } = require('@napi-rs/canvas');
 const { z } = require('zod');
 const { zodTextFormat } = require('openai/helpers/zod');
 
@@ -380,26 +381,55 @@ function sourceMatches(hint, sourceName) {
 }
 
 function questionNeedsVisual(question) {
-  if (question.questionImageSource || question.questionImageBox) return true;
-  return /(diagram|figure|graph|chart|image|map|table|circuit|structure|आकृती|चित्र|नकाशा|तक्ता)/i
-    .test(question.question || '');
+  const text = cleanText(question.question);
+  const explicitlyVisual = /(diagram|figure|graph|chart|image|map|table|circuit|network|waveform|ray diagram|shown below|pictured|illustrated|structure|आकृती|चित्र|नकाशा|तक्ता)/i
+    .test(text);
+  if (explicitlyVisual) return true;
+
+  const mathNotationOnly = /(\\begin\{(?:b|p|v|V|small)?matrix\}|\\begin\{array\}|\bmatri(?:x|ces)\b|\bdeterminant\b|\badj(?:oint)?\b)/i
+    .test(text);
+  if (mathNotationOnly) return false;
+
+  return Boolean(question.questionImageSource && question.questionImageBox);
 }
 
 async function renderPdfPage(pdfPath, pageNumber, outputPrefix) {
   const outputPath = `${outputPrefix}.jpg`;
   try {
-    await execFileAsync('pdftoppm', [
-      '-jpeg',
-      '-r', '220',
-      '-f', String(pageNumber),
-      '-l', String(pageNumber),
-      '-singlefile',
-      pdfPath,
-      outputPrefix,
-    ], { timeout: 120000, maxBuffer: 1024 * 1024 });
-    return fs.existsSync(outputPath) ? outputPath : null;
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(fs.readFileSync(pdfPath)),
+      useSystemFonts: true,
+      isEvalSupported: false,
+      verbosity: 0,
+    });
+    try {
+      const document = await loadingTask.promise;
+      if (pageNumber > document.numPages) return null;
+      const page = await document.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 220 / 72 });
+      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+      await page.render({ canvas, viewport, background: '#ffffff' }).promise;
+      fs.writeFileSync(outputPath, canvas.toBuffer('image/jpeg', 94));
+      return fs.existsSync(outputPath) ? outputPath : null;
+    } finally {
+      await loadingTask.destroy().catch(() => {});
+    }
   } catch {
-    return null;
+    try {
+      await execFileAsync('pdftoppm', [
+        '-jpeg',
+        '-r', '220',
+        '-f', String(pageNumber),
+        '-l', String(pageNumber),
+        '-singlefile',
+        pdfPath,
+        outputPrefix,
+      ], { timeout: 120000, maxBuffer: 1024 * 1024 });
+      return fs.existsSync(outputPath) ? outputPath : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -407,24 +437,129 @@ async function cropVisualRegion(sourcePath, visualBox, outputPath) {
   const box = normalizeVisualBox(visualBox);
   if (!box) return null;
 
-  const metadata = await sharp(sourcePath).metadata();
-  if (!metadata.width || !metadata.height) return null;
+  const { data, info } = await sharp(sourcePath)
+    .flatten({ background: '#ffffff' })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  if (!info.width || !info.height) return null;
 
-  const padding = 10;
-  const x1 = Math.max(0, box.x - padding);
-  const y1 = Math.max(0, box.y - padding);
-  const x2 = Math.min(1000, box.x + box.width + padding);
-  const y2 = Math.min(1000, box.y + box.height + padding);
-  const left = Math.max(0, Math.floor((x1 / 1000) * metadata.width));
-  const top = Math.max(0, Math.floor((y1 / 1000) * metadata.height));
-  const right = Math.min(metadata.width, Math.ceil((x2 / 1000) * metadata.width));
-  const bottom = Math.min(metadata.height, Math.ceil((y2 / 1000) * metadata.height));
-  const width = right - left;
-  const height = bottom - top;
-  if (width < 20 || height < 20) return null;
+  const pixelBounds = (x1, y1, x2, y2) => {
+    const left = Math.max(0, Math.floor((x1 / 1000) * info.width));
+    const top = Math.max(0, Math.floor((y1 / 1000) * info.height));
+    const right = Math.min(info.width, Math.ceil((x2 / 1000) * info.width));
+    const bottom = Math.min(info.height, Math.ceil((y2 / 1000) * info.height));
+    return { left, top, right, bottom };
+  };
+
+  const verticalSliceHasInk = (x, top, bottom) => {
+    let darkPixels = 0;
+    const minimum = Math.max(2, Math.floor((bottom - top) * 0.004));
+    for (let y = top; y < bottom; y += 1) {
+      if (data[(y * info.width) + x] < 205) darkPixels += 1;
+      if (darkPixels >= minimum) return true;
+    }
+    return false;
+  };
+
+  const horizontalSliceHasInk = (y, left, right) => {
+    let darkPixels = 0;
+    const minimum = Math.max(2, Math.floor((right - left) * 0.003));
+    for (let x = left; x < right; x += 1) {
+      if (data[(y * info.width) + x] < 205) darkPixels += 1;
+      if (darkPixels >= minimum) return true;
+    }
+    return false;
+  };
+
+  const edgeTouchesInk = (side, bounds) => {
+    const band = Math.max(3, Math.min(12, Math.round(Math.min(
+      bounds.right - bounds.left,
+      bounds.bottom - bounds.top,
+    ) * 0.02)));
+    if (side === 'left' || side === 'right') {
+      const start = side === 'left' ? bounds.left : Math.max(bounds.left, bounds.right - band);
+      const end = side === 'left' ? Math.min(bounds.right, bounds.left + band) : bounds.right;
+      for (let x = start; x < end; x += 1) {
+        if (verticalSliceHasInk(x, bounds.top, bounds.bottom)) return true;
+      }
+      return false;
+    }
+    const start = side === 'top' ? bounds.top : Math.max(bounds.top, bounds.bottom - band);
+    const end = side === 'top' ? Math.min(bounds.bottom, bounds.top + band) : bounds.bottom;
+    for (let y = start; y < end; y += 1) {
+      if (horizontalSliceHasInk(y, bounds.left, bounds.right)) return true;
+    }
+    return false;
+  };
+
+  const findWhitespaceBoundary = (side, bounds) => {
+    if (!edgeTouchesInk(side, bounds)) {
+      return side === 'left' ? bounds.left
+        : side === 'right' ? bounds.right
+          : side === 'top' ? bounds.top : bounds.bottom;
+    }
+
+    const horizontal = side === 'left' || side === 'right';
+    const negative = side === 'left' || side === 'top';
+    const start = side === 'left' ? bounds.left
+      : side === 'right' ? bounds.right - 1
+        : side === 'top' ? bounds.top : bounds.bottom - 1;
+    const span = horizontal ? bounds.right - bounds.left : bounds.bottom - bounds.top;
+    const pageSpan = horizontal ? info.width : info.height;
+    const maxDistance = Math.round(Math.max(
+      horizontal ? 100 : 60,
+      Math.min(span * (horizontal ? 0.9 : 0.7), pageSpan * (horizontal ? 0.35 : 0.2)),
+    ));
+    const blankTarget = Math.max(8, Math.min(22, Math.round(Math.min(info.width, info.height) / 180)));
+    const contentMargin = Math.max(5, Math.min(14, Math.round(blankTarget * 0.65)));
+    let lastInk = start;
+    let blankRun = 0;
+
+    for (let distance = 1; distance <= maxDistance; distance += 1) {
+      const position = start + (negative ? -distance : distance);
+      if (position <= 0 || position >= pageSpan - 1) break;
+      const hasInk = horizontal
+        ? verticalSliceHasInk(position, bounds.top, bounds.bottom)
+        : horizontalSliceHasInk(position, bounds.left, bounds.right);
+      if (hasInk) {
+        lastInk = position;
+        blankRun = 0;
+      } else {
+        blankRun += 1;
+        if (blankRun >= blankTarget) break;
+      }
+    }
+
+    return negative
+      ? Math.max(0, lastInk - contentMargin)
+      : Math.min(pageSpan, lastInk + contentMargin + 1);
+  };
+
+  const paddingX = Math.max(18, Math.min(55, box.width * 0.08));
+  const paddingY = Math.max(10, Math.min(28, box.height * 0.08));
+  const bounds = pixelBounds(
+    Math.max(0, box.x - paddingX),
+    Math.max(0, box.y - paddingY),
+    Math.min(1000, box.x + box.width + paddingX),
+    Math.min(1000, box.y + box.height + paddingY),
+  );
+  if (bounds.right - bounds.left < 20 || bounds.bottom - bounds.top < 20) return null;
+
+  bounds.left = findWhitespaceBoundary('left', bounds);
+  bounds.right = findWhitespaceBoundary('right', bounds);
+  bounds.top = findWhitespaceBoundary('top', bounds);
+  bounds.bottom = findWhitespaceBoundary('bottom', bounds);
+  const finalBounds = {
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.right - bounds.left,
+    height: bounds.bottom - bounds.top,
+  };
+  if (finalBounds.width < 20 || finalBounds.height < 20) return null;
 
   await sharp(sourcePath)
-    .extract({ left, top, width, height })
+    .extract(finalBounds)
     .flatten({ background: '#ffffff' })
     .jpeg({ quality: 94, chromaSubsampling: '4:4:4' })
     .toFile(outputPath);
@@ -497,8 +632,13 @@ async function preserveQuestionVisuals(files, questions, importId) {
     const question = { ...originalQuestion };
     const hint = `${question.sourceLabel || ''} ${question.questionImageSource || ''}`;
     const matchedInputFile = files.find(file => sourceMatches(hint, file.name));
+    const visualRequired = questionNeedsVisual(question);
+    if (!visualRequired && !question.questionImage) {
+      question.questionImageSource = null;
+      question.questionImageBox = null;
+    }
 
-    if (!question.questionImage && standaloneImages.length && questionNeedsVisual(question)) {
+    if (!question.questionImage && standaloneImages.length && visualRequired) {
       const sourceImage = standaloneImages.find(asset => sourceMatches(hint, asset.sourceName))
         || (files.length === 1 && standaloneImages.length === 1 ? standaloneImages[0] : null);
       if (sourceImage && question.questionImageBox) {
@@ -515,7 +655,7 @@ async function preserveQuestionVisuals(files, questions, importId) {
       }
     }
 
-    if (!question.questionImage && embeddedImages.length && questionNeedsVisual(question)) {
+    if (!question.questionImage && embeddedImages.length && visualRequired) {
       const embeddedImage = embeddedImages.find(asset => sourceMatches(hint, asset.sourceName))
         || embeddedImages.find(asset => matchedInputFile?.name === asset.documentName
           && embeddedImages.filter(item => item.documentName === asset.documentName).length === 1);
@@ -526,7 +666,7 @@ async function preserveQuestionVisuals(files, questions, importId) {
       || (files.length === 1 && pdfAssets.length === 1 ? pdfAssets[0] : null);
     if (pdfAsset) {
       const pageNumber = sourcePageNumber(question);
-      if (!question.questionImage && pageNumber && questionNeedsVisual(question)) {
+      if (!question.questionImage && pageNumber && visualRequired) {
         if (!question.questionImageBox) {
           warnings.push(`${question.sourceLabel || pdfAsset.sourceName}: diagram coordinates were unavailable, so the full PDF page was not attached.`);
         } else {
@@ -596,9 +736,10 @@ Rules:
    subtopic=${cleanText(defaults.subtopic)}
    difficulty=${normalizeDifficulty(defaults.difficulty)}
    marks=${normalizeMarks(defaults.marks)}
-10. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the question depends on a diagram, graph, figure, map, table, or other visual. Otherwise use an empty string.
-11. questionImageBox must be null when no visual is required. When a visual is required, return the tight bounding box of ONLY that question's diagram/graph/figure/map/table in the source page or image as x, y, width, and height normalized from 0 to 1000. Exclude page margins, headings, question text, options, answers, and all neighbouring questions. Never return the whole page.
-12. explanation may be empty. topic and subtopic may be empty.
+10. Preserve mathematical structure using valid LaTeX inside \\( and \\) delimiters. Matrices must use \\begin{bmatrix} rows separated by \\\\ and cells separated by & \\end{bmatrix}; fractions, roots, powers, subscripts, vectors, limits, integrals and scientific notation must remain structurally correct. Keep ordinary prose outside the math delimiters.
+11. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the answer depends on genuinely non-text visual information such as a circuit, graph, geometry figure, map, labelled scientific diagram, or picture. A matrix, determinant, equation, formula, symbolic expression, normal text table, or mathematical notation is NOT a question image when it can be transcribed into the question/options; for those, use an empty string.
+12. questionImageBox must be null when no genuine visual is required. When one is required, inspect at high detail and return the bounding box of the COMPLETE visual as x, y, width, and height normalized from 0 to 1000. Include every connected line, arrow, endpoint, dot, label, legend, axis, scale, caption and boundary belonging to that visual. Exclude page margins, headings, question text, options, answers and neighbouring questions. Check all four edges before returning; never return a partial visual or the whole page.
+13. explanation may be empty. topic and subtopic may be empty.
 
 Attached source names: ${fileNames.join(', ')}`;
 }

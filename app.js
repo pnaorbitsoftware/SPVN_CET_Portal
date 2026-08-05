@@ -40,6 +40,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
   },
 }));
+app.use('/vendor/katex', express.static(path.join(__dirname, 'node_modules', 'katex', 'dist'), {
+  maxAge: '30d',
+  immutable: true,
+}));
 
 // ── Body / file parsers ───────────────────────────────────────────────────────
 app.use(express.urlencoded({ extended: true, limit: '10mb', parameterLimit: 20000 }));
