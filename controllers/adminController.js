@@ -4,6 +4,7 @@ const xlsx = require('xlsx');
 const fs   = require('fs');
 const path = require('path');
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
+const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -21,6 +22,46 @@ const loadTopics = (course, subject) => {
   if (subject) q.subject = subject;
   return Topic.find(q).sort({ name: 1 });
 };
+
+const cleanHierarchyText = value => String(value || '').replace(/\s+/g, ' ').trim();
+
+const parseSubtopics = value => {
+  const seen = new Set();
+  return String(value || '').split(/\r?\n/).map(cleanHierarchyText).filter(item => {
+    const key = item.toLocaleLowerCase();
+    if (!item || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const mergeHierarchyText = (existing, incoming) => {
+  const seen = new Set();
+  return [...(existing || []), ...(incoming || [])].map(cleanHierarchyText).filter(item => {
+    const key = item.toLocaleLowerCase();
+    if (!item || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const isValidCourseSubject = (course, subject) => COURSES.includes(course)
+  && (SUBJECTS_BY_COURSE[course] || []).includes(subject);
+
+async function upsertSyllabusUnit({ course, subject, name, subtopics }) {
+  const unitName = cleanHierarchyText(name);
+  const existingRows = await Topic.find({ course, subject });
+  const existing = existingRows.find(row => row.name.toLocaleLowerCase() === unitName.toLocaleLowerCase());
+  if (!existing) {
+    await Topic.create({ course, subject, name: unitName, subtopics, isActive: true });
+    return 'created';
+  }
+  existing.name = unitName;
+  existing.subtopics = mergeHierarchyText(existing.subtopics, subtopics);
+  existing.isActive = true;
+  await existing.save();
+  return 'updated';
+}
 
 const completedResultStatus = { $in: ['submitted', 'auto_submitted'] };
 
@@ -240,34 +281,99 @@ exports.exportGroupCredentials = async (req, res) => {
 exports.getTopics = async (req, res) => {
   try {
     const { course, subject } = req.query;
-    const [topics] = await Promise.all([ loadTopics(course, subject) ]);
+    const [topics, allTopics] = await Promise.all([
+      loadTopics(course, subject),
+      Topic.find({ isActive:true }, 'course subtopics'),
+    ]);
     const SUBJECTS = course ? (SUBJECTS_BY_COURSE[course]||ALL_SUBJECTS) : ALL_SUBJECTS;
-    res.render('admin/topics', { title:'Content Management', topics, COURSES, SUBJECTS, SUBJECTS_BY_COURSE, filterCourse:course||'', filterSubject:subject||'' });
+    const courseStats = Object.fromEntries(COURSES.map(courseName => {
+      const courseTopics = allTopics.filter(topic => topic.course === courseName);
+      return [courseName, {
+        units: courseTopics.length,
+        subtopics: courseTopics.reduce((sum, topic) => sum + (topic.subtopics?.length || 0), 0),
+      }];
+    }));
+    res.render('admin/topics', {
+      title:'Syllabus Manager', topics, COURSES, SUBJECTS, SUBJECTS_BY_COURSE, courseStats,
+      filterCourse:course||'', filterSubject:subject||'',
+      aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
+    });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.createTopic = async (req, res) => {
   try {
     const { name, course, subject, subtopics } = req.body;
-    await Topic.create({ name, course, subject, subtopics: subtopics ? subtopics.split('\n').map(s=>s.trim()).filter(Boolean) : [] });
-    req.flash('success','Topic added.');
+    if (!isValidCourseSubject(course, subject)) throw new Error('Select a valid course and subject.');
+    if (!cleanHierarchyText(name)) throw new Error('Unit name is required.');
+    const result = await upsertSyllabusUnit({ course, subject, name, subtopics: parseSubtopics(subtopics) });
+    req.flash('success', result === 'created' ? 'Syllabus unit added.' : 'Existing unit updated with the new subtopics.');
     res.redirect(`/admin/topics?course=${course}&subject=${encodeURIComponent(subject)}`);
   } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/topics'); }
+};
+
+exports.importSyllabusPdf = async (req, res) => {
+  const course = cleanHierarchyText(req.body.course).toUpperCase();
+  const subject = cleanHierarchyText(req.body.subject);
+  const redirectUrl = `/admin/topics?course=${encodeURIComponent(course)}${subject ? `&subject=${encodeURIComponent(subject)}` : ''}`;
+  try {
+    if (!COURSES.includes(course)) throw new Error('Select a valid course.');
+    if (subject && !isValidCourseSubject(course, subject)) throw new Error('Select a valid subject for this course.');
+    const file = req.files?.syllabusPdf;
+    if (!file) throw new Error('Choose a syllabus PDF.');
+    if (Array.isArray(file)) throw new Error('Upload one syllabus PDF at a time.');
+    const extension = path.extname(file.name || '').toLocaleLowerCase();
+    if (extension !== '.pdf' || !['application/pdf', 'application/octet-stream'].includes(file.mimetype)) {
+      throw new Error('Only PDF files are supported.');
+    }
+    const maxSize = parseInt(process.env.MAX_FILE_SIZE, 10) || 20 * 1024 * 1024;
+    if (file.size > maxSize) throw new Error(`PDF must be below ${Math.floor(maxSize / 1024 / 1024)} MB.`);
+
+    const extraction = await extractSyllabusFromPdf(file, {
+      course,
+      subject,
+      adminId:req.session?.user?.id || req.user?.id || '',
+    });
+    if (!extraction.units.length) throw new Error('No valid syllabus units were detected. Review the PDF and try again.');
+
+    let created = 0;
+    let updated = 0;
+    for (const unit of extraction.units) {
+      const result = await upsertSyllabusUnit({
+        course,
+        subject:unit.subject,
+        name:unit.unitName,
+        subtopics:unit.subtopics,
+      });
+      if (result === 'created') created += 1;
+      else updated += 1;
+    }
+
+    let message = `Syllabus imported: ${created} unit(s) added and ${updated} unit(s) updated using ${extraction.model}.`;
+    if (extraction.warnings.length) message += ` ${extraction.warnings.length} warning(s) need review.`;
+    req.flash('success', message);
+    res.redirect(redirectUrl);
+  } catch (e) {
+    console.error('Syllabus PDF import failed:', e);
+    req.flash('error', 'Syllabus import failed: ' + e.message);
+    res.redirect(COURSES.includes(course) ? redirectUrl : '/admin/topics');
+  }
 };
 
 exports.updateTopic = async (req, res) => {
   try {
     const { name, subtopics } = req.body;
-    await Topic.findByIdAndUpdate(req.params.id, { name, subtopics: subtopics ? subtopics.split('\n').map(s=>s.trim()).filter(Boolean) : [] });
-    req.flash('success','Topic updated.');
+    if (!cleanHierarchyText(name)) throw new Error('Unit name is required.');
+    await Topic.findByIdAndUpdate(req.params.id, { name:cleanHierarchyText(name), subtopics:parseSubtopics(subtopics) });
+    req.flash('success','Syllabus unit updated.');
     res.redirect('/admin/topics');
-  } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/topics'); }
+  } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/topics'); }
 };
 
 exports.deleteTopic = async (req, res) => {
   try {
     await Topic.findByIdAndUpdate(req.params.id, { isActive:false });
-    req.flash('success','Topic deleted.');
+    req.flash('success','Syllabus unit deleted.');
     res.redirect('/admin/topics');
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/topics'); }
 };
