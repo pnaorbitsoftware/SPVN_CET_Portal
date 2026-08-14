@@ -46,7 +46,7 @@
             </div>
             <% }) %>
           </div>
-          <p class="text-xs text-indigo-700 mt-3">Physics and Chemistry are available together. Mathematics/Biology unlocks after you answer at least one question in both subjects.</p>
+          <p class="text-xs text-indigo-700 mt-3">Physics and Chemistry are available together. Mathematics/Biology unlocks after you visit every question in both subjects.</p>
         </div>
         <% } %>
 
@@ -59,7 +59,7 @@
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>You can mark questions for review and revisit them.</li>
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>The exam auto-submits when the timer reaches zero.</li>
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>Do not refresh the page during the exam.</li>
-          <% if (cetSectionFlow) { %><li class="flex items-start gap-2"><span class="text-indigo-500 mt-0.5">ℹ</span>Physics and Chemistry stay open; Mathematics/Biology unlocks after an answer in both subjects.</li><% } %>
+          <% if (cetSectionFlow) { %><li class="flex items-start gap-2"><span class="text-indigo-500 mt-0.5">ℹ</span>Physics and Chemistry stay open; Mathematics/Biology unlocks after every question in both subjects is visited.</li><% } %>
           <% if (test.shuffleQuestions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span><%= cetSectionFlow?'Questions are shuffled only inside their section.':'Questions will be shuffled randomly.' %></li><% } %>
           <% if (test.instructions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span><%= test.instructions %></li><% } %>
         </ul>

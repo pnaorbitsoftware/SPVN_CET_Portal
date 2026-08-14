@@ -50,7 +50,7 @@ function buildQuestionOrder(test, questions = []) {
   });
 }
 
-function buildSectionState(questionOrder = [], questions = [], answers = {}) {
+function buildSectionState(questionOrder = [], questions = [], answers = {}, visitedQuestionIds = []) {
   const subjectById = new Map(
     questions.map(question => [question._id.toString(), subjectOf(question)])
   );
@@ -74,18 +74,19 @@ function buildSectionState(questionOrder = [], questions = [], answers = {}) {
   });
 
   const sections = sectionNames.map(name => sectionMap.get(name));
-  const hasAttemptedSubject = subject => {
+  const visitedQuestionIdSet = new Set(visitedQuestionIds.map(questionId => String(questionId)));
+  const hasVisitedSubject = subject => {
     const section = sectionMap.get(subject);
-    return section?.questionIds.some(questionId => Boolean(answers[questionId]?.answer));
+    return section?.questionIds.every(questionId => visitedQuestionIdSet.has(questionId));
   };
-  const prerequisiteSubjectsAttempted = CET_PREREQUISITE_SUBJECTS.every(hasAttemptedSubject);
+  const prerequisiteQuestionsVisited = CET_PREREQUISITE_SUBJECTS.every(hasVisitedSubject);
 
   sections.forEach((section, sectionIndex) => {
     section.completed = section.questionIds.every(questionId =>
       Object.prototype.hasOwnProperty.call(answers, questionId)
     );
     section.locked = !CET_PREREQUISITE_SUBJECTS.includes(section.name)
-      && !prerequisiteSubjectsAttempted;
+      && !prerequisiteQuestionsVisited;
     section.index = sectionIndex;
   });
 
@@ -93,7 +94,7 @@ function buildSectionState(questionOrder = [], questions = [], answers = {}) {
   const firstPendingQuestionNumber = firstUnlockedSection
     ? firstUnlockedSection.questionIds.reduce((pendingNumber, questionId, questionIndex) => {
         if (pendingNumber) return pendingNumber;
-        return answers[questionId]?.answer
+        return visitedQuestionIdSet.has(questionId)
           ? null
           : firstUnlockedSection.questionNumbers[questionIndex];
       }, null) || firstUnlockedSection.questionNumbers[0]
@@ -101,7 +102,7 @@ function buildSectionState(questionOrder = [], questions = [], answers = {}) {
 
   return {
     sections,
-    prerequisiteSubjectsAttempted,
+    prerequisiteQuestionsVisited,
     firstPendingQuestionNumber,
     subjectById,
   };
