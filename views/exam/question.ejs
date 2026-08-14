@@ -44,7 +44,7 @@
   <div id="warnBanner" class="hidden bg-rose-600 text-white text-center text-sm font-semibold py-2 px-4 flex-shrink-0"></div>
   <% if (cetSectionFlow && currentSection && sectionQuestionNumber===1) { %>
   <div class="bg-indigo-50 border-b border-indigo-100 text-indigo-800 text-center text-xs font-semibold py-2 px-4 flex-shrink-0">
-    <%= currentSection.index===0 ? 'CET section flow started with Physics.' : `${currentSection.name} section started automatically.` %>
+    <%= ['Physics','Chemistry'].includes(currentSection.name) ? 'Physics and Chemistry are both available. Visit every question in both subjects to unlock Mathematics/Biology.' : `${currentSection.name} is now unlocked.` %>
   </div>
   <% } %>
 
@@ -115,7 +115,7 @@
               class="flex items-center gap-2 bg-navy-950 hover:bg-navy-900 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors text-sm">
               <% const isSectionLast = cetSectionFlow && currentSection && currentSection.questionNumbers[currentSection.questionNumbers.length-1]===questionNumber; %>
               <% const nextSection = isSectionLast ? sectionState.sections[currentSection.index+1] : null; %>
-              <%= nextSection ? `Complete ${currentSection.name} & Start ${nextSection.name}` : 'Save & Next' %>
+              <%= nextSection && !nextSection.locked ? `Save & Start ${nextSection.name}` : 'Save & Next' %>
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </a>
           <% } else { %>
@@ -161,7 +161,7 @@
             <div class="flex flex-wrap gap-1.5">
           <% } %>
           <% if (p.locked) { %>
-          <span class="palette-btn bg-slate-100 text-slate-300 cursor-not-allowed" title="Complete the previous CET section first"><%= p.num %></span>
+          <span class="palette-btn bg-slate-100 text-slate-300 cursor-not-allowed" title="Visit every Physics and Chemistry question first"><%= p.num %></span>
           <% } else { %>
           <a href="/exam/<%= test.id %>/question/<%= p.num %>" onclick="saveAndNav(event, this.href)"
             class="palette-btn <%= p.num===questionNumber?'ring-2 ring-offset-1 ring-navy-950 scale-110':'' %>"

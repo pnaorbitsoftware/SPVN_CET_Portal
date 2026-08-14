@@ -101,16 +101,13 @@ exports.getQuestion = async (req, res) => {
     );
     const cetSectionFlow = isCetSectionTest(test, questionRows);
     const sectionState = cetSectionFlow
-      ? buildSectionState(questionIds, questionRows, result.answers || {})
+      ? buildSectionState(questionIds, questionRows, result.answers || {}, result.visitedQuestionIds || [])
       : null;
     const currentQuestionId = questionIds[questionNumber - 1];
     const requestedSubject = sectionState?.subjectById.get(String(currentQuestionId));
-    const requestedSectionIndex = sectionState?.sections
-      .findIndex(section => section.name === requestedSubject);
-    if (
-      cetSectionFlow &&
-      requestedSectionIndex > sectionState.unlockedSectionIndex
-    ) {
+    const requestedSection = sectionState?.sections
+      .find(section => section.name === requestedSubject);
+    if (cetSectionFlow && requestedSection?.locked) {
       return res.redirect(`/exam/${testId}/question/${sectionState.firstPendingQuestionNumber}`);
     }
 
@@ -156,7 +153,7 @@ exports.getQuestion = async (req, res) => {
         qId: questionId,
         status,
         subject,
-        locked: cetSectionFlow && sectionIndex > sectionState.unlockedSectionIndex,
+        locked: cetSectionFlow && sectionState.sections[sectionIndex]?.locked,
       };
     });
 
@@ -192,6 +189,20 @@ exports.saveAnswer = async (req, res) => {
 
     const result = await Result.findOne({ studentId, testId, status: 'in_progress' });
     if (!result) return res.json({ success: false, message: 'Session expired' });
+
+    const [test, questionRows] = await Promise.all([
+      Test.findById(testId).select('course'),
+      Question.find({ _id: { $in: result.questionOrder } }, '_id subject'),
+    ]);
+    const cetSectionFlow = isCetSectionTest(test, questionRows);
+    const sectionState = cetSectionFlow
+      ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])
+      : null;
+    const questionSubject = sectionState?.subjectById.get(String(questionId));
+    const questionSection = sectionState?.sections.find(section => section.name === questionSubject);
+    if (questionSection?.locked) {
+      return res.status(403).json({ success: false, message: 'Visit every Physics and Chemistry question first.' });
+    }
 
     const answers        = { ...(result.answers || {}) };
     const questionTimings = { ...(result.questionTimings || {}) };

@@ -34,19 +34,19 @@
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <p class="text-xs font-bold uppercase tracking-wider text-indigo-500">CET Section Flow</p>
-              <h2 class="font-bold text-indigo-950 mt-0.5">Physics → Chemistry → Mathematics</h2>
+              <h2 class="font-bold text-indigo-950 mt-0.5">Physics + Chemistry, then Mathematics/Biology</h2>
             </div>
             <span class="text-2xl">🔒</span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <% sectionSummary.filter(section=>['Physics','Chemistry','Mathematics'].includes(section.subject)).forEach((section,index) => { %>
+            <% sectionSummary.forEach((section,index) => { %>
             <div class="bg-white border border-indigo-100 rounded-xl p-3">
               <p class="text-xs font-bold text-indigo-700"><%= index+1 %>. <%= section.subject %></p>
               <p class="text-[11px] text-slate-500 mt-1"><%= section.questionCount %> questions · <%= section.totalMarks %> marks</p>
             </div>
             <% }) %>
           </div>
-          <p class="text-xs text-indigo-700 mt-3">Complete every question page in the current section to unlock the next one. Mathematics starts automatically after Physics and Chemistry.</p>
+          <p class="text-xs text-indigo-700 mt-3">Physics and Chemistry are available together. Mathematics/Biology unlocks after you visit every question in both subjects.</p>
         </div>
         <% } %>
 
@@ -59,7 +59,7 @@
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>You can mark questions for review and revisit them.</li>
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>The exam auto-submits when the timer reaches zero.</li>
           <li class="flex items-start gap-2"><svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>Do not refresh the page during the exam.</li>
-          <% if (cetSectionFlow) { %><li class="flex items-start gap-2"><span class="text-indigo-500 mt-0.5">ℹ</span>Future CET sections remain locked until the current section is completed.</li><% } %>
+          <% if (cetSectionFlow) { %><li class="flex items-start gap-2"><span class="text-indigo-500 mt-0.5">ℹ</span>Physics and Chemistry stay open; Mathematics/Biology unlocks after every question in both subjects is visited.</li><% } %>
           <% if (test.shuffleQuestions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span><%= cetSectionFlow?'Questions are shuffled only inside their section.':'Questions will be shuffled randomly.' %></li><% } %>
           <% if (test.instructions) { %><li class="flex items-start gap-2"><span class="text-blue-500 mt-0.5">ℹ</span><%= test.instructions %></li><% } %>
         </ul>
