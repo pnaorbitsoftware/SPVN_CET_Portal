@@ -1,4 +1,5 @@
-const CET_SECTION_ORDER = ['Physics', 'Chemistry', 'Mathematics'];
+const CET_SECTION_ORDER = ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
+const CET_PREREQUISITE_SUBJECTS = ['Physics', 'Chemistry'];
 
 function values(value) {
   if (!value) return [];
@@ -14,7 +15,8 @@ function isCetSectionTest(test, questions = []) {
   if (!courses.includes('CET')) return false;
 
   const subjects = new Set(questions.map(subjectOf));
-  return CET_SECTION_ORDER.every(subject => subjects.has(subject));
+  return CET_PREREQUISITE_SUBJECTS.every(subject => subjects.has(subject))
+    && (subjects.has('Mathematics') || subjects.has('Biology'));
 }
 
 function shuffle(items) {
@@ -72,36 +74,34 @@ function buildSectionState(questionOrder = [], questions = [], answers = {}) {
   });
 
   const sections = sectionNames.map(name => sectionMap.get(name));
-  let unlockedSectionIndex = 0;
-  for (let sectionIndex = 0; sectionIndex < sections.length - 1; sectionIndex++) {
-    const completed = sections[sectionIndex].questionIds.every(questionId =>
-      Object.prototype.hasOwnProperty.call(answers, questionId)
-    );
-    if (!completed) break;
-    unlockedSectionIndex = sectionIndex + 1;
-  }
+  const hasAttemptedSubject = subject => {
+    const section = sectionMap.get(subject);
+    return section?.questionIds.some(questionId => Boolean(answers[questionId]?.answer));
+  };
+  const prerequisiteSubjectsAttempted = CET_PREREQUISITE_SUBJECTS.every(hasAttemptedSubject);
 
   sections.forEach((section, sectionIndex) => {
     section.completed = section.questionIds.every(questionId =>
       Object.prototype.hasOwnProperty.call(answers, questionId)
     );
-    section.locked = sectionIndex > unlockedSectionIndex;
+    section.locked = !CET_PREREQUISITE_SUBJECTS.includes(section.name)
+      && !prerequisiteSubjectsAttempted;
     section.index = sectionIndex;
   });
 
-  const unlockedSection = sections[unlockedSectionIndex] || null;
-  const firstPendingQuestionNumber = unlockedSection
-    ? unlockedSection.questionIds.reduce((pendingNumber, questionId, questionIndex) => {
+  const firstUnlockedSection = sections.find(section => !section.locked) || null;
+  const firstPendingQuestionNumber = firstUnlockedSection
+    ? firstUnlockedSection.questionIds.reduce((pendingNumber, questionId, questionIndex) => {
         if (pendingNumber) return pendingNumber;
-        return Object.prototype.hasOwnProperty.call(answers, questionId)
+        return answers[questionId]?.answer
           ? null
-          : unlockedSection.questionNumbers[questionIndex];
-      }, null) || unlockedSection.questionNumbers[0]
+          : firstUnlockedSection.questionNumbers[questionIndex];
+      }, null) || firstUnlockedSection.questionNumbers[0]
     : 1;
 
   return {
     sections,
-    unlockedSectionIndex,
+    prerequisiteSubjectsAttempted,
     firstPendingQuestionNumber,
     subjectById,
   };
