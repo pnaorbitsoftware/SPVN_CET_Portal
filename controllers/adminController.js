@@ -24,10 +24,15 @@ const loadTopics = (course, subject) => {
 };
 
 const cleanHierarchyText = value => String(value || '').replace(/\s+/g, ' ').trim();
+const stripUnitPrefix = value => cleanHierarchyText(value).replace(/^unit\s*\d+\s*[—-]\s*/i, '');
 
-const hierarchyValuePattern = value => {
-  const terms = cleanHierarchyText(value).split(' ').filter(Boolean);
-  return new RegExp(`^${terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')}$`, 'i');
+const hierarchyValuePattern = (value, { allowUnitPrefix = false } = {}) => {
+  const terms = (allowUnitPrefix ? stripUnitPrefix(value) : cleanHierarchyText(value))
+    .split(' ')
+    .filter(Boolean);
+  const expression = terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  const prefix = allowUnitPrefix ? '(?:unit\\s*\\d+\\s*[—-]\\s*)?' : '';
+  return new RegExp(`^${prefix}${expression}$`, 'i');
 };
 
 const parseSubtopics = value => {
@@ -426,7 +431,7 @@ exports.getQuestions = async (req, res) => {
     const limit=25, skip=(page-1)*limit;
     const q = { isActive:true };
     if (subject)   q.subject   = hierarchyValuePattern(subject);
-    if (topic)     q.topic     = hierarchyValuePattern(topic);
+    if (topic)     q.topic     = hierarchyValuePattern(topic, { allowUnitPrefix: true });
     if (subtopic)  q.subtopic  = hierarchyValuePattern(subtopic);
     if (difficulty) q.difficulty = difficulty;
     const sortMap = {
@@ -435,13 +440,21 @@ exports.getQuestions = async (req, res) => {
       oldest:     { createdAt:1 },
       subject:    { subject:1, topic:1, subtopic:1, difficulty:1, createdAt:-1 },
     };
-    const [questions, total] = await Promise.all([
+    let [questions, total] = await Promise.all([
       Question.find(q).sort(sortMap[sort]||sortMap.subject).skip(skip).limit(limit),
       Question.countDocuments(q),
     ]);
+    if (subtopic && topic && total === 0) {
+      const topicQuery = { ...q };
+      delete topicQuery.subtopic;
+      [questions, total] = await Promise.all([
+        Question.find(topicQuery).sort(sortMap[sort]||sortMap.subject).skip(skip).limit(limit),
+        Question.countDocuments(topicQuery),
+      ]);
+    }
     const topicRows = subject ? await loadTopics(course, subject) : [];
     const subtopicList = topic
-      ? (topicRows.find(row => cleanHierarchyText(row.name).toLocaleLowerCase() === cleanHierarchyText(topic).toLocaleLowerCase())?.subtopics || [])
+      ? (topicRows.find(row => stripUnitPrefix(row.name).toLocaleLowerCase() === stripUnitPrefix(topic).toLocaleLowerCase())?.subtopics || [])
       : [];
     res.render('admin/questions', {
       title:'Question Bank', questions, total,

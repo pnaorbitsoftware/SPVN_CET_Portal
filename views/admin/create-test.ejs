@@ -370,7 +370,9 @@ function updCount() {
 // ── Current filter state ──────────────────────────────────────────────────
 const ctState = { course:'', subject:'', topic:'', subtopic:'', diff:'', search:'' };
 const hierarchyKey = value => String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+const topicKey = value => hierarchyKey(value).replace(/^unit\s*\d+\s*[—-]\s*/, '');
 const sameHierarchyValue = (left, right) => hierarchyKey(left) === hierarchyKey(right);
+const sameTopicValue = (left, right) => topicKey(left) === topicKey(right);
 
 // ── Apply all filters ─────────────────────────────────────────────────────
 function applyCtFilters() {
@@ -381,14 +383,23 @@ function applyCtFilters() {
   ctState.diff     = document.querySelector('.diff-chip.active')?.dataset.diff || '';
   ctState.search   = (document.getElementById('ctSearch').value || '').toLowerCase();
 
-  // Filter question rows
-  document.querySelectorAll('.q-item').forEach(row => {
+  const questionRows = [...document.querySelectorAll('.q-item')];
+  const matchesWithoutSubtopic = row => {
     const matchSubj    = !ctState.subject  || sameHierarchyValue(row.dataset.subj, ctState.subject);
-    const matchTopic   = !ctState.topic    || sameHierarchyValue(row.dataset.topic, ctState.topic);
-    const matchSub     = !ctState.subtopic || sameHierarchyValue(row.dataset.subtopic, ctState.subtopic);
+    const matchTopic   = !ctState.topic    || sameTopicValue(row.dataset.topic, ctState.topic);
     const matchDiff    = !ctState.diff     || row.dataset.diff     === ctState.diff;
     const matchSearch  = !ctState.search   || row.dataset.text.includes(ctState.search);
-    row.style.display  = (matchSubj && matchTopic && matchSub && matchDiff && matchSearch) ? '' : 'none';
+    return matchSubj && matchTopic && matchDiff && matchSearch;
+  };
+  const hasSubtopicMatch = !ctState.subtopic || questionRows.some(row =>
+    matchesWithoutSubtopic(row) && sameHierarchyValue(row.dataset.subtopic, ctState.subtopic)
+  );
+
+  questionRows.forEach(row => {
+    const matchSub = !ctState.subtopic
+      || !hasSubtopicMatch
+      || sameHierarchyValue(row.dataset.subtopic, ctState.subtopic);
+    row.style.display = (matchesWithoutSubtopic(row) && matchSub) ? '' : 'none';
   });
 
   // Show/hide group headers — only show if they have at least one visible q-item
@@ -531,12 +542,15 @@ function addQuestionsByHierarchy() {
     return;
   }
 
-  const matchingRows = Array.from(document.querySelectorAll('.q-item')).filter(row =>
-    row.style.display !== 'none' &&
-    sameHierarchyValue(row.dataset.subj, subject) &&
-    sameHierarchyValue(row.dataset.topic, topic) &&
-    (!subtopic || sameHierarchyValue(row.dataset.subtopic, subtopic))
+  const topicRows = Array.from(document.querySelectorAll('.q-item')).filter(row =>
+    row.style.display !== 'none'
+    && sameHierarchyValue(row.dataset.subj, subject)
+    && sameTopicValue(row.dataset.topic, topic)
   );
+  const exactSubtopicRows = subtopic
+    ? topicRows.filter(row => sameHierarchyValue(row.dataset.subtopic, subtopic))
+    : topicRows;
+  const matchingRows = exactSubtopicRows.length ? exactSubtopicRows : topicRows;
   const availableRows = matchingRows.filter(row => !row.querySelector('input[name="questionIds"]').checked);
   const rowsToAdd = availableRows.slice(0, requestedCount);
   rowsToAdd.forEach(row => {
