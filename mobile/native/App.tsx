@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as DocumentPicker from 'expo-document-picker';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -92,6 +92,8 @@ function StudentArea({ screen }: { screen: Screen }) {
   const [documents, setDocuments] = useState<MobileDocument[]>([]);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const autoSubmittingRef = useRef(false);
 
   useEffect(() => {
     setLoading(true);
@@ -144,6 +146,7 @@ function ExamScreen({ testId, onClose }: { testId: string; onClose: () => void }
     try {
       const questionState = await mobileApi.getStudentQuestion(testId, questionNumber);
       setState(questionState);
+      setRemainingSeconds(questionState.remainingSeconds);
       setSelectedAnswer(questionState.selectedAnswer);
       setMarkedForReview(questionState.markedForReview);
     } catch (error) {
@@ -164,6 +167,18 @@ function ExamScreen({ testId, onClose }: { testId: string; onClose: () => void }
   };
 
   const submit = () => Alert.alert('Submit test?', 'You cannot change answers after submission.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Submit', style: 'destructive', onPress: async () => { try { await mobileApi.submitStudentTest(testId); Alert.alert('Submitted', 'Your result is ready.'); onClose(); } catch (error) { Alert.alert('Submit failed', error instanceof Error ? error.message : 'Please try again.'); } } }]);
+
+  useEffect(() => {
+    if (remainingSeconds <= 0 || autoSubmittingRef.current) return;
+    const timer = setInterval(() => setRemainingSeconds((seconds) => Math.max(seconds - 1, 0)), 1000);
+    return () => clearInterval(timer);
+  }, [remainingSeconds]);
+
+  useEffect(() => {
+    if (remainingSeconds !== 0 || !state || autoSubmittingRef.current) return;
+    autoSubmittingRef.current = true;
+    mobileApi.submitStudentTest(testId).then(() => { Alert.alert('Time finished', 'Your test was auto-submitted.'); onClose(); }).catch(() => { autoSubmittingRef.current = false; Alert.alert('Connection issue', 'Timer expired. Reconnect and submit immediately.'); });
+  }, [remainingSeconds, state, testId, onClose]);
 
   if (loading || !state) return <Loading />;
   return <SafeAreaView style={styles.examPage}><View style={styles.examHeader}><Pressable onPress={onClose}><Text style={styles.backText}>Exit</Text></Pressable><Text style={styles.examCounter}>Q {state.questionNumber}/{state.totalQuestions}</Text><Pressable onPress={submit}><Text style={styles.submitText}>Submit</Text></Pressable></View><ScrollView contentContainerStyle={styles.content}><Text style={styles.subjectText}>{state.question.subject}</Text><Text style={styles.questionText}>{state.question.question}</Text>{state.question.options.map((option) => <Pressable key={option.key} style={[styles.option, selectedAnswer === option.key && styles.optionSelected]} onPress={() => setSelectedAnswer(option.key)}><Text style={styles.optionKey}>{option.key}</Text><Text style={styles.optionValue}>{option.value}</Text></Pressable>)}<View style={styles.palette}>{state.palette.map((item) => <Pressable key={item.number} onPress={() => saveAndMove(item.number)} style={[styles.paletteItem, item.answered && styles.paletteAnswered, item.marked && styles.paletteMarked]}><Text>{item.number}</Text></Pressable>)}</View><View style={styles.examActions}><Pressable style={styles.secondaryButton} onPress={() => setMarkedForReview(!markedForReview)}><Text style={styles.secondaryButtonText}>{markedForReview ? 'Unmark' : 'Mark for Review'}</Text></Pressable><Pressable style={styles.primaryButton} onPress={() => saveAndMove(Math.min(state.questionNumber + 1, state.totalQuestions))}><Text style={styles.primaryButtonText}>{state.questionNumber === state.totalQuestions ? 'Save Answer' : 'Save & Next'}</Text></Pressable></View></ScrollView></SafeAreaView>;
