@@ -48,6 +48,10 @@ export const mobileApi = {
   getStudentTests: () => request<{ tests: MobileTest[] }>('/student/tests'),
   getStudentResults: () => request<{ results: MobileResult[] }>('/student/results'),
   getStudentNotifications: () => request<{ notifications: MobileNotification[] }>('/student/notifications'),
+  startStudentTest: (testId: string) => request<{ resultId: string; firstQuestionNumber: number; questionCount: number }>(`/student/tests/${testId}/start`, { method: 'POST' }),
+  getStudentQuestion: (testId: string, questionNumber: number) => request<ExamQuestionState>(`/student/tests/${testId}/questions/${questionNumber}`),
+  saveStudentAnswer: (testId: string, payload: { questionId: string; answer: string | null; markForReview: boolean; timeSpent: number }) => request<{ saved: boolean; answeredCount: number }>(`/student/tests/${testId}/answers`, { method: 'POST', body: JSON.stringify(payload) }),
+  submitStudentTest: (testId: string) => request<{ result: MobileResult }>(`/student/tests/${testId}/submit`, { method: 'POST' }),
   getAdminDashboard: () => request<AdminDashboard>('/admin/dashboard'),
 };
 
@@ -88,4 +92,24 @@ export type StudentDashboard = {
 
 export type AdminDashboard = {
   stats: { students: number; tests: number; submittedResults: number };
+};
+
+export type ExamQuestionState = {
+  questionNumber: number;
+  totalQuestions: number;
+  remainingSeconds: number;
+  question: {
+    id: string;
+    question: string;
+    questionImage: string | null;
+    subject: string;
+    topic: string | null;
+    subtopic: string | null;
+    marks: number;
+    options: { key: 'A' | 'B' | 'C' | 'D'; value: string; image: string | null }[];
+  };
+  selectedAnswer: string | null;
+  markedForReview: boolean;
+  sections: { name: string; locked: boolean; questionNumbers: number[] }[];
+  palette: { number: number; answered: boolean; visited: boolean; marked: boolean }[];
 };

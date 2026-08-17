@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { AdminDashboard, mobileApi, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
+import { AdminDashboard, ExamQuestionState, mobileApi, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
 
 type Screen = 'home' | 'tests' | 'results' | 'more';
 
@@ -88,6 +88,7 @@ function StudentArea({ screen }: { screen: Screen }) {
   const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
   const [tests, setTests] = useState<MobileTest[]>([]);
   const [results, setResults] = useState<MobileResult[]>([]);
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,11 +100,52 @@ function StudentArea({ screen }: { screen: Screen }) {
     load.catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
   }, [screen]);
 
+  if (activeTestId) return <ExamScreen testId={activeTestId} onClose={() => setActiveTestId(null)} />;
   if (loading) return <Loading />;
-  if (screen === 'tests') return <ListPage title="My Tests" items={tests.map((test) => ({ title: test.title, detail: `${test.duration} min · ${test.totalMarks} marks`, badge: test.result ? 'Completed' : 'Open' }))} />;
+  if (screen === 'tests') return <StudentTests tests={tests} onStart={setActiveTestId} />;
   if (screen === 'results') return <ListPage title="My Results" items={results.map((result) => ({ title: result.testId?.title || 'Test Result', detail: `${result.score}/${result.totalMarks} marks`, badge: result.rank ? `Rank ${result.rank}` : 'Result' }))} />;
   if (screen === 'more') return <ListPage title="Notifications & Documents" items={dashboard?.notifications.map((notification) => ({ title: notification.title || 'Notification', detail: notification.message || '', badge: '' })) || []} />;
   return <StudentDashboardView dashboard={dashboard} />;
+}
+
+function StudentTests({ tests, onStart }: { tests: MobileTest[]; onStart: (testId: string) => void }) {
+  return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>My Tests</Text>{tests.length ? tests.map((test) => <View key={test._id} style={styles.card}><Text style={styles.cardTitle}>{test.title}</Text><Text style={styles.muted}>{test.duration} min · {test.totalMarks} marks</Text><Pressable disabled={Boolean(test.result)} style={[styles.secondaryButton, test.result && styles.disabledButton]} onPress={() => onStart(test._id)}><Text style={styles.secondaryButtonText}>{test.result ? 'Completed' : 'Start Test'}</Text></Pressable></View>) : <Text style={styles.muted}>No tests available.</Text>}</ScrollView>;
+}
+
+function ExamScreen({ testId, onClose }: { testId: string; onClose: () => void }) {
+  const [state, setState] = useState<ExamQuestionState | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [markedForReview, setMarkedForReview] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const loadQuestion = async (questionNumber: number) => {
+    setLoading(true);
+    try {
+      const questionState = await mobileApi.getStudentQuestion(testId, questionNumber);
+      setState(questionState);
+      setSelectedAnswer(questionState.selectedAnswer);
+      setMarkedForReview(questionState.markedForReview);
+    } catch (error) {
+      Alert.alert('Question unavailable', error instanceof Error ? error.message : 'Please try again.');
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    mobileApi.startStudentTest(testId).then((session) => loadQuestion(session.firstQuestionNumber)).catch((error) => Alert.alert('Unable to start test', error.message));
+  }, [testId]);
+
+  const saveAndMove = async (questionNumber: number) => {
+    if (!state) return;
+    try {
+      await mobileApi.saveStudentAnswer(testId, { questionId: state.question.id, answer: selectedAnswer, markForReview: markedForReview, timeSpent: 0 });
+      await loadQuestion(questionNumber);
+    } catch (error) { Alert.alert('Save failed', error instanceof Error ? error.message : 'Please try again.'); }
+  };
+
+  const submit = () => Alert.alert('Submit test?', 'You cannot change answers after submission.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Submit', style: 'destructive', onPress: async () => { try { await mobileApi.submitStudentTest(testId); Alert.alert('Submitted', 'Your result is ready.'); onClose(); } catch (error) { Alert.alert('Submit failed', error instanceof Error ? error.message : 'Please try again.'); } } }]);
+
+  if (loading || !state) return <Loading />;
+  return <SafeAreaView style={styles.examPage}><View style={styles.examHeader}><Pressable onPress={onClose}><Text style={styles.backText}>Exit</Text></Pressable><Text style={styles.examCounter}>Q {state.questionNumber}/{state.totalQuestions}</Text><Pressable onPress={submit}><Text style={styles.submitText}>Submit</Text></Pressable></View><ScrollView contentContainerStyle={styles.content}><Text style={styles.subjectText}>{state.question.subject}</Text><Text style={styles.questionText}>{state.question.question}</Text>{state.question.options.map((option) => <Pressable key={option.key} style={[styles.option, selectedAnswer === option.key && styles.optionSelected]} onPress={() => setSelectedAnswer(option.key)}><Text style={styles.optionKey}>{option.key}</Text><Text style={styles.optionValue}>{option.value}</Text></Pressable>)}<View style={styles.palette}>{state.palette.map((item) => <Pressable key={item.number} onPress={() => saveAndMove(item.number)} style={[styles.paletteItem, item.answered && styles.paletteAnswered, item.marked && styles.paletteMarked]}><Text>{item.number}</Text></Pressable>)}</View><View style={styles.examActions}><Pressable style={styles.secondaryButton} onPress={() => setMarkedForReview(!markedForReview)}><Text style={styles.secondaryButtonText}>{markedForReview ? 'Unmark' : 'Mark for Review'}</Text></Pressable><Pressable style={styles.primaryButton} onPress={() => saveAndMove(Math.min(state.questionNumber + 1, state.totalQuestions))}><Text style={styles.primaryButtonText}>{state.questionNumber === state.totalQuestions ? 'Save Answer' : 'Save & Next'}</Text></Pressable></View></ScrollView></SafeAreaView>;
 }
 
 function AdminArea({ screen }: { screen: Screen }) {
@@ -135,5 +177,5 @@ function Loading() { return <View style={styles.loading}><ActivityIndicator size
 function StatCard({ value, label }: { value: string | number; label: string }) { return <View style={styles.statCard}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f3f7f4' }, loginPage: { flex: 1, backgroundColor: '#075c36', justifyContent: 'center', padding: 22 }, brandBlock: { alignItems: 'center', marginBottom: 28 }, brandMark: { color: '#d6ab28', fontSize: 44, fontWeight: '900', letterSpacing: 3 }, brandTitle: { color: '#fff', fontSize: 30, fontWeight: '800' }, brandSubtitle: { color: '#d9eee2', textAlign: 'center', marginTop: 8 }, loginCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 }, roleToggle: { flexDirection: 'row', backgroundColor: '#edf4ef', borderRadius: 12, padding: 4, marginBottom: 20 }, roleButton: { flex: 1, padding: 11, alignItems: 'center', borderRadius: 9 }, roleButtonActive: { backgroundColor: '#075c36' }, roleButtonText: { color: '#4f6256', fontWeight: '700' }, roleButtonTextActive: { color: '#fff' }, inputLabel: { color: '#24372b', fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: '#d7e2da', borderRadius: 12, padding: 13, marginBottom: 16, fontSize: 16 }, primaryButton: { backgroundColor: '#075c36', padding: 15, borderRadius: 12, alignItems: 'center', minHeight: 52 }, primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' }, appHeader: { backgroundColor: '#075c36', padding: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, greeting: { color: '#fff', fontSize: 18, fontWeight: '800' }, roleLabel: { color: '#d9eee2', marginTop: 3 }, logout: { color: '#f7d75c', fontWeight: '800' }, content: { padding: 18, gap: 12, paddingBottom: 28 }, pageTitle: { color: '#123c26', fontSize: 25, fontWeight: '800', marginBottom: 4 }, statsRow: { flexDirection: 'row', gap: 8 }, statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, alignItems: 'center', shadowColor: '#163725', shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 }, statValue: { color: '#075c36', fontSize: 22, fontWeight: '900' }, statLabel: { color: '#5f7165', marginTop: 4, fontSize: 12 }, sectionTitle: { marginTop: 10, color: '#123c26', fontSize: 18, fontWeight: '800' }, card: { backgroundColor: '#fff', padding: 16, borderRadius: 16, gap: 5 }, cardTitle: { color: '#173b27', fontSize: 16, fontWeight: '800' }, muted: { color: '#617268', lineHeight: 20 }, badge: { color: '#075c36', fontWeight: '800', marginTop: 3 }, tabBar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#dce7df', paddingVertical: 8 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 7 }, tabText: { color: '#6c7b70', fontSize: 12, fontWeight: '700' }, tabTextActive: { color: '#075c36' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f7f4' },
+  safeArea: { flex: 1, backgroundColor: '#f3f7f4' }, examPage: { flex: 1, backgroundColor: '#f3f7f4' }, examHeader: { backgroundColor: '#075c36', padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, backText: { color: '#d9eee2', fontWeight: '800' }, submitText: { color: '#f7d75c', fontWeight: '900' }, examCounter: { color: '#fff', fontWeight: '800' }, subjectText: { color: '#075c36', fontWeight: '900', textTransform: 'uppercase' }, questionText: { color: '#1d3425', fontSize: 18, lineHeight: 27, fontWeight: '700' }, option: { flexDirection: 'row', gap: 10, borderWidth: 1, borderColor: '#d7e2da', backgroundColor: '#fff', borderRadius: 14, padding: 14, alignItems: 'center' }, optionSelected: { borderColor: '#075c36', backgroundColor: '#e8f6ed' }, optionKey: { color: '#075c36', fontWeight: '900' }, optionValue: { color: '#253c2d', flex: 1 }, palette: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }, paletteItem: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#e2e9e4', justifyContent: 'center', alignItems: 'center' }, paletteAnswered: { backgroundColor: '#9de2b5' }, paletteMarked: { backgroundColor: '#f7d75c' }, examActions: { gap: 10, marginTop: 8 }, secondaryButton: { borderWidth: 1, borderColor: '#075c36', padding: 12, borderRadius: 12, alignItems: 'center', marginTop: 8 }, secondaryButtonText: { color: '#075c36', fontWeight: '800' }, disabledButton: { opacity: 0.5 }, loginPage: { flex: 1, backgroundColor: '#075c36', justifyContent: 'center', padding: 22 }, brandBlock: { alignItems: 'center', marginBottom: 28 }, brandMark: { color: '#d6ab28', fontSize: 44, fontWeight: '900', letterSpacing: 3 }, brandTitle: { color: '#fff', fontSize: 30, fontWeight: '800' }, brandSubtitle: { color: '#d9eee2', textAlign: 'center', marginTop: 8 }, loginCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 }, roleToggle: { flexDirection: 'row', backgroundColor: '#edf4ef', borderRadius: 12, padding: 4, marginBottom: 20 }, roleButton: { flex: 1, padding: 11, alignItems: 'center', borderRadius: 9 }, roleButtonActive: { backgroundColor: '#075c36' }, roleButtonText: { color: '#4f6256', fontWeight: '700' }, roleButtonTextActive: { color: '#fff' }, inputLabel: { color: '#24372b', fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: '#d7e2da', borderRadius: 12, padding: 13, marginBottom: 16, fontSize: 16 }, primaryButton: { backgroundColor: '#075c36', padding: 15, borderRadius: 12, alignItems: 'center', minHeight: 52 }, primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' }, appHeader: { backgroundColor: '#075c36', padding: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, greeting: { color: '#fff', fontSize: 18, fontWeight: '800' }, roleLabel: { color: '#d9eee2', marginTop: 3 }, logout: { color: '#f7d75c', fontWeight: '800' }, content: { padding: 18, gap: 12, paddingBottom: 28 }, pageTitle: { color: '#123c26', fontSize: 25, fontWeight: '800', marginBottom: 4 }, statsRow: { flexDirection: 'row', gap: 8 }, statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, alignItems: 'center', shadowColor: '#163725', shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 }, statValue: { color: '#075c36', fontSize: 22, fontWeight: '900' }, statLabel: { color: '#5f7165', marginTop: 4, fontSize: 12 }, sectionTitle: { marginTop: 10, color: '#123c26', fontSize: 18, fontWeight: '800' }, card: { backgroundColor: '#fff', padding: 16, borderRadius: 16, gap: 5 }, cardTitle: { color: '#173b27', fontSize: 16, fontWeight: '800' }, muted: { color: '#617268', lineHeight: 20 }, badge: { color: '#075c36', fontWeight: '800', marginTop: 3 }, tabBar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#dce7df', paddingVertical: 8 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 7 }, tabText: { color: '#6c7b70', fontSize: 12, fontWeight: '700' }, tabTextActive: { color: '#075c36' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f7f4' },
 });
