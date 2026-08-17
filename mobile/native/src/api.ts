@@ -61,6 +61,8 @@ export const mobileApi = {
   getAdminResults: () => request<{ results: MobileAdminResult[] }>('/admin/results'),
   createAdminStudent: (payload: { name: string; rollNo: string; parentContact?: string; groupId?: string }) => request<{ student: MobileAdminStudent; initialPassword: string }>('/admin/students', { method: 'POST', body: JSON.stringify(payload) }),
   createAdminGroup: (payload: { name: string; description?: string; academicYear?: string; course?: string }) => request<{ group: MobileAdminGroup }>('/admin/groups', { method: 'POST', body: JSON.stringify(payload) }),
+  bulkImportAdminStudents: (data: FormData) => request<{ created: number; skipped: number; duplicates: string[]; groupAssigned: boolean }>('/admin/students/bulk-import', { method: 'POST', body: data }),
+  bulkImportAdminQuestions: (data: FormData) => request<{ created: number; skipped: number }>('/admin/questions/bulk-import', { method: 'POST', body: data }),
 };
 
 export type MobileTest = {
