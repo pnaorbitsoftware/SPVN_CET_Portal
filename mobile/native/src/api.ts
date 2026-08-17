@@ -59,6 +59,8 @@ export const mobileApi = {
   getAdminGroups: () => request<{ groups: MobileAdminGroup[] }>('/admin/groups'),
   getAdminTests: () => request<{ tests: MobileAdminTest[] }>('/admin/tests'),
   getAdminResults: () => request<{ results: MobileAdminResult[] }>('/admin/results'),
+  createAdminStudent: (payload: { name: string; rollNo: string; parentContact?: string; groupId?: string }) => request<{ student: MobileAdminStudent; initialPassword: string }>('/admin/students', { method: 'POST', body: JSON.stringify(payload) }),
+  createAdminGroup: (payload: { name: string; description?: string; academicYear?: string; course?: string }) => request<{ group: MobileAdminGroup }>('/admin/groups', { method: 'POST', body: JSON.stringify(payload) }),
 };
 
 export type MobileTest = {
