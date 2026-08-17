@@ -364,10 +364,13 @@
 function updCount() {
   const n = document.querySelectorAll('input[name="questionIds"]:checked').length;
   document.getElementById('selCount').textContent = n + ' selected';
+  updateSelectAllVisibleLabel();
 }
 
 // ── Current filter state ──────────────────────────────────────────────────
 const ctState = { course:'', subject:'', topic:'', subtopic:'', diff:'', search:'' };
+const hierarchyKey = value => String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+const sameHierarchyValue = (left, right) => hierarchyKey(left) === hierarchyKey(right);
 
 // ── Apply all filters ─────────────────────────────────────────────────────
 function applyCtFilters() {
@@ -380,9 +383,9 @@ function applyCtFilters() {
 
   // Filter question rows
   document.querySelectorAll('.q-item').forEach(row => {
-    const matchSubj    = !ctState.subject  || row.dataset.subj     === ctState.subject;
-    const matchTopic   = !ctState.topic    || row.dataset.topic    === ctState.topic;
-    const matchSub     = !ctState.subtopic || row.dataset.subtopic === ctState.subtopic;
+    const matchSubj    = !ctState.subject  || sameHierarchyValue(row.dataset.subj, ctState.subject);
+    const matchTopic   = !ctState.topic    || sameHierarchyValue(row.dataset.topic, ctState.topic);
+    const matchSub     = !ctState.subtopic || sameHierarchyValue(row.dataset.subtopic, ctState.subtopic);
     const matchDiff    = !ctState.diff     || row.dataset.diff     === ctState.diff;
     const matchSearch  = !ctState.search   || row.dataset.text.includes(ctState.search);
     row.style.display  = (matchSubj && matchTopic && matchSub && matchDiff && matchSearch) ? '' : 'none';
@@ -407,6 +410,7 @@ function applyCtFilters() {
   });
 
   updateBreadcrumb();
+  updateSelectAllVisibleLabel();
 }
 
 // ── Course and subject hierarchy ─────────────────────────────────────────
@@ -529,9 +533,9 @@ function addQuestionsByHierarchy() {
 
   const matchingRows = Array.from(document.querySelectorAll('.q-item')).filter(row =>
     row.style.display !== 'none' &&
-    row.dataset.subj === subject &&
-    row.dataset.topic === topic &&
-    (!subtopic || row.dataset.subtopic === subtopic)
+    sameHierarchyValue(row.dataset.subj, subject) &&
+    sameHierarchyValue(row.dataset.topic, topic) &&
+    (!subtopic || sameHierarchyValue(row.dataset.subtopic, subtopic))
   );
   const availableRows = matchingRows.filter(row => !row.querySelector('input[name="questionIds"]').checked);
   const rowsToAdd = availableRows.slice(0, requestedCount);
@@ -572,10 +576,22 @@ function updateBreadcrumb() {
 
 // ── Select / Deselect helpers ─────────────────────────────────────────────
 function selectAllVisible() {
-  document.querySelectorAll('.q-item').forEach(row => {
-    if (row.style.display !== 'none') row.querySelector('input[type="checkbox"]').checked = true;
-  });
+  const visibleCheckboxes = [...document.querySelectorAll('.q-item')]
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.querySelector('input[type="checkbox"]'));
+  const shouldSelect = visibleCheckboxes.some(checkbox => !checkbox.checked);
+  visibleCheckboxes.forEach(checkbox => { checkbox.checked = shouldSelect; });
   updCount();
+}
+
+function updateSelectAllVisibleLabel() {
+  const button = document.querySelector('button[onclick="selectAllVisible()"]');
+  if (!button) return;
+  const visibleCheckboxes = [...document.querySelectorAll('.q-item')]
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.querySelector('input[type="checkbox"]'));
+  const allSelected = visibleCheckboxes.length > 0 && visibleCheckboxes.every(checkbox => checkbox.checked);
+  button.textContent = allSelected ? '✕ Deselect all visible' : '✅ Select all visible';
 }
 
 function deselectAll() {
