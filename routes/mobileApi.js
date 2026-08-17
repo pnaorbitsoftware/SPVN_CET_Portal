@@ -5,8 +5,9 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const xlsx = require('xlsx');
 
-const { Group, GroupMember, Notification, Question, Result, StudentDocument, Test, Topic, User } = require('../models');
+const { Group, GroupMember, Notification, Question, QuestionImport, Result, StudentDocument, Test, Topic, User } = require('../models');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
+const { SUPPORTED_EXTENSIONS, extensionOf, extractQuestionFiles, normalizeQuestion, preserveQuestionVisuals, removeQuestionImportAssets } = require('../utils/questionImporter');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -569,6 +570,66 @@ router.post('/admin/questions/bulk-import', requireMobileUser, requireRole('admi
     console.error('Mobile bulk question import error:', error);
     return res.status(500).json({ error: 'Unable to import questions.' });
   }
+});
+
+router.post('/admin/smart-scanner/scan', requireMobileUser, requireRole('admin'), async (req, res) => {
+  let draft;
+  try {
+    const sourceFiles = req.files?.questionFiles;
+    const files = Array.isArray(sourceFiles) ? sourceFiles : sourceFiles ? [sourceFiles] : [];
+    if (!files.length) return res.status(400).json({ error: 'Select at least one image, PDF, document, or spreadsheet.' });
+    if (files.length > 10) return res.status(400).json({ error: 'You can scan a maximum of 10 files at once.' });
+    if (files.some((file) => !SUPPORTED_EXTENSIONS.has(extensionOf(file)))) return res.status(400).json({ error: 'One or more selected files are unsupported.' });
+    const defaults = { subject: String(req.body.subject || 'Physics').trim(), topic: String(req.body.topic || '').trim(), subtopic: String(req.body.subtopic || '').trim(), difficulty: ['Easy', 'Medium', 'Hard'].includes(req.body.difficulty) ? req.body.difficulty : 'Medium', marks: Math.max(0.25, Number(req.body.marks) || 1) };
+    draft = await QuestionImport.create({ createdBy: req.mobileUser._id, sourceFiles: files.map((file) => ({ name: file.name, mimeType: file.mimetype, size: file.size })), defaults, status: 'scanning' });
+    const extracted = await extractQuestionFiles(files, defaults, req.mobileUser._id.toString());
+    if (!extracted.questions.length) throw new Error('No MCQ questions were detected. Ensure A/B/C/D options are visible.');
+    const visuals = await preserveQuestionVisuals(files, extracted.questions, draft._id);
+    draft.questions = visuals.questions.map((question) => ({ ...question, isSelected: true }));
+    draft.warnings = [...new Set([...(extracted.warnings || []), ...(visuals.warnings || [])])];
+    draft.extractionMethod = extracted.method;
+    draft.extractionModel = extracted.model;
+    draft.status = 'review';
+    await draft.save();
+    return res.status(201).json({ draft });
+  } catch (error) {
+    if (draft) { draft.status = 'failed'; draft.error = error.message; await draft.save().catch(() => {}); }
+    console.error('Mobile smart scan error:', error);
+    return res.status(500).json({ error: error.message || 'Unable to scan files.' });
+  }
+});
+
+router.get('/admin/smart-scanner/:draftId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const draft = await QuestionImport.findOne({ _id: req.params.draftId, createdBy: req.mobileUser._id });
+  if (!draft) return res.status(404).json({ error: 'Scan draft not found.' });
+  return res.json({ draft });
+});
+
+router.post('/admin/smart-scanner/:draftId/commit', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const draft = await QuestionImport.findOne({ _id: req.params.draftId, createdBy: req.mobileUser._id, status: 'review' });
+    if (!draft) return res.status(404).json({ error: 'Scan draft is not available for review.' });
+    const edited = Array.isArray(req.body.questions) ? req.body.questions : draft.questions;
+    const selected = edited.filter((question) => question.isSelected !== false).map((question) => normalizeQuestion(question, draft.defaults));
+    if (!selected.length) return res.status(400).json({ error: 'Select at least one scanned question.' });
+    const invalid = selected.find((question) => !question.question || !question.optionA || !question.optionB || !question.optionC || !question.optionD || !['A', 'B', 'C', 'D'].includes(question.correctAnswer));
+    if (invalid) return res.status(400).json({ error: 'Complete the question text, all options, and correct answer before saving.' });
+    const questions = await Question.insertMany(selected.map((question) => ({ ...question, createdBy: req.mobileUser._id, isActive: true })));
+    draft.questions = edited;
+    draft.status = 'imported';
+    draft.importedQuestionIds = questions.map((question) => question._id);
+    await draft.save();
+    return res.json({ imported: questions.length, questionIds: questions.map((question) => question._id) });
+  } catch (error) {
+    console.error('Mobile smart scan commit error:', error);
+    return res.status(500).json({ error: 'Unable to save scanned questions.' });
+  }
+});
+
+router.delete('/admin/smart-scanner/:draftId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const draft = await QuestionImport.findOneAndDelete({ _id: req.params.draftId, createdBy: req.mobileUser._id, status: { $in: ['review', 'failed'] } });
+  if (draft) removeQuestionImportAssets(draft._id);
+  return res.sendStatus(204);
 });
 
 router.delete('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
