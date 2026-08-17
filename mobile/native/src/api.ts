@@ -63,6 +63,10 @@ export const mobileApi = {
   createAdminGroup: (payload: { name: string; description?: string; academicYear?: string; course?: string }) => request<{ group: MobileAdminGroup }>('/admin/groups', { method: 'POST', body: JSON.stringify(payload) }),
   bulkImportAdminStudents: (data: FormData) => request<{ created: number; skipped: number; duplicates: string[]; groupAssigned: boolean }>('/admin/students/bulk-import', { method: 'POST', body: data }),
   bulkImportAdminQuestions: (data: FormData) => request<{ created: number; skipped: number }>('/admin/questions/bulk-import', { method: 'POST', body: data }),
+  scanAdminQuestions: (data: FormData) => request<{ draft: SmartScanDraft }>('/admin/smart-scanner/scan', { method: 'POST', body: data }),
+  getSmartScanDraft: (draftId: string) => request<{ draft: SmartScanDraft }>(`/admin/smart-scanner/${draftId}`),
+  commitSmartScan: (draftId: string, questions: SmartScanQuestion[]) => request<{ imported: number; questionIds: string[] }>(`/admin/smart-scanner/${draftId}/commit`, { method: 'POST', body: JSON.stringify({ questions }) }),
+  discardSmartScan: (draftId: string) => request<void>(`/admin/smart-scanner/${draftId}`, { method: 'DELETE' }),
 };
 
 export type MobileTest = {
@@ -118,6 +122,8 @@ export type MobileAdminStudent = Pick<MobileUser, 'id' | 'name' | 'rollNo' | 'em
 export type MobileAdminGroup = { _id: string; name: string; description: string | null; academicYear: string; course: string | null; members: { _id: string; name: string; rollNo: string }[] };
 export type MobileAdminTest = { _id: string; title: string; status: string; duration: number; totalMarks: number; groups: { _id: string; name: string }[] };
 export type MobileAdminResult = { _id: string; score: number; totalMarks: number; rank: number | null; submittedAt: string; studentId: { name: string; rollNo: string }; testId: { title: string } };
+export type SmartScanQuestion = { question: string; optionA: string; optionB: string; optionC: string; optionD: string; correctAnswer: 'A' | 'B' | 'C' | 'D' | 'UNKNOWN'; subject: string; topic?: string; subtopic?: string; difficulty: 'Easy' | 'Medium' | 'Hard'; marks: number; explanation?: string; isSelected: boolean };
+export type SmartScanDraft = { _id: string; status: 'scanning' | 'review' | 'imported' | 'failed'; questions: SmartScanQuestion[]; warnings: string[]; extractionMethod: string; extractionModel: string | null };
 
 export type ExamQuestionState = {
   questionNumber: number;
