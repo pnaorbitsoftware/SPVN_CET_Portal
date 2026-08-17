@@ -545,6 +545,16 @@ router.post('/admin/questions', requireMobileUser, requireRole('admin'), async (
   }
 });
 
+router.patch('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const allowed = ['question', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'subject', 'topic', 'subtopic', 'difficulty', 'marks', 'explanation'];
+  const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
+  if (update.marks !== undefined) update.marks = Number(update.marks) || 1;
+  if (update.correctAnswer && !['A', 'B', 'C', 'D'].includes(update.correctAnswer)) return res.status(400).json({ error: 'Correct answer must be A, B, C or D.' });
+  const question = await Question.findOneAndUpdate({ _id: req.params.questionId, isActive: true }, update, { new: true });
+  if (!question) return res.status(404).json({ error: 'Question not found.' });
+  return res.json({ question });
+});
+
 router.post('/admin/questions/bulk-import', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
     const file = req.files?.csvFile;
