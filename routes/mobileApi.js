@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 
-const { GroupMember, Notification, Result, Test, User } = require('../models');
+const { GroupMember, Notification, Question, Result, Test, User } = require('../models');
+const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -138,6 +139,219 @@ router.get('/student/notifications', requireMobileUser, requireRole('student'), 
   const notifications = await Notification.find({ userId: req.mobileUser._id }).sort({ createdAt: -1 });
   await Notification.updateMany({ userId: req.mobileUser._id }, { isRead: true });
   return res.json({ notifications });
+});
+
+const questionForMobile = (question, options) => ({
+  id: question._id.toString(),
+  question: question.question,
+  questionImage: question.questionImage || null,
+  subject: question.subject,
+  topic: question.topic || null,
+  subtopic: question.subtopic || null,
+  marks: question.marks,
+  options: options || [
+    { key: 'A', value: question.optionA, image: question.optionAImage || null },
+    { key: 'B', value: question.optionB, image: question.optionBImage || null },
+    { key: 'C', value: question.optionC, image: question.optionCImage || null },
+    { key: 'D', value: question.optionD, image: question.optionDImage || null },
+  ],
+});
+
+router.post('/student/tests/:testId/start', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const studentId = req.mobileUser._id;
+    const [test, submitted] = await Promise.all([
+      Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions', '_id subject'),
+      Result.findOne({ studentId, testId, status: { $in: ['submitted', 'auto_submitted'] } }),
+    ]);
+    if (!test) return res.status(404).json({ error: 'Test is not available.' });
+    if (submitted) return res.status(409).json({ error: 'This test is already submitted.', resultId: submitted._id });
+
+    let result = await Result.findOne({ studentId, testId, status: 'in_progress' });
+    if (!result) {
+      result = await Result.create({
+        studentId,
+        testId,
+        score: 0,
+        totalMarks: test.totalMarks,
+        fullTotalMarks: test.totalMarks,
+        answers: {},
+        questionTimings: {},
+        cheatingFlags: { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0 },
+        status: 'in_progress',
+        startedAt: new Date(),
+        questionOrder: buildQuestionOrder(test, test.questions),
+        markedForReview: [],
+        visitedQuestionIds: [],
+      });
+    }
+    return res.json({ resultId: result._id, firstQuestionNumber: 1, questionCount: result.questionOrder.length });
+  } catch (error) {
+    console.error('Mobile test start error:', error);
+    return res.status(500).json({ error: 'Unable to start test.' });
+  }
+});
+
+router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const studentId = req.mobileUser._id;
+    const { testId } = req.params;
+    const questionNumber = Number(req.params.questionNumber);
+    const [result, test] = await Promise.all([
+      Result.findOne({ studentId, testId, status: 'in_progress' }),
+      Test.findById(testId),
+    ]);
+    if (!result) return res.status(409).json({ error: 'No active test session.' });
+    if (!test) return res.status(404).json({ error: 'Test not found.' });
+    const remainingSeconds = Math.max(0, Math.floor((test.duration * 60 * 1000 - (Date.now() - new Date(result.startedAt).getTime())) / 1000));
+    if (!remainingSeconds) return res.status(408).json({ error: 'Test time is over. Submit the test now.' });
+    if (!Number.isInteger(questionNumber) || questionNumber < 1 || questionNumber > result.questionOrder.length) {
+      return res.status(400).json({ error: 'Invalid question number.' });
+    }
+
+    const questionRows = await Question.find({ _id: { $in: result.questionOrder } }, '_id subject');
+    const cetFlow = isCetSectionTest(test, questionRows);
+    const sectionState = cetFlow
+      ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])
+      : null;
+    const questionId = result.questionOrder[questionNumber - 1].toString();
+    const subject = sectionState?.subjectById.get(questionId);
+    const section = sectionState?.sections.find((item) => item.name === subject);
+    if (section?.locked) {
+      return res.status(403).json({ error: 'View every Physics and Chemistry question first.', locked: true, nextQuestionNumber: sectionState.firstPendingQuestionNumber });
+    }
+
+    await Result.updateOne({ _id: result._id }, { $addToSet: { visitedQuestionIds: questionId } });
+    const question = await Question.findById(questionId);
+    if (!question) return res.status(404).json({ error: 'Question not found.' });
+    const options = [
+      { key: 'A', value: question.optionA, image: question.optionAImage || null },
+      { key: 'B', value: question.optionB, image: question.optionBImage || null },
+      { key: 'C', value: question.optionC, image: question.optionCImage || null },
+      { key: 'D', value: question.optionD, image: question.optionDImage || null },
+    ];
+    if (test.shuffleOptions) options.sort(() => Math.random() - 0.5);
+    const visited = new Set([...(result.visitedQuestionIds || []).map(String), questionId]);
+    const answers = result.answers || {};
+    const marked = new Set((result.markedForReview || []).map(String));
+    return res.json({
+      questionNumber,
+      totalQuestions: result.questionOrder.length,
+      remainingSeconds,
+      question: questionForMobile(question, options),
+      selectedAnswer: answers[questionId]?.answer || null,
+      markedForReview: marked.has(questionId),
+      sections: sectionState?.sections.map((item) => ({ name: item.name, locked: item.locked, questionNumbers: item.questionNumbers })) || [],
+      palette: result.questionOrder.map((id, index) => {
+        const key = id.toString();
+        return { number: index + 1, answered: Boolean(answers[key]?.answer), visited: visited.has(key), marked: marked.has(key) };
+      }),
+    });
+  } catch (error) {
+    console.error('Mobile question error:', error);
+    return res.status(500).json({ error: 'Unable to load question.' });
+  }
+});
+
+router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const { questionId, answer, markForReview = false, timeSpent = 0 } = req.body;
+    const result = await Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' });
+    if (!result) return res.status(409).json({ error: 'No active test session.' });
+    if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
+    const answers = { ...(result.answers || {}) };
+    const timings = { ...(result.questionTimings || {}) };
+    const marked = new Set((result.markedForReview || []).map(String));
+    answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+    if (Number.isFinite(Number(timeSpent)) && Number(timeSpent) > 0) timings[questionId] = (timings[questionId] || 0) + Number(timeSpent);
+    if (markForReview) marked.add(String(questionId)); else marked.delete(String(questionId));
+    await Result.updateOne({ _id: result._id }, { answers, questionTimings: timings, markedForReview: [...marked], $addToSet: { visitedQuestionIds: String(questionId) } });
+    return res.json({ saved: true, answeredCount: Object.values(answers).filter((entry) => entry.answer).length });
+  } catch (error) {
+    console.error('Mobile save answer error:', error);
+    return res.status(500).json({ error: 'Unable to save answer.' });
+  }
+});
+
+router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const result = await Result.findOne({ studentId: req.mobileUser._id, testId, status: 'in_progress' });
+    if (!result) return res.status(409).json({ error: 'No active test session.' });
+    const test = await Test.findById(testId).populate('questions');
+    if (!test) return res.status(404).json({ error: 'Test not found.' });
+
+    const answers = result.answers || {};
+    const subjectScores = {};
+    let score = 0;
+    let correctAnswers = 0;
+    let wrongAnswers = 0;
+    let skippedAnswers = 0;
+    for (const question of test.questions) {
+      const subject = question.subject || 'General';
+      if (!subjectScores[subject]) subjectScores[subject] = { correct: 0, wrong: 0, skipped: 0, marks: 0, total: 0, attempted: false };
+      subjectScores[subject].total += question.marks;
+      const answer = answers[question._id.toString()]?.answer;
+      if (!answer) {
+        skippedAnswers += 1;
+        subjectScores[subject].skipped += 1;
+      } else if (answer === question.correctAnswer) {
+        correctAnswers += 1;
+        score += question.marks;
+        subjectScores[subject].correct += 1;
+        subjectScores[subject].marks += question.marks;
+        subjectScores[subject].attempted = true;
+      } else {
+        wrongAnswers += 1;
+        const deduction = Number(test.negativeMarking) || 0;
+        score -= deduction;
+        subjectScores[subject].wrong += 1;
+        subjectScores[subject].marks -= deduction;
+        subjectScores[subject].attempted = true;
+      }
+    }
+    const cetFlow = isCetSectionTest(test, test.questions);
+    const attemptedSubjects = [];
+    const absentSubjects = [];
+    let totalMarks = test.totalMarks;
+    if (cetFlow) {
+      totalMarks = 0;
+      Object.entries(subjectScores).forEach(([subject, values]) => {
+        values.marks = Number(values.marks.toFixed(2));
+        if (values.attempted) {
+          attemptedSubjects.push(subject);
+          totalMarks += values.total;
+        } else {
+          absentSubjects.push(subject);
+          values.status = 'ABSENT';
+        }
+      });
+    }
+    score = Math.max(0, Number(score.toFixed(2)));
+    const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
+    await Result.updateOne({ _id: result._id }, {
+      score,
+      totalMarks,
+      fullTotalMarks: test.totalMarks,
+      correctAnswers,
+      wrongAnswers,
+      skippedAnswers,
+      subjectScores,
+      attemptedSubjects,
+      absentSubjects,
+      timeTaken,
+      status: 'submitted',
+      submittedAt: new Date(),
+    });
+    const rankings = await Result.find({ testId, status: { $in: ['submitted', 'auto_submitted'] } }).sort({ score: -1, timeTaken: 1 });
+    await Promise.all(rankings.map((item, index) => Result.updateOne({ _id: item._id }, { rank: index + 1, percentile: Number((((rankings.length - index) / rankings.length) * 100).toFixed(2)) })));
+    const submitted = await Result.findById(result._id);
+    return res.json({ result: submitted });
+  } catch (error) {
+    console.error('Mobile submit error:', error);
+    return res.status(500).json({ error: 'Unable to submit test.' });
+  }
 });
 
 router.get('/admin/dashboard', requireMobileUser, requireRole('admin'), async (req, res) => {
