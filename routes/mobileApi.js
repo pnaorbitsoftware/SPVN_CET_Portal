@@ -632,6 +632,62 @@ router.delete('/admin/smart-scanner/:draftId', requireMobileUser, requireRole('a
   return res.sendStatus(204);
 });
 
+router.get('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const query = { isActive: { $ne: false } };
+  if (req.query.course) query.course = req.query.course;
+  if (req.query.subject) query.subject = req.query.subject;
+  const tests = await Test.find(query).populate('groups', 'name').sort({ createdAt: -1 });
+  return res.json({ tests });
+});
+
+router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const { title, questionIds, groupIds = [], course = [], subject = [], description, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false } = req.body;
+    const selectedQuestionIds = Array.isArray(questionIds) ? questionIds : questionIds ? [questionIds] : [];
+    if (!title?.trim() || !selectedQuestionIds.length) return res.status(400).json({ error: 'Test title and at least one question are required.' });
+    const questions = await Question.find({ _id: { $in: selectedQuestionIds }, isActive: true });
+    if (questions.length !== selectedQuestionIds.length) return res.status(400).json({ error: 'One or more selected questions are unavailable.' });
+    if (startTime && endTime && new Date(endTime) <= new Date(startTime)) return res.status(400).json({ error: 'Test end time must be after start time.' });
+    const groups = Array.isArray(groupIds) ? groupIds : [groupIds];
+    const test = await Test.create({
+      title: title.trim(), description: description?.trim() || null, duration: Math.max(5, Number(duration) || 180),
+      totalMarks: questions.reduce((total, question) => total + question.marks, 0), negativeMarking: Math.max(0, Number(negativeMarking) || 0), passingMarks: passingMarks ? Number(passingMarks) : null,
+      shuffleQuestions: Boolean(shuffleQuestions), shuffleOptions: Boolean(shuffleOptions), startTime: startTime ? new Date(startTime) : null, endTime: endTime ? new Date(endTime) : null,
+      instructions: instructions?.trim() || null, createdBy: req.mobileUser._id, status: 'draft', course: Array.isArray(course) ? course : [course], subject: Array.isArray(subject) ? subject : [subject], topic: topic || null, subtopic: subtopic || null,
+      questions: selectedQuestionIds, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
+    });
+    return res.status(201).json({ test });
+  } catch (error) {
+    console.error('Mobile test create error:', error);
+    return res.status(500).json({ error: 'Unable to create test.' });
+  }
+});
+
+router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const allowed = ['title', 'description', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
+  const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
+  if (update.startTime) update.startTime = new Date(update.startTime);
+  if (update.endTime) update.endTime = new Date(update.endTime);
+  const test = await Test.findByIdAndUpdate(req.params.testId, update, { new: true });
+  if (!test) return res.status(404).json({ error: 'Test not found.' });
+  return res.json({ test });
+});
+
+router.post('/admin/tests/:testId/publish', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const test = await Test.findOne({ _id: req.params.testId, isActive: { $ne: false } });
+  if (!test) return res.status(404).json({ error: 'Test not found.' });
+  test.status = 'published';
+  await test.save();
+  const memberships = await GroupMember.find({ groupId: { $in: test.groups }, role: 'student' }, 'userId');
+  if (memberships.length) await Notification.insertMany(memberships.map((member) => ({ userId: member.userId, title: 'New Exam Published', message: `"${test.title}" is now available. Duration: ${test.duration} mins.`, type: 'exam', link: '/student/tests' })));
+  return res.json({ test, notifiedStudents: memberships.length });
+});
+
+router.delete('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  await Test.findByIdAndUpdate(req.params.testId, { isActive: false, status: 'closed' });
+  return res.sendStatus(204);
+});
+
 router.delete('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
   await Question.findByIdAndUpdate(req.params.questionId, { isActive: false });
   return res.sendStatus(204);
