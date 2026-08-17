@@ -4,7 +4,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 
-const { Group, GroupMember, Notification, Question, Result, StudentDocument, Test, User } = require('../models');
+const { Group, GroupMember, Notification, Question, Result, StudentDocument, Test, Topic, User } = require('../models');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 
 const router = express.Router();
@@ -452,6 +452,74 @@ router.post('/admin/groups/:groupId/members', requireMobileUser, requireRole('ad
   if (!studentId) return res.status(400).json({ error: 'Student is required.' });
   await GroupMember.findOneAndUpdate({ groupId: req.params.groupId, userId: studentId }, { role: 'student' }, { upsert: true });
   return res.status(201).json({ assigned: true });
+});
+
+router.get('/admin/topics', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const query = { isActive: true };
+  if (req.query.course) query.course = req.query.course;
+  if (req.query.subject) query.subject = req.query.subject;
+  const topics = await Topic.find(query).sort({ course: 1, subject: 1, name: 1 });
+  return res.json({ topics });
+});
+
+router.post('/admin/topics', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const { course, subject, name, subtopics = [] } = req.body;
+    if (!course || !subject || !name?.trim()) return res.status(400).json({ error: 'Course, subject and unit name are required.' });
+    const normalizedSubtopics = (Array.isArray(subtopics) ? subtopics : String(subtopics).split(/\r?\n/)).map((item) => String(item).trim()).filter(Boolean);
+    const topic = await Topic.findOneAndUpdate(
+      { course, subject, name: name.trim() },
+      { $set: { isActive: true }, $addToSet: { subtopics: { $each: normalizedSubtopics } } },
+      { new: true, upsert: true },
+    );
+    return res.status(201).json({ topic });
+  } catch (error) {
+    return res.status(500).json({ error: 'Unable to save syllabus unit.' });
+  }
+});
+
+router.patch('/admin/topics/:topicId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const { name, subtopics } = req.body;
+  const update = {};
+  if (name?.trim()) update.name = name.trim();
+  if (subtopics) update.subtopics = (Array.isArray(subtopics) ? subtopics : String(subtopics).split(/\r?\n/)).map((item) => String(item).trim()).filter(Boolean);
+  const topic = await Topic.findByIdAndUpdate(req.params.topicId, update, { new: true });
+  if (!topic) return res.status(404).json({ error: 'Syllabus unit not found.' });
+  return res.json({ topic });
+});
+
+router.delete('/admin/topics/:topicId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  await Topic.findByIdAndUpdate(req.params.topicId, { isActive: false });
+  return res.sendStatus(204);
+});
+
+router.get('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const query = { isActive: true };
+  ['subject', 'topic', 'subtopic', 'difficulty'].forEach((key) => { if (req.query[key]) query[key] = req.query[key]; });
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+  const [questions, total] = await Promise.all([
+    Question.find(query).sort({ subject: 1, topic: 1, subtopic: 1, createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+    Question.countDocuments(query),
+  ]);
+  return res.json({ questions, total, page, totalPages: Math.ceil(total / limit) });
+});
+
+router.post('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const { question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic, subtopic, difficulty = 'Medium', marks = 1, explanation } = req.body;
+    if (![question, optionA, optionB, optionC, optionD, correctAnswer, subject].every((value) => String(value || '').trim())) return res.status(400).json({ error: 'Question, options, answer and subject are required.' });
+    const created = await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic: topic || null, subtopic: subtopic || null, difficulty, marks: Number(marks) || 1, explanation: explanation || null, createdBy: req.mobileUser._id });
+    return res.status(201).json({ question: created });
+  } catch (error) {
+    console.error('Mobile create question error:', error);
+    return res.status(500).json({ error: 'Unable to create question.' });
+  }
+});
+
+router.delete('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  await Question.findByIdAndUpdate(req.params.questionId, { isActive: false });
+  return res.sendStatus(204);
 });
 
 module.exports = router;
