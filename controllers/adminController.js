@@ -139,26 +139,43 @@ exports.createStudent = async (req, res) => {
 
 exports.bulkImportStudents = async (req, res) => {
   try {
-    const { groupId } = req.body;
+    const groupId = req.params?.id || req.body.groupId;
     if (!req.files?.csvFile) { req.flash('error','No file uploaded.'); return res.redirect(req.get('Referer')||'/admin/groups'); }
+    const group = groupId ? await Group.findOne({ _id: groupId, isActive: { $ne: false } }) : null;
+    if (groupId && !group) {
+      req.flash('error', 'Selected batch is not available.');
+      return res.redirect(req.get('Referer') || '/admin/groups');
+    }
     const wb   = xlsx.read(req.files.csvFile.data, { type:'buffer' });
     const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    let created=0, skipped=0, duplicates=[];
+    let created=0, existing=0, assigned=0, skipped=0;
     for (const row of rows) {
       const rollNo = String(row['Roll No']||row.rollNo||'').trim();
       const name   = String(row['Name']||row.name||'').trim();
       if (!rollNo||!name) { skipped++; continue; }
-      if (await User.findOne({ rollNo })) { duplicates.push(rollNo); skipped++; continue; }
       try {
-        const pwd = generatePassword(rollNo);
-        const s = await User.create({ name, rollNo, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pwd, isFirstLogin:true });
-        if (groupId) await GroupMember.create({ groupId, userId:s._id, role:'student' }).catch(()=>{});
-        created++;
+        let student = await User.findOne({ rollNo });
+        if (student) {
+          existing++;
+        } else {
+          const pwd = generatePassword(rollNo);
+          student = await User.create({ name, rollNo, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pwd, isFirstLogin:true });
+          created++;
+        }
+        if (group) {
+          await GroupMember.findOneAndUpdate(
+            { groupId: group._id, userId: student._id },
+            { role:'student' },
+            { upsert:true }
+          );
+          assigned++;
+        }
       } catch { skipped++; }
     }
-    let msg = `Imported ${created} student(s).`;
+    let msg = `Imported ${created} new student(s).`;
+    if (group) msg += ` Added ${assigned} student(s) to "${group.name}".`;
+    if (existing) msg += ` ${existing} existing student(s) were retained.`;
     if (skipped) msg += ` ${skipped} skipped.`;
-    if (duplicates.length) msg += ` Duplicates: ${duplicates.join(', ')}.`;
     req.flash('success', msg);
     res.redirect(req.get('Referer')||'/admin/groups');
   } catch (e) { req.flash('error','Import failed: '+e.message); res.redirect(req.get('Referer')||'/admin/groups'); }
