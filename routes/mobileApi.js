@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const xlsx = require('xlsx');
 
 const { Group, GroupMember, Notification, Question, Result, StudentDocument, Test, Topic, User } = require('../models');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
@@ -416,6 +417,32 @@ router.post('/admin/students', requireMobileUser, requireRole('admin'), async (r
   }
 });
 
+router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const file = req.files?.csvFile;
+    const { groupId } = req.body;
+    if (!file) return res.status(400).json({ error: 'Select an Excel or CSV file first.' });
+    const workbook = xlsx.read(file.data, { type: 'buffer' });
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+    let created = 0;
+    let skipped = 0;
+    const duplicates = [];
+    for (const row of rows) {
+      const rollNo = String(row['Roll No'] || row.rollNo || '').trim();
+      const name = String(row.Name || row.name || '').trim();
+      if (!rollNo || !name) { skipped += 1; continue; }
+      if (await User.exists({ rollNo })) { duplicates.push(rollNo); skipped += 1; continue; }
+      const student = await User.create({ name, rollNo, parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null, role: 'student', password: `CET@${rollNo.slice(-4).padStart(4, '0')}`, isFirstLogin: true });
+      if (groupId) await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
+      created += 1;
+    }
+    return res.json({ created, skipped, duplicates, groupAssigned: Boolean(groupId) });
+  } catch (error) {
+    console.error('Mobile bulk student import error:', error);
+    return res.status(500).json({ error: 'Unable to import students.' });
+  }
+});
+
 router.delete('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
   await GroupMember.deleteMany({ userId: req.params.studentId });
   const result = await User.deleteOne({ _id: req.params.studentId, role: 'student' });
@@ -514,6 +541,33 @@ router.post('/admin/questions', requireMobileUser, requireRole('admin'), async (
   } catch (error) {
     console.error('Mobile create question error:', error);
     return res.status(500).json({ error: 'Unable to create question.' });
+  }
+});
+
+router.post('/admin/questions/bulk-import', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const file = req.files?.csvFile;
+    if (!file) return res.status(400).json({ error: 'Select an Excel or CSV file first.' });
+    const workbook = xlsx.read(file.data, { type: 'buffer' });
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+    let created = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      try {
+        const question = row.question || row.Question;
+        const optionA = row.optionA || row['Option A'];
+        const optionB = row.optionB || row['Option B'];
+        const optionC = row.optionC || row['Option C'];
+        const optionD = row.optionD || row['Option D'];
+        if (![question, optionA, optionB, optionC, optionD].every(Boolean)) { skipped += 1; continue; }
+        await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer: String(row.correctAnswer || row['Correct Answer'] || 'A').toUpperCase(), subject: row.subject || row.Subject || 'Physics', topic: row.topic || row.Topic || null, subtopic: row.subtopic || row.Subtopic || null, difficulty: row.difficulty || row.Difficulty || 'Medium', marks: Number(row.marks || row.Marks || 1), explanation: row.explanation || row.Explanation || null, createdBy: req.mobileUser._id });
+        created += 1;
+      } catch { skipped += 1; }
+    }
+    return res.json({ created, skipped });
+  } catch (error) {
+    console.error('Mobile bulk question import error:', error);
+    return res.status(500).json({ error: 'Unable to import questions.' });
   }
 });
 
