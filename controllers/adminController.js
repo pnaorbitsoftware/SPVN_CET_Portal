@@ -25,6 +25,11 @@ const loadTopics = (course, subject) => {
 
 const cleanHierarchyText = value => String(value || '').replace(/\s+/g, ' ').trim();
 
+const hierarchyValuePattern = value => {
+  const terms = cleanHierarchyText(value).split(' ').filter(Boolean);
+  return new RegExp(`^${terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')}$`, 'i');
+};
+
 const parseSubtopics = value => {
   const seen = new Set();
   return String(value || '').split(/\r?\n/).map(cleanHierarchyText).filter(item => {
@@ -420,9 +425,9 @@ exports.getQuestions = async (req, res) => {
     const { subject, topic, subtopic, difficulty, course, sort='subject', page=1 } = req.query;
     const limit=25, skip=(page-1)*limit;
     const q = { isActive:true };
-    if (subject)   q.subject   = subject;
-    if (topic)     q.topic     = topic;
-    if (subtopic)  q.subtopic  = subtopic;
+    if (subject)   q.subject   = hierarchyValuePattern(subject);
+    if (topic)     q.topic     = hierarchyValuePattern(topic);
+    if (subtopic)  q.subtopic  = hierarchyValuePattern(subtopic);
     if (difficulty) q.difficulty = difficulty;
     const sortMap = {
       difficulty: { difficulty:1, subject:1 },
@@ -435,7 +440,9 @@ exports.getQuestions = async (req, res) => {
       Question.countDocuments(q),
     ]);
     const topicRows = subject ? await loadTopics(course, subject) : [];
-    const subtopicList = topic ? (topicRows.find(t=>t.name===topic)?.subtopics||[]) : [];
+    const subtopicList = topic
+      ? (topicRows.find(row => cleanHierarchyText(row.name).toLocaleLowerCase() === cleanHierarchyText(topic).toLocaleLowerCase())?.subtopics || [])
+      : [];
     res.render('admin/questions', {
       title:'Question Bank', questions, total,
       currentPage:parseInt(page), totalPages:Math.ceil(total/limit),
