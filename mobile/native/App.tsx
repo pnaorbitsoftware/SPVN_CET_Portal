@@ -1,0 +1,139 @@
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+
+import { AdminDashboard, mobileApi, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
+
+type Screen = 'home' | 'tests' | 'results' | 'more';
+
+export default function App() {
+  const [user, setUser] = useState<MobileUser | null>(null);
+  const [screen, setScreen] = useState<Screen>('home');
+
+  if (!user) return <LoginScreen onLogin={setUser} />;
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="light" />
+      <View style={styles.appHeader}>
+        <View>
+          <Text style={styles.greeting}>Namaskar, {user.name}</Text>
+          <Text style={styles.roleLabel}>{user.role === 'admin' ? 'Administrator' : user.rollNo || 'Student'}</Text>
+        </View>
+        <Pressable onPress={() => { mobileApi.clearSession(); setUser(null); }}><Text style={styles.logout}>Logout</Text></Pressable>
+      </View>
+      {user.role === 'student'
+        ? <StudentArea screen={screen} />
+        : <AdminArea screen={screen} />}
+      <TabBar screen={screen} onChange={setScreen} role={user.role} />
+    </SafeAreaView>
+  );
+}
+
+function LoginScreen({ onLogin }: { onLogin: (user: MobileUser) => void }) {
+  const [role, setRole] = useState<'student' | 'admin'>('student');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const login = async () => {
+    if (!identifier.trim() || !password) return Alert.alert('Login details required', 'Enter your credentials to continue.');
+    try {
+      setLoading(true);
+      const session = await mobileApi.login(identifier, password, role);
+      onLogin(session.user);
+    } catch (error) {
+      Alert.alert('Login failed', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.loginPage}>
+      <StatusBar style="light" />
+      <View style={styles.brandBlock}>
+        <Text style={styles.brandMark}>SPVN</Text>
+        <Text style={styles.brandTitle}>CET Portal</Text>
+        <Text style={styles.brandSubtitle}>Shardabai Pawar Vidyamandir & Vidyaniketan</Text>
+      </View>
+      <View style={styles.loginCard}>
+        <View style={styles.roleToggle}>
+          <Pressable style={[styles.roleButton, role === 'student' && styles.roleButtonActive]} onPress={() => setRole('student')}><Text style={[styles.roleButtonText, role === 'student' && styles.roleButtonTextActive]}>Student</Text></Pressable>
+          <Pressable style={[styles.roleButton, role === 'admin' && styles.roleButtonActive]} onPress={() => setRole('admin')}><Text style={[styles.roleButtonText, role === 'admin' && styles.roleButtonTextActive]}>Admin</Text></Pressable>
+        </View>
+        <Text style={styles.inputLabel}>{role === 'student' ? 'Roll Number' : 'Email Address'}</Text>
+        <TextInput style={styles.input} value={identifier} onChangeText={setIdentifier} autoCapitalize="none" placeholder={role === 'student' ? 'Enter roll number' : 'Enter email'} />
+        <Text style={styles.inputLabel}>Password</Text>
+        <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Enter password" />
+        <Pressable style={styles.primaryButton} onPress={login} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Secure Login</Text>}
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function StudentArea({ screen }: { screen: Screen }) {
+  const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
+  const [tests, setTests] = useState<MobileTest[]>([]);
+  const [results, setResults] = useState<MobileResult[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const load = screen === 'home' ? mobileApi.getStudentDashboard().then(setDashboard)
+      : screen === 'tests' ? mobileApi.getStudentTests().then((data) => setTests(data.tests))
+        : screen === 'results' ? mobileApi.getStudentResults().then((data) => setResults(data.results))
+          : mobileApi.getStudentNotifications().then(() => undefined);
+    load.catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
+  }, [screen]);
+
+  if (loading) return <Loading />;
+  if (screen === 'tests') return <ListPage title="My Tests" items={tests.map((test) => ({ title: test.title, detail: `${test.duration} min · ${test.totalMarks} marks`, badge: test.result ? 'Completed' : 'Open' }))} />;
+  if (screen === 'results') return <ListPage title="My Results" items={results.map((result) => ({ title: result.testId?.title || 'Test Result', detail: `${result.score}/${result.totalMarks} marks`, badge: result.rank ? `Rank ${result.rank}` : 'Result' }))} />;
+  if (screen === 'more') return <ListPage title="Notifications & Documents" items={dashboard?.notifications.map((notification) => ({ title: notification.title || 'Notification', detail: notification.message || '', badge: '' })) || []} />;
+  return <StudentDashboardView dashboard={dashboard} />;
+}
+
+function AdminArea({ screen }: { screen: Screen }) {
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    mobileApi.getAdminDashboard().then(setDashboard).catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
+  }, [screen]);
+  if (loading) return <Loading />;
+  if (screen !== 'home') return <ListPage title={screen === 'tests' ? 'Test Manager' : screen === 'results' ? 'Results Manager' : 'Students, Groups & Question Bank'} items={[]} />;
+  return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>Admin Dashboard</Text><View style={styles.statsRow}><StatCard value={dashboard?.stats.students || 0} label="Students" /><StatCard value={dashboard?.stats.tests || 0} label="Tests" /><StatCard value={dashboard?.stats.submittedResults || 0} label="Results" /></View><Text style={styles.sectionTitle}>Management</Text><Text style={styles.muted}>Students, groups, question bank, syllabus, tests, imports and results are available in the native modules.</Text></ScrollView>;
+}
+
+function StudentDashboardView({ dashboard }: { dashboard: StudentDashboard | null }) {
+  return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>My Dashboard</Text><View style={styles.statsRow}><StatCard value={dashboard?.stats.pending || 0} label="Pending" /><StatCard value={dashboard?.stats.completed || 0} label="Completed" /><StatCard value={`${dashboard?.stats.averageScore || 0}%`} label="Average" /></View><Text style={styles.sectionTitle}>Upcoming Tests</Text>{dashboard?.pendingTests.length ? dashboard.pendingTests.map((test) => <View key={test._id} style={styles.card}><Text style={styles.cardTitle}>{test.title}</Text><Text style={styles.muted}>{test.duration} minutes · {test.totalMarks} marks</Text></View>) : <Text style={styles.muted}>No tests available right now.</Text>}</ScrollView>;
+}
+
+function ListPage({ title, items }: { title: string; items: { title: string; detail: string; badge: string }[] }) {
+  return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>{title}</Text>{items.length ? items.map((item, index) => <View key={`${item.title}-${index}`} style={styles.card}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.detail}</Text>{item.badge ? <Text style={styles.badge}>{item.badge}</Text> : null}</View>) : <Text style={styles.muted}>No records available.</Text>}</ScrollView>;
+}
+
+function TabBar({ screen, onChange, role }: { screen: Screen; onChange: (screen: Screen) => void; role: MobileUser['role'] }) {
+  const labels: { screen: Screen; label: string }[] = [{ screen: 'home', label: 'Home' }, { screen: 'tests', label: role === 'admin' ? 'Tests' : 'Tests' }, { screen: 'results', label: 'Results' }, { screen: 'more', label: 'More' }];
+  return <View style={styles.tabBar}>{labels.map((tab) => <Pressable key={tab.screen} style={styles.tab} onPress={() => onChange(tab.screen)}><Text style={[styles.tabText, screen === tab.screen && styles.tabTextActive]}>{tab.label}</Text></Pressable>)}</View>;
+}
+
+function Loading() { return <View style={styles.loading}><ActivityIndicator size="large" color="#075c36" /></View>; }
+function StatCard({ value, label }: { value: string | number; label: string }) { return <View style={styles.statCard}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#f3f7f4' }, loginPage: { flex: 1, backgroundColor: '#075c36', justifyContent: 'center', padding: 22 }, brandBlock: { alignItems: 'center', marginBottom: 28 }, brandMark: { color: '#d6ab28', fontSize: 44, fontWeight: '900', letterSpacing: 3 }, brandTitle: { color: '#fff', fontSize: 30, fontWeight: '800' }, brandSubtitle: { color: '#d9eee2', textAlign: 'center', marginTop: 8 }, loginCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 }, roleToggle: { flexDirection: 'row', backgroundColor: '#edf4ef', borderRadius: 12, padding: 4, marginBottom: 20 }, roleButton: { flex: 1, padding: 11, alignItems: 'center', borderRadius: 9 }, roleButtonActive: { backgroundColor: '#075c36' }, roleButtonText: { color: '#4f6256', fontWeight: '700' }, roleButtonTextActive: { color: '#fff' }, inputLabel: { color: '#24372b', fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: '#d7e2da', borderRadius: 12, padding: 13, marginBottom: 16, fontSize: 16 }, primaryButton: { backgroundColor: '#075c36', padding: 15, borderRadius: 12, alignItems: 'center', minHeight: 52 }, primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' }, appHeader: { backgroundColor: '#075c36', padding: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, greeting: { color: '#fff', fontSize: 18, fontWeight: '800' }, roleLabel: { color: '#d9eee2', marginTop: 3 }, logout: { color: '#f7d75c', fontWeight: '800' }, content: { padding: 18, gap: 12, paddingBottom: 28 }, pageTitle: { color: '#123c26', fontSize: 25, fontWeight: '800', marginBottom: 4 }, statsRow: { flexDirection: 'row', gap: 8 }, statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, alignItems: 'center', shadowColor: '#163725', shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 }, statValue: { color: '#075c36', fontSize: 22, fontWeight: '900' }, statLabel: { color: '#5f7165', marginTop: 4, fontSize: 12 }, sectionTitle: { marginTop: 10, color: '#123c26', fontSize: 18, fontWeight: '800' }, card: { backgroundColor: '#fff', padding: 16, borderRadius: 16, gap: 5 }, cardTitle: { color: '#173b27', fontSize: 16, fontWeight: '800' }, muted: { color: '#617268', lineHeight: 20 }, badge: { color: '#075c36', fontWeight: '800', marginTop: 3 }, tabBar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#dce7df', paddingVertical: 8 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 7 }, tabText: { color: '#6c7b70', fontSize: 12, fontWeight: '700' }, tabTextActive: { color: '#075c36' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f7f4' },
+});
