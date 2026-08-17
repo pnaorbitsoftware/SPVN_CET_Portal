@@ -55,6 +55,10 @@ export const mobileApi = {
   saveStudentAnswer: (testId: string, payload: { questionId: string; answer: string | null; markForReview: boolean; timeSpent: number }) => request<{ saved: boolean; answeredCount: number }>(`/student/tests/${testId}/answers`, { method: 'POST', body: JSON.stringify(payload) }),
   submitStudentTest: (testId: string) => request<{ result: MobileResult }>(`/student/tests/${testId}/submit`, { method: 'POST' }),
   getAdminDashboard: () => request<AdminDashboard>('/admin/dashboard'),
+  getAdminStudents: () => request<{ students: MobileAdminStudent[] }>('/admin/students'),
+  getAdminGroups: () => request<{ groups: MobileAdminGroup[] }>('/admin/groups'),
+  getAdminTests: () => request<{ tests: MobileAdminTest[] }>('/admin/tests'),
+  getAdminResults: () => request<{ results: MobileAdminResult[] }>('/admin/results'),
 };
 
 export type MobileTest = {
@@ -105,6 +109,11 @@ export type StudentDashboard = {
 export type AdminDashboard = {
   stats: { students: number; tests: number; submittedResults: number };
 };
+
+export type MobileAdminStudent = Pick<MobileUser, 'id' | 'name' | 'rollNo' | 'email'> & { _id: string; parentContact: string | null; isActive: boolean };
+export type MobileAdminGroup = { _id: string; name: string; description: string | null; academicYear: string; course: string | null; members: { _id: string; name: string; rollNo: string }[] };
+export type MobileAdminTest = { _id: string; title: string; status: string; duration: number; totalMarks: number; groups: { _id: string; name: string }[] };
+export type MobileAdminResult = { _id: string; score: number; totalMarks: number; rank: number | null; submittedAt: string; studentId: { name: string; rollNo: string }; testId: { title: string } };
 
 export type ExamQuestionState = {
   questionNumber: number;

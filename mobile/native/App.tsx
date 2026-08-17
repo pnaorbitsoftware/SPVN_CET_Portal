@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { AdminDashboard, ExamQuestionState, mobileApi, MobileDocument, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
+import { AdminDashboard, ExamQuestionState, mobileApi, MobileAdminGroup, MobileAdminResult, MobileAdminStudent, MobileAdminTest, MobileDocument, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
 
 type Screen = 'home' | 'tests' | 'results' | 'more';
 
@@ -171,13 +171,23 @@ function ExamScreen({ testId, onClose }: { testId: string; onClose: () => void }
 
 function AdminArea({ screen }: { screen: Screen }) {
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [students, setStudents] = useState<MobileAdminStudent[]>([]);
+  const [groups, setGroups] = useState<MobileAdminGroup[]>([]);
+  const [tests, setTests] = useState<MobileAdminTest[]>([]);
+  const [results, setResults] = useState<MobileAdminResult[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     setLoading(true);
-    mobileApi.getAdminDashboard().then(setDashboard).catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
+    const load = screen === 'home' ? mobileApi.getAdminDashboard().then(setDashboard)
+      : screen === 'tests' ? mobileApi.getAdminTests().then((data) => setTests(data.tests))
+        : screen === 'results' ? mobileApi.getAdminResults().then((data) => setResults(data.results))
+          : Promise.all([mobileApi.getAdminStudents(), mobileApi.getAdminGroups()]).then(([studentData, groupData]) => { setStudents(studentData.students); setGroups(groupData.groups); });
+    load.catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
   }, [screen]);
   if (loading) return <Loading />;
-  if (screen !== 'home') return <ListPage title={screen === 'tests' ? 'Test Manager' : screen === 'results' ? 'Results Manager' : 'Students, Groups & Question Bank'} items={[]} />;
+  if (screen === 'tests') return <ListPage title="Test Manager" items={tests.map((test) => ({ title: test.title, detail: `${test.duration} min · ${test.totalMarks} marks`, badge: test.status }))} />;
+  if (screen === 'results') return <ListPage title="Results Manager" items={results.map((result) => ({ title: `${result.studentId?.name || 'Student'} · ${result.testId?.title || 'Test'}`, detail: `${result.score}/${result.totalMarks} marks`, badge: result.rank ? `Rank ${result.rank}` : '' }))} />;
+  if (screen === 'more') return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>Students & Batches</Text><Text style={styles.sectionTitle}>Students ({students.length})</Text>{students.slice(0, 10).map((student) => <View key={student._id} style={styles.card}><Text style={styles.cardTitle}>{student.name}</Text><Text style={styles.muted}>{student.rollNo || 'No roll number'}</Text></View>)}<Text style={styles.sectionTitle}>Batches ({groups.length})</Text>{groups.map((group) => <View key={group._id} style={styles.card}><Text style={styles.cardTitle}>{group.name}</Text><Text style={styles.muted}>{group.members.length} students · {group.course || 'All courses'}</Text></View>)}</ScrollView>;
   return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>Admin Dashboard</Text><View style={styles.statsRow}><StatCard value={dashboard?.stats.students || 0} label="Students" /><StatCard value={dashboard?.stats.tests || 0} label="Tests" /><StatCard value={dashboard?.stats.submittedResults || 0} label="Results" /></View><Text style={styles.sectionTitle}>Management</Text><Text style={styles.muted}>Students, groups, question bank, syllabus, tests, imports and results are available in the native modules.</Text></ScrollView>;
 }
 
