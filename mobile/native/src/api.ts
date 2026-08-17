@@ -22,7 +22,7 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<T> =
     ...options,
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...options.headers,
     },
@@ -48,6 +48,8 @@ export const mobileApi = {
   getStudentTests: () => request<{ tests: MobileTest[] }>('/student/tests'),
   getStudentResults: () => request<{ results: MobileResult[] }>('/student/results'),
   getStudentNotifications: () => request<{ notifications: MobileNotification[] }>('/student/notifications'),
+  getStudentDocuments: () => request<{ documents: MobileDocument[] }>('/student/documents'),
+  uploadStudentDocument: (document: FormData) => request<{ document: MobileDocument }>('/student/documents', { method: 'POST', body: document }),
   startStudentTest: (testId: string) => request<{ resultId: string; firstQuestionNumber: number; questionCount: number }>(`/student/tests/${testId}/start`, { method: 'POST' }),
   getStudentQuestion: (testId: string, questionNumber: number) => request<ExamQuestionState>(`/student/tests/${testId}/questions/${questionNumber}`),
   saveStudentAnswer: (testId: string, payload: { questionId: string; answer: string | null; markForReview: boolean; timeSpent: number }) => request<{ saved: boolean; answeredCount: number }>(`/student/tests/${testId}/answers`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -80,6 +82,16 @@ export type MobileNotification = {
   _id: string;
   title?: string;
   message?: string;
+  createdAt: string;
+};
+
+export type MobileDocument = {
+  _id: string;
+  originalName: string;
+  fileType: string;
+  fileSize: number;
+  filePath: string;
+  description: string;
   createdAt: string;
 };
 

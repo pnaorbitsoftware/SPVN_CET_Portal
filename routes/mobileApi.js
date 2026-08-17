@@ -1,12 +1,16 @@
 const crypto = require('crypto');
 const express = require('express');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 
-const { GroupMember, Notification, Question, Result, Test, User } = require('../models');
+const { GroupMember, Notification, Question, Result, StudentDocument, Test, User } = require('../models');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
+const documentDirectory = path.join(__dirname, '../public/uploads/documents');
+if (!fs.existsSync(documentDirectory)) fs.mkdirSync(documentDirectory, { recursive: true });
 
 router.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -139,6 +143,34 @@ router.get('/student/notifications', requireMobileUser, requireRole('student'), 
   const notifications = await Notification.find({ userId: req.mobileUser._id }).sort({ createdAt: -1 });
   await Notification.updateMany({ userId: req.mobileUser._id }, { isRead: true });
   return res.json({ notifications });
+});
+
+router.get('/student/documents', requireMobileUser, requireRole('student'), async (req, res) => {
+  const documents = await StudentDocument.find({ studentId: req.mobileUser._id }).sort({ createdAt: -1 });
+  return res.json({ documents });
+});
+
+router.post('/student/documents', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const file = req.files?.document;
+    if (!file) return res.status(400).json({ error: 'Select a document first.' });
+    const safeName = String(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileName = `doc_${req.mobileUser._id}_${Date.now()}_${safeName}`;
+    fs.writeFileSync(path.join(documentDirectory, fileName), file.data);
+    const document = await StudentDocument.create({
+      studentId: req.mobileUser._id,
+      fileName,
+      originalName: file.name,
+      fileType: file.mimetype,
+      fileSize: file.size,
+      filePath: `/uploads/documents/${fileName}`,
+      description: req.body.description || '',
+    });
+    return res.status(201).json({ document });
+  } catch (error) {
+    console.error('Mobile document upload error:', error);
+    return res.status(500).json({ error: 'Unable to upload document.' });
+  }
 });
 
 const questionForMobile = (question, options) => ({

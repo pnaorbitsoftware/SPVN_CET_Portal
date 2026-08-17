@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { AdminDashboard, ExamQuestionState, mobileApi, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
+import { AdminDashboard, ExamQuestionState, mobileApi, MobileDocument, MobileResult, MobileTest, MobileUser, StudentDashboard } from './src/api';
 
 type Screen = 'home' | 'tests' | 'results' | 'more';
 
@@ -88,6 +89,7 @@ function StudentArea({ screen }: { screen: Screen }) {
   const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
   const [tests, setTests] = useState<MobileTest[]>([]);
   const [results, setResults] = useState<MobileResult[]>([]);
+  const [documents, setDocuments] = useState<MobileDocument[]>([]);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -96,7 +98,7 @@ function StudentArea({ screen }: { screen: Screen }) {
     const load = screen === 'home' ? mobileApi.getStudentDashboard().then(setDashboard)
       : screen === 'tests' ? mobileApi.getStudentTests().then((data) => setTests(data.tests))
         : screen === 'results' ? mobileApi.getStudentResults().then((data) => setResults(data.results))
-          : mobileApi.getStudentNotifications().then(() => undefined);
+          : mobileApi.getStudentDocuments().then((data) => setDocuments(data.documents));
     load.catch((error) => Alert.alert('Unable to load', error.message)).finally(() => setLoading(false));
   }, [screen]);
 
@@ -104,8 +106,27 @@ function StudentArea({ screen }: { screen: Screen }) {
   if (loading) return <Loading />;
   if (screen === 'tests') return <StudentTests tests={tests} onStart={setActiveTestId} />;
   if (screen === 'results') return <ListPage title="My Results" items={results.map((result) => ({ title: result.testId?.title || 'Test Result', detail: `${result.score}/${result.totalMarks} marks`, badge: result.rank ? `Rank ${result.rank}` : 'Result' }))} />;
-  if (screen === 'more') return <ListPage title="Notifications & Documents" items={dashboard?.notifications.map((notification) => ({ title: notification.title || 'Notification', detail: notification.message || '', badge: '' })) || []} />;
+  if (screen === 'more') return <StudentDocuments documents={documents} onRefresh={() => mobileApi.getStudentDocuments().then((data) => setDocuments(data.documents))} />;
   return <StudentDashboardView dashboard={dashboard} />;
+}
+
+function StudentDocuments({ documents, onRefresh }: { documents: MobileDocument[]; onRefresh: () => Promise<void> }) {
+  const [uploading, setUploading] = useState(false);
+  const upload = async () => {
+    const selection = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+    if (selection.canceled) return;
+    const file = selection.assets[0];
+    const formData = new FormData();
+    formData.append('document', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as unknown as Blob);
+    try {
+      setUploading(true);
+      await mobileApi.uploadStudentDocument(formData);
+      await onRefresh();
+      Alert.alert('Uploaded', 'Your document has been uploaded.');
+    } catch (error) { Alert.alert('Upload failed', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setUploading(false); }
+  };
+  return <ScrollView contentContainerStyle={styles.content}><Text style={styles.pageTitle}>My Documents</Text><Pressable style={styles.primaryButton} onPress={upload} disabled={uploading}>{uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Select & Upload Document</Text>}</Pressable>{documents.length ? documents.map((document) => <View key={document._id} style={styles.card}><Text style={styles.cardTitle}>{document.originalName}</Text><Text style={styles.muted}>{document.description || document.fileType}</Text></View>) : <Text style={styles.muted}>No documents uploaded.</Text>}</ScrollView>;
 }
 
 function StudentTests({ tests, onStart }: { tests: MobileTest[]; onStart: (testId: string) => void }) {
