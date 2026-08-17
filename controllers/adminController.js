@@ -35,6 +35,22 @@ const hierarchyValuePattern = (value, { allowUnitPrefix = false } = {}) => {
   return new RegExp(`^${prefix}${expression}$`, 'i');
 };
 
+const hierarchyWords = value => stripUnitPrefix(value)
+  .toLocaleLowerCase()
+  .replace(/trigonometric/g, 'trig')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .split(' ')
+  .map(word => word.replace(/ies$/, 'y').replace(/s$/, ''))
+  .filter(word => word.length > 2 && !['and', 'the', 'for', 'with', 'from', 'into', 'using', 'basic', 'general', 'standard'].includes(word));
+
+const matchesSyllabusTopic = (questionTopic, syllabusTopic) => {
+  if (stripUnitPrefix(questionTopic).toLocaleLowerCase() === stripUnitPrefix(syllabusTopic.name).toLocaleLowerCase()) return true;
+  const questionWords = [...new Set(hierarchyWords(questionTopic))];
+  const syllabusWords = new Set(hierarchyWords([syllabusTopic.name, ...(syllabusTopic.subtopics || [])].join(' ')));
+  const matches = questionWords.filter(word => syllabusWords.has(word)).length;
+  return matches >= Math.min(2, questionWords.length);
+};
+
 const parseSubtopics = value => {
   const seen = new Set();
   return String(value || '').split(/\r?\n/).map(cleanHierarchyText).filter(item => {
@@ -431,8 +447,6 @@ exports.getQuestions = async (req, res) => {
     const limit=25, skip=(page-1)*limit;
     const q = { isActive:true };
     if (subject)   q.subject   = hierarchyValuePattern(subject);
-    if (topic)     q.topic     = hierarchyValuePattern(topic, { allowUnitPrefix: true });
-    if (subtopic)  q.subtopic  = hierarchyValuePattern(subtopic);
     if (difficulty) q.difficulty = difficulty;
     const sortMap = {
       difficulty: { difficulty:1, subject:1 },
@@ -440,22 +454,28 @@ exports.getQuestions = async (req, res) => {
       oldest:     { createdAt:1 },
       subject:    { subject:1, topic:1, subtopic:1, difficulty:1, createdAt:-1 },
     };
-    let [questions, total] = await Promise.all([
-      Question.find(q).sort(sortMap[sort]||sortMap.subject).skip(skip).limit(limit),
-      Question.countDocuments(q),
-    ]);
-    if (subtopic && topic && total === 0) {
+    const topicRows = subject ? await loadTopics(course, subject) : [];
+    const selectedTopic = topicRows.find(row => stripUnitPrefix(row.name).toLocaleLowerCase() === stripUnitPrefix(topic).toLocaleLowerCase());
+    let questions, total;
+    if (selectedTopic) {
+      const candidates = await Question.find(q).sort(sortMap[sort]||sortMap.subject);
+      const topicMatches = candidates.filter(question => matchesSyllabusTopic(question.topic, selectedTopic));
+      const subtopicMatches = subtopic
+        ? topicMatches.filter(question => hierarchyValuePattern(subtopic).test(question.subtopic || ''))
+        : topicMatches;
+      const filteredQuestions = subtopicMatches.length || !subtopic ? subtopicMatches : topicMatches;
+      total = filteredQuestions.length;
+      questions = filteredQuestions.slice(skip, skip + limit);
+    } else {
       const topicQuery = { ...q };
-      delete topicQuery.subtopic;
+      if (topic) topicQuery.topic = hierarchyValuePattern(topic, { allowUnitPrefix: true });
+      if (subtopic) topicQuery.subtopic = hierarchyValuePattern(subtopic);
       [questions, total] = await Promise.all([
         Question.find(topicQuery).sort(sortMap[sort]||sortMap.subject).skip(skip).limit(limit),
         Question.countDocuments(topicQuery),
       ]);
     }
-    const topicRows = subject ? await loadTopics(course, subject) : [];
-    const subtopicList = topic
-      ? (topicRows.find(row => stripUnitPrefix(row.name).toLocaleLowerCase() === stripUnitPrefix(topic).toLocaleLowerCase())?.subtopics || [])
-      : [];
+    const subtopicList = selectedTopic?.subtopics || [];
     res.render('admin/questions', {
       title:'Question Bank', questions, total,
       currentPage:parseInt(page), totalPages:Math.ceil(total/limit),
