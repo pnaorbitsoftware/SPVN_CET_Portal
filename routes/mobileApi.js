@@ -688,6 +688,30 @@ router.delete('/admin/tests/:testId', requireMobileUser, requireRole('admin'), a
   return res.sendStatus(204);
 });
 
+router.get('/admin/results', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const query = { status: { $in: ['submitted', 'auto_submitted'] } };
+  if (req.query.testId) query.testId = req.query.testId;
+  if (req.query.groupId) {
+    const members = await GroupMember.find({ groupId: req.query.groupId, role: 'student' }, 'userId');
+    query.studentId = { $in: members.map((member) => member.userId) };
+  }
+  const results = await Result.find(query).sort({ submittedAt: -1 }).populate('studentId', 'name rollNo').populate('testId', 'title course subject');
+  return res.json({ results });
+});
+
+router.get('/admin/documents', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const documents = await StudentDocument.find().sort({ createdAt: -1 }).populate('studentId', 'name rollNo');
+  return res.json({ documents });
+});
+
+router.delete('/admin/documents/:documentId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const document = await StudentDocument.findByIdAndDelete(req.params.documentId);
+  if (!document) return res.status(404).json({ error: 'Document not found.' });
+  const fullPath = path.join(__dirname, '../public', document.filePath);
+  if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  return res.sendStatus(204);
+});
+
 router.delete('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
   await Question.findByIdAndUpdate(req.params.questionId, { isActive: false });
   return res.sendStatus(204);
