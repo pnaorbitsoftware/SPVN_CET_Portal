@@ -4,7 +4,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 
-const { GroupMember, Notification, Question, Result, StudentDocument, Test, User } = require('../models');
+const { Group, GroupMember, Notification, Question, Result, StudentDocument, Test, User } = require('../models');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 
 const router = express.Router();
@@ -393,6 +393,65 @@ router.get('/admin/dashboard', requireMobileUser, requireRole('admin'), async (r
     Result.countDocuments({ status: { $in: ['submitted', 'auto_submitted'] } }),
   ]);
   return res.json({ stats: { students, tests, submittedResults } });
+});
+
+router.get('/admin/students', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const students = await User.find({ role: 'student' }).sort({ rollNo: 1 }).select('-password');
+  return res.json({ students });
+});
+
+router.post('/admin/students', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const { name, rollNo, parentContact, groupId } = req.body;
+    if (!name?.trim() || !rollNo?.trim()) return res.status(400).json({ error: 'Name and roll number are required.' });
+    if (await User.exists({ rollNo: rollNo.trim() })) return res.status(409).json({ error: 'Roll number already exists.' });
+    const initialPassword = `CET@${rollNo.trim().slice(-4).padStart(4, '0')}`;
+    const student = await User.create({ name: name.trim(), rollNo: rollNo.trim(), parentContact: parentContact?.trim() || null, role: 'student', password: initialPassword, isFirstLogin: true });
+    if (groupId) await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
+    await Notification.create({ userId: student._id, title: 'Account Created', message: `Welcome ${student.name}!`, type: 'info' });
+    return res.status(201).json({ student: serializeUser(student), initialPassword });
+  } catch (error) {
+    console.error('Mobile create student error:', error);
+    return res.status(500).json({ error: 'Unable to create student.' });
+  }
+});
+
+router.delete('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  await GroupMember.deleteMany({ userId: req.params.studentId });
+  const result = await User.deleteOne({ _id: req.params.studentId, role: 'student' });
+  if (!result.deletedCount) return res.status(404).json({ error: 'Student not found.' });
+  return res.sendStatus(204);
+});
+
+router.get('/admin/groups', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const [groups, members] = await Promise.all([
+    Group.find({ isActive: { $ne: false } }).sort({ createdAt: -1 }),
+    GroupMember.find({ role: 'student' }).populate('userId', 'name rollNo').lean(),
+  ]);
+  const memberMap = new Map();
+  members.forEach((member) => {
+    const key = member.groupId.toString();
+    memberMap.set(key, [...(memberMap.get(key) || []), member.userId]);
+  });
+  return res.json({ groups: groups.map((group) => ({ ...group.toObject(), members: memberMap.get(group._id.toString()) || [] })) });
+});
+
+router.post('/admin/groups', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const { name, description, academicYear, course } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Batch name is required.' });
+    const group = await Group.create({ name: name.trim(), description: description?.trim() || null, academicYear: academicYear?.trim() || process.env.ACADEMIC_YEAR, course: course || null });
+    return res.status(201).json({ group });
+  } catch (error) {
+    return res.status(409).json({ error: 'Unable to create batch. Its name may already exist.' });
+  }
+});
+
+router.post('/admin/groups/:groupId/members', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const { studentId } = req.body;
+  if (!studentId) return res.status(400).json({ error: 'Student is required.' });
+  await GroupMember.findOneAndUpdate({ groupId: req.params.groupId, userId: studentId }, { role: 'student' }, { upsert: true });
+  return res.status(201).json({ assigned: true });
 });
 
 module.exports = router;
