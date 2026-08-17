@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SPVN CET Portal</string>
+    <string name="title_activity_main">SPVN CET Portal</string>
+    <string name="package_name">in.spvn.cetportal</string>
+    <string name="custom_url_scheme">in.spvn.cetportal</string>
+</resources>
