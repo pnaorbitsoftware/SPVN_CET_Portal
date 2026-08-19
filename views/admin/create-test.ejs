@@ -373,6 +373,22 @@ const hierarchyKey = value => String(value || '').replace(/\s+/g, ' ').trim().to
 const topicKey = value => hierarchyKey(value).replace(/^unit\s*\d+\s*[—-]\s*/, '');
 const sameHierarchyValue = (left, right) => hierarchyKey(left) === hierarchyKey(right);
 const sameTopicValue = (left, right) => topicKey(left) === topicKey(right);
+let ctTopicRows = [];
+const hierarchyWords = value => topicKey(value)
+  .replace(/trigonometric/g, 'trig')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .split(' ')
+  .map(word => word.replace(/ies$/, 'y').replace(/s$/, ''))
+  .filter(word => word.length > 2 && !['and', 'the', 'for', 'with', 'from', 'into', 'using', 'basic', 'general', 'standard'].includes(word));
+function questionMatchesSelectedTopic(questionTopic, selectedTopicName) {
+  if (!selectedTopicName || sameTopicValue(questionTopic, selectedTopicName)) return true;
+  const selectedTopic = ctTopicRows.find(topic => sameTopicValue(topic.name, selectedTopicName));
+  if (!selectedTopic) return false;
+  const questionWords = [...new Set(hierarchyWords(questionTopic))];
+  const syllabusWords = new Set(hierarchyWords([selectedTopic.name, ...(selectedTopic.subtopics || [])].join(' ')));
+  const matchedWords = questionWords.filter(word => syllabusWords.has(word)).length;
+  return matchedWords >= Math.min(2, questionWords.length);
+}
 
 // ── Apply all filters ─────────────────────────────────────────────────────
 function applyCtFilters() {
@@ -386,7 +402,7 @@ function applyCtFilters() {
   const questionRows = [...document.querySelectorAll('.q-item')];
   const matchesWithoutSubtopic = row => {
     const matchSubj    = !ctState.subject  || sameHierarchyValue(row.dataset.subj, ctState.subject);
-    const matchTopic   = !ctState.topic    || sameTopicValue(row.dataset.topic, ctState.topic);
+    const matchTopic   = questionMatchesSelectedTopic(row.dataset.topic, ctState.topic);
     const matchDiff    = !ctState.diff     || row.dataset.diff     === ctState.diff;
     const matchSearch  = !ctState.search   || row.dataset.text.includes(ctState.search);
     return matchSubj && matchTopic && matchDiff && matchSearch;
@@ -435,6 +451,7 @@ async function onCtCourseChange(course) {
   subjectSelect.disabled = !course;
   topicSelect.disabled = true;
   subtopicSelect.disabled = true;
+  ctTopicRows = [];
   document.getElementById('ctAddStatus').textContent = '';
   if (course) {
     const subjects = await fetchSubjects(course);
@@ -451,8 +468,10 @@ async function onCtSubjectChange(subject) {
   stSel.innerHTML = '<option value="">Select Subtopic</option>';
   tSel.disabled = !subject;
   stSel.disabled = true;
+  ctTopicRows = [];
   if (subject) {
     const topics = await fetchTopics(document.getElementById('ctCourse').value, subject);
+    ctTopicRows = topics;
     topics.forEach(t => tSel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
     document.getElementById('ctAddStatus').textContent = topics.length
       ? `${topics.length} unit(s) available`
@@ -545,7 +564,7 @@ function addQuestionsByHierarchy() {
   const topicRows = Array.from(document.querySelectorAll('.q-item')).filter(row =>
     row.style.display !== 'none'
     && sameHierarchyValue(row.dataset.subj, subject)
-    && sameTopicValue(row.dataset.topic, topic)
+    && questionMatchesSelectedTopic(row.dataset.topic, topic)
   );
   const exactSubtopicRows = subtopic
     ? topicRows.filter(row => sameHierarchyValue(row.dataset.subtopic, subtopic))

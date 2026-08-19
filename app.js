@@ -97,6 +97,7 @@ app.use('/admin',   require('./routes/admin'));
 app.use('/student', require('./routes/student'));
 app.use('/exam',    require('./routes/exam'));
 app.use('/results', require('./routes/results'));
+app.use('/api/mobile', require('./routes/mobileApi'));
 
 app.get('/', (req, res) => {
   if (req.session.user) return res.redirect(`/${req.session.user.role}/dashboard`);
