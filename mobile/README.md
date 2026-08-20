@@ -1,14 +1,38 @@
 # SPVN CET Portal Mobile
 
-This Capacitor project delivers the existing SPVN CET Portal as an Android app. It opens the portal at the top level, so student and administrator functionality stays identical to the tested web backend: authentication, password change, tests, CET section flow, results, documents, notifications, question bank, bulk imports, groups, syllabus, smart scan, test publishing and reports.
+`mobile/native` is the canonical Android/iOS application. It is a native Expo Router app backed by the protected `/api/mobile` routes; it does not redirect to the web portal or embed it in a WebView.
 
-## Configure and build
+The older Capacitor shell remains in `mobile/android` only for reference. New APK work should happen in `mobile/native`.
 
-1. Install Node.js, Android Studio, Android SDK Platform Tools, and JDK 17.
-2. In this folder run `npm install`.
-3. Run `npm run sync` and `npm run assets`.
-4. Run `npm run apk:debug`.
+## Run in Expo Go
 
-The debug APK is created at `android/app/build/outputs/apk/debug/app-debug.apk`. On first launch, enter the publicly reachable portal URL shown by the administrator.
+```bash
+cd mobile/native
+npm install
+npm start
+```
 
-For local Android emulator testing, use `http://10.0.2.2:3000` as `MOBILE_PORTAL_URL`. For a physical phone, use a deployed HTTPS URL or the computer's LAN address with the phone on the same network.
+The default API is `https://spvn.aparaitech.org/api/mobile`. For a local server, create `mobile/native/.env.local`:
+
+```env
+EXPO_PUBLIC_API_URL=http://192.168.1.10:5000/api/mobile
+```
+
+Use the computer's LAN IP on a physical phone. Android Emulator can use `http://10.0.2.2:5000/api/mobile`.
+
+## Verify
+
+```bash
+npm run check
+npx expo export --platform android
+```
+
+## Build a debug APK
+
+Install Android Studio, Android SDK and JDK 17, then run:
+
+```bash
+npm run apk:debug
+```
+
+The generated APK is `mobile/native/android/app/build/outputs/apk/debug/app-debug.apk`.

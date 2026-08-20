@@ -6,13 +6,41 @@ const path = require('path');
 const xlsx = require('xlsx');
 
 const { Group, GroupMember, Notification, Question, QuestionImport, Result, StudentDocument, Test, Topic, User } = require('../models');
+const adminController = require('../controllers/adminController');
+const examController = require('../controllers/examController');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 const { SUPPORTED_EXTENSIONS, extensionOf, extractQuestionFiles, normalizeQuestion, preserveQuestionVisuals, removeQuestionImportAssets } = require('../utils/questionImporter');
+const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
 const documentDirectory = path.join(__dirname, '../public/uploads/documents');
+const pdfDirectory = path.join(__dirname, '../public/uploads/pdfs');
 if (!fs.existsSync(documentDirectory)) fs.mkdirSync(documentDirectory, { recursive: true });
+if (!fs.existsSync(pdfDirectory)) fs.mkdirSync(pdfDirectory, { recursive: true });
+
+const COURSES = ['JEE', 'CET', 'NEET'];
+const SUBJECTS_BY_COURSE = {
+  JEE: ['Physics', 'Chemistry', 'Mathematics'],
+  CET: ['Physics', 'Chemistry', 'Mathematics', 'Biology'],
+  NEET: ['Physics', 'Chemistry', 'Biology'],
+};
+const ALL_SUBJECTS = ['Physics', 'Chemistry', 'Mathematics', 'Biology', 'English', 'General Knowledge'];
+const completedStatuses = { $in: ['submitted', 'auto_submitted'] };
+
+const asArray = (value) => (Array.isArray(value) ? value : value ? [value] : []);
+const cleanList = (value) => asArray(value).map((item) => String(item).trim()).filter(Boolean);
+const fileNameSafe = (value) => String(value || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+const controllerSession = (req) => {
+  req.session.user = {
+    id: req.mobileUser._id.toString(),
+    name: req.mobileUser.name,
+    email: req.mobileUser.email,
+    rollNo: req.mobileUser.rollNo,
+    role: req.mobileUser.role,
+    isFirstLogin: req.mobileUser.isFirstLogin,
+  };
+};
 
 router.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -83,31 +111,136 @@ router.post('/auth/login', async (req, res) => {
 
 router.get('/me', requireMobileUser, (req, res) => res.json({ user: serializeUser(req.mobileUser) }));
 
+router.post('/auth/change-password', requireMobileUser, async (req, res) => {
+  try {
+    const { currentPassword = '', newPassword = '', confirmPassword = '' } = req.body;
+    if (newPassword !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match.' });
+    if (String(newPassword).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    if (!req.mobileUser.isFirstLogin && !(await req.mobileUser.verifyPassword(currentPassword))) {
+      return res.status(400).json({ error: 'Current password is incorrect.' });
+    }
+    req.mobileUser.password = newPassword;
+    req.mobileUser.isFirstLogin = false;
+    await req.mobileUser.save();
+    return res.json({ user: serializeUser(req.mobileUser), token: issueToken(req.mobileUser) });
+  } catch (error) {
+    console.error('Mobile password change error:', error);
+    return res.status(500).json({ error: 'Unable to change password.' });
+  }
+});
+
+router.get('/meta', requireMobileUser, async (req, res) => {
+  const topics = await Topic.find({ isActive: true }).sort({ course: 1, subject: 1, name: 1 });
+  return res.json({ courses: COURSES, subjectsByCourse: SUBJECTS_BY_COURSE, allSubjects: ALL_SUBJECTS, topics });
+});
+
+router.get('/results/:resultId', requireMobileUser, async (req, res) => {
+  try {
+    const result = await Result.findById(req.params.resultId)
+      .populate('studentId', 'name rollNo email')
+      .populate({ path: 'testId', populate: { path: 'questions' } });
+    if (!result) return res.status(404).json({ error: 'Result not found.' });
+    if (req.mobileUser.role === 'student' && result.studentId?._id.toString() !== req.mobileUser._id.toString()) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+    const [topperResult, totalAttempted, trend] = await Promise.all([
+      Result.findOne({ testId: result.testId._id, rank: 1 }, 'score subjectScores'),
+      Result.countDocuments({ testId: result.testId._id, status: completedStatuses }),
+      Result.find({ studentId: result.studentId._id, status: completedStatuses })
+        .populate('testId', 'title')
+        .sort({ submittedAt: 1 })
+        .limit(10),
+    ]);
+    const percentage = result.totalMarks > 0 ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0;
+    return res.json({ result, percentage, topperResult, totalAttempted, trend });
+  } catch (error) {
+    console.error('Mobile result detail error:', error);
+    return res.status(500).json({ error: 'Unable to load result.' });
+  }
+});
+
+router.get('/results/:resultId/pdf', requireMobileUser, async (req, res) => {
+  const result = await Result.findById(req.params.resultId).select('studentId');
+  if (!result) return res.status(404).json({ error: 'Result not found.' });
+  if (req.mobileUser.role === 'student' && result.studentId.toString() !== req.mobileUser._id.toString()) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
+  controllerSession(req);
+  return examController.downloadResultPDF(req, res);
+});
+
+router.get('/tests/:testId/leaderboard', requireMobileUser, async (req, res) => {
+  const [test, results] = await Promise.all([
+    Test.findById(req.params.testId).select('title totalMarks duration subject course'),
+    Result.find({ testId: req.params.testId, status: completedStatuses })
+      .populate('studentId', 'name rollNo')
+      .sort({ score: -1, timeTaken: 1 })
+      .limit(50),
+  ]);
+  if (!test) return res.status(404).json({ error: 'Test not found.' });
+  return res.json({ test, results });
+});
+
 router.get('/student/dashboard', requireMobileUser, requireRole('student'), async (req, res) => {
   try {
     const studentId = req.mobileUser._id;
-    const [memberships, results, notifications] = await Promise.all([
+    const [memberships, results, notifications, inProgressResults] = await Promise.all([
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.find({ studentId, status: { $in: ['submitted', 'auto_submitted'] } })
-        .populate('testId', 'title totalMarks subject duration')
+        .populate('testId', 'title totalMarks subject course duration')
         .sort({ submittedAt: -1 }),
       Notification.find({ userId: studentId, isRead: false }).sort({ createdAt: -1 }).limit(8),
+      Result.find({ studentId, status: 'in_progress' }, 'testId'),
     ]);
     const groupIds = memberships.map((membership) => membership.groupId);
     const tests = groupIds.length
       ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }, 'title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
       : [];
     const completedIds = new Set(results.map((result) => result.testId?._id?.toString()));
-    const pendingTests = tests.filter((test) => !completedIds.has(test._id.toString()));
+    const inProgressIds = new Set(inProgressResults.map((result) => result.testId?.toString()));
+    const pendingTests = tests.filter((test) => !completedIds.has(test._id.toString()) && !inProgressIds.has(test._id.toString()));
     const averageScore = results.length
       ? Number((results.reduce((total, result) => total + (result.totalMarks ? (result.score / result.totalMarks) * 100 : 0), 0) / results.length).toFixed(1))
       : 0;
+    const totalCorrect = results.reduce((total, result) => total + (result.correctAnswers || 0), 0);
+    const totalAttempted = results.reduce((total, result) => total + (result.correctAnswers || 0) + (result.wrongAnswers || 0), 0);
+    const accuracy = totalAttempted ? Number(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0;
+    const subjectMap = {};
+    results.forEach((result) => {
+      const subjects = Array.isArray(result.testId?.subject) && result.testId.subject.length ? result.testId.subject : ['General'];
+      subjects.forEach((subject) => {
+        subjectMap[subject] ||= { marks: 0, maxMarks: 0, count: 0 };
+        subjectMap[subject].marks += result.score;
+        subjectMap[subject].maxMarks += result.totalMarks;
+        subjectMap[subject].count += 1;
+      });
+    });
+    const subjectStats = Object.entries(subjectMap).map(([name, values]) => ({
+      name,
+      ...values,
+      percentage: values.maxMarks ? Number(((values.marks / values.maxMarks) * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.percentage - a.percentage);
+    const chartData = [...results].reverse().slice(-10).map((result) => ({
+      label: result.testId?.title || 'Test',
+      percentage: result.totalMarks ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0,
+      score: result.score,
+      total: result.totalMarks,
+      date: result.submittedAt,
+    }));
+    let scoreTrend = 'neutral';
+    if (results.length >= 2) {
+      const latest = results[0].totalMarks ? results[0].score / results[0].totalMarks : 0;
+      const previous = results[1].totalMarks ? results[1].score / results[1].totalMarks : 0;
+      scoreTrend = latest > previous ? 'up' : latest < previous ? 'down' : 'neutral';
+    }
 
     return res.json({
-      stats: { pending: pendingTests.length, completed: results.length, averageScore },
+      stats: { pending: pendingTests.length, completed: results.length, averageScore, accuracy, totalCorrect, totalAttempted, scoreTrend },
       pendingTests: pendingTests.slice(0, 8),
       recentResults: results.slice(0, 5),
       notifications,
+      subjectStats,
+      chartData,
     });
   } catch (error) {
     console.error('Mobile student dashboard error:', error);
@@ -156,6 +289,14 @@ router.post('/student/documents', requireMobileUser, requireRole('student'), asy
   try {
     const file = req.files?.document;
     if (!file) return res.status(400).json({ error: 'Select a document first.' });
+    if (Array.isArray(file)) return res.status(400).json({ error: 'Upload one document at a time.' });
+    const allowedDocumentTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+    const allowedDocumentExtensions = new Set(['.pdf', '.jpg', '.jpeg', '.png']);
+    if (!allowedDocumentTypes.has(file.mimetype) || !allowedDocumentExtensions.has(path.extname(file.name || '').toLowerCase())) {
+      return res.status(400).json({ error: 'Only PDF, JPG and PNG documents are supported.' });
+    }
+    const maxSize = Number(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024;
+    if (file.size > maxSize) return res.status(413).json({ error: `Document must be below ${Math.floor(maxSize / 1024 / 1024)} MB.` });
     const safeName = String(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileName = `doc_${req.mobileUser._id}_${Date.now()}_${safeName}`;
     fs.writeFileSync(path.join(documentDirectory, fileName), file.data);
@@ -191,18 +332,68 @@ const questionForMobile = (question, options) => ({
   ],
 });
 
+router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const studentId = req.mobileUser._id;
+    const [test, memberships, submitted, inProgress] = await Promise.all([
+      Test.findOne({ _id: req.params.testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions'),
+      GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
+      Result.findOne({ studentId, testId: req.params.testId, status: completedStatuses }),
+      Result.findOne({ studentId, testId: req.params.testId, status: 'in_progress' }),
+    ]);
+    if (!test) return res.status(404).json({ error: 'Test is not available.' });
+    const membershipIds = new Set(memberships.map((item) => item.groupId.toString()));
+    if (!test.groups.some((groupId) => membershipIds.has(groupId.toString()))) {
+      return res.status(403).json({ error: 'This test is not assigned to your batch.' });
+    }
+    const now = Date.now();
+    const isUpcoming = test.startTime && new Date(test.startTime).getTime() > now;
+    const isExpired = test.endTime && new Date(test.endTime).getTime() < now && !inProgress;
+    const sectionSummary = Object.values(test.questions.reduce((summary, question) => {
+      const subject = question.subject || 'General';
+      summary[subject] ||= { subject, questionCount: 0, totalMarks: 0 };
+      summary[subject].questionCount += 1;
+      summary[subject].totalMarks += Number(question.marks) || 0;
+      return summary;
+    }, {}));
+    return res.json({
+      test,
+      questionCount: test.questions.length,
+      inProgress: Boolean(inProgress),
+      submittedResultId: submitted?._id || null,
+      canStart: !submitted && !isUpcoming && !isExpired,
+      availability: submitted ? 'completed' : inProgress ? 'in_progress' : isUpcoming ? 'upcoming' : isExpired ? 'expired' : 'available',
+      cetSectionFlow: isCetSectionTest(test, test.questions),
+      sectionSummary,
+    });
+  } catch (error) {
+    console.error('Mobile instructions error:', error);
+    return res.status(500).json({ error: 'Unable to load test instructions.' });
+  }
+});
+
 router.post('/student/tests/:testId/start', requireMobileUser, requireRole('student'), async (req, res) => {
   try {
     const { testId } = req.params;
     const studentId = req.mobileUser._id;
-    const [test, submitted] = await Promise.all([
+    const [test, submitted, memberships] = await Promise.all([
       Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions', '_id subject'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted', 'auto_submitted'] } }),
+      GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
     ]);
     if (!test) return res.status(404).json({ error: 'Test is not available.' });
     if (submitted) return res.status(409).json({ error: 'This test is already submitted.', resultId: submitted._id });
 
+    const membershipIds = new Set(memberships.map((item) => item.groupId.toString()));
+    if (!test.groups.some((groupId) => membershipIds.has(groupId.toString()))) {
+      return res.status(403).json({ error: 'This test is not assigned to your batch.' });
+    }
+
+    const now = Date.now();
+    if (test.startTime && new Date(test.startTime).getTime() > now) return res.status(409).json({ error: 'This test has not opened yet.' });
+
     let result = await Result.findOne({ studentId, testId, status: 'in_progress' });
+    if (!result && test.endTime && new Date(test.endTime).getTime() < now) return res.status(409).json({ error: 'This test has expired.' });
     if (!result) {
       result = await Result.create({
         studentId,
@@ -294,6 +485,17 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     const result = await Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' });
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
+    const [test, questionRows] = await Promise.all([
+      Test.findById(req.params.testId).select('course'),
+      Question.find({ _id: { $in: result.questionOrder } }, '_id subject'),
+    ]);
+    if (!test) return res.status(404).json({ error: 'Test not found.' });
+    const sectionState = isCetSectionTest(test, questionRows)
+      ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])
+      : null;
+    const questionSubject = sectionState?.subjectById.get(String(questionId));
+    const questionSection = sectionState?.sections.find((section) => section.name === questionSubject);
+    if (questionSection?.locked) return res.status(403).json({ error: 'Visit every Physics and Chemistry question first.' });
     const answers = { ...(result.answers || {}) };
     const timings = { ...(result.questionTimings || {}) };
     const marked = new Set((result.markedForReview || []).map(String));
@@ -308,6 +510,57 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
   }
 });
 
+router.post('/student/tests/:testId/violations', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const { type } = req.body;
+    if (!['tabSwitch', 'fullscreenExit', 'focusLoss'].includes(type)) return res.status(400).json({ error: 'Invalid violation type.' });
+    const [result, test] = await Promise.all([
+      Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' }),
+      Test.findById(req.params.testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses'),
+    ]);
+    if (!result || !test) return res.status(409).json({ error: 'No active test session.' });
+    const flags = { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0, ...(result.cheatingFlags || {}) };
+    if (type === 'tabSwitch') flags.tabSwitches += 1;
+    if (type === 'fullscreenExit') flags.fullscreenExits += 1;
+    if (type === 'focusLoss') flags.focusLosses += 1;
+    const violations = flags.tabSwitches + flags.fullscreenExits + flags.focusLosses;
+    await Result.updateOne({ _id: result._id }, { cheatingFlags: flags, violationCount: violations });
+    const shouldAutoSubmit = Boolean(test.autoSubmitOnViolation && (
+      flags.tabSwitches >= (test.maxTabSwitches ?? 3)
+      || flags.focusLosses >= (test.maxFocusLosses ?? 5)
+      || flags.fullscreenExits >= 3
+    ));
+    return res.json({ flags, violations, autoSubmit: shouldAutoSubmit });
+  } catch (error) {
+    console.error('Mobile violation error:', error);
+    return res.status(500).json({ error: 'Unable to record exam violation.' });
+  }
+});
+
+router.post('/student/tests/:testId/leave', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const { questionId, answer, markForReview = false, timeSpent = 0 } = req.body;
+    const result = await Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' });
+    if (!result || !questionId) return res.json({ saved: false });
+    const answers = { ...(result.answers || {}) };
+    const timings = { ...(result.questionTimings || {}) };
+    const marked = new Set((result.markedForReview || []).map(String));
+    answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+    if (Number(timeSpent) > 0) timings[questionId] = (timings[questionId] || 0) + Number(timeSpent);
+    if (markForReview) marked.add(String(questionId)); else marked.delete(String(questionId));
+    await Result.updateOne({ _id: result._id }, {
+      answers,
+      questionTimings: timings,
+      markedForReview: [...marked],
+      $addToSet: { visitedQuestionIds: String(questionId) },
+    });
+    return res.json({ saved: true });
+  } catch (error) {
+    console.error('Mobile leave exam error:', error);
+    return res.status(500).json({ error: 'Unable to save exam progress.' });
+  }
+});
+
 router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('student'), async (req, res) => {
   try {
     const { testId } = req.params;
@@ -318,24 +571,30 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
 
     const answers = result.answers || {};
     const subjectScores = {};
+    const topicScores = {};
     let score = 0;
     let correctAnswers = 0;
     let wrongAnswers = 0;
     let skippedAnswers = 0;
     for (const question of test.questions) {
       const subject = question.subject || 'General';
-      if (!subjectScores[subject]) subjectScores[subject] = { correct: 0, wrong: 0, skipped: 0, marks: 0, total: 0, attempted: false };
+      const topic = question.topic || 'General';
+      if (!subjectScores[subject]) subjectScores[subject] = { correct: 0, wrong: 0, skipped: 0, marks: 0, total: 0, attempted: false, status: 'NOT_ATTEMPTED' };
+      if (!topicScores[topic]) topicScores[topic] = { correct: 0, wrong: 0, skipped: 0 };
       subjectScores[subject].total += question.marks;
       const answer = answers[question._id.toString()]?.answer;
       if (!answer) {
         skippedAnswers += 1;
         subjectScores[subject].skipped += 1;
+        topicScores[topic].skipped += 1;
       } else if (answer === question.correctAnswer) {
         correctAnswers += 1;
         score += question.marks;
         subjectScores[subject].correct += 1;
         subjectScores[subject].marks += question.marks;
         subjectScores[subject].attempted = true;
+        subjectScores[subject].status = 'ATTEMPTED';
+        topicScores[topic].correct += 1;
       } else {
         wrongAnswers += 1;
         const deduction = Number(test.negativeMarking) || 0;
@@ -343,25 +602,25 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
         subjectScores[subject].wrong += 1;
         subjectScores[subject].marks -= deduction;
         subjectScores[subject].attempted = true;
+        subjectScores[subject].status = 'ATTEMPTED';
+        topicScores[topic].wrong += 1;
       }
     }
     const cetFlow = isCetSectionTest(test, test.questions);
     const attemptedSubjects = [];
     const absentSubjects = [];
     let totalMarks = test.totalMarks;
-    if (cetFlow) {
-      totalMarks = 0;
-      Object.entries(subjectScores).forEach(([subject, values]) => {
-        values.marks = Number(values.marks.toFixed(2));
-        if (values.attempted) {
-          attemptedSubjects.push(subject);
-          totalMarks += values.total;
-        } else {
-          absentSubjects.push(subject);
-          values.status = 'ABSENT';
-        }
-      });
-    }
+    if (cetFlow) totalMarks = 0;
+    Object.entries(subjectScores).forEach(([subject, values]) => {
+      values.marks = Number(values.marks.toFixed(2));
+      if (values.attempted) {
+        attemptedSubjects.push(subject);
+        if (cetFlow) totalMarks += values.total;
+      } else if (cetFlow) {
+        absentSubjects.push(subject);
+        values.status = 'ABSENT';
+      }
+    });
     score = Math.max(0, Number(score.toFixed(2)));
     const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
     await Result.updateOne({ _id: result._id }, {
@@ -372,10 +631,11 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
       wrongAnswers,
       skippedAnswers,
       subjectScores,
+      topicScores,
       attemptedSubjects,
       absentSubjects,
       timeTaken,
-      status: 'submitted',
+      status: req.body?.auto ? 'auto_submitted' : 'submitted',
       submittedAt: new Date(),
     });
     const rankings = await Result.find({ testId, status: { $in: ['submitted', 'auto_submitted'] } }).sort({ score: -1, timeTaken: 1 });
@@ -389,26 +649,57 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
 });
 
 router.get('/admin/dashboard', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const [students, tests, submittedResults] = await Promise.all([
+  const [students, tests, groups, questions, submittedResults, recentResults, recentUsers] = await Promise.all([
     User.countDocuments({ role: 'student', isActive: true }),
     Test.countDocuments(),
+    Group.countDocuments({ isActive: { $ne: false } }),
+    Question.countDocuments({ isActive: true }),
     Result.countDocuments({ status: { $in: ['submitted', 'auto_submitted'] } }),
+    Result.find({ status: completedStatuses }).sort({ submittedAt: -1 }).limit(8).populate('studentId', 'name rollNo').populate('testId', 'title'),
+    User.find({ role: 'student' }).sort({ createdAt: -1 }).limit(5).select('-password'),
   ]);
-  return res.json({ stats: { students, tests, submittedResults } });
+  return res.json({ stats: { students, tests, groups, questions, submittedResults }, recentResults, recentUsers });
 });
 
 router.get('/admin/students', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const students = await User.find({ role: 'student' }).sort({ rollNo: 1 }).select('-password');
-  return res.json({ students });
+  const query = { role: 'student' };
+  if (req.query.search) {
+    const escaped = String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.$or = [{ name: new RegExp(escaped, 'i') }, { rollNo: new RegExp(escaped, 'i') }];
+  }
+  const [students, groups] = await Promise.all([
+    User.find(query).sort({ rollNo: 1 }).select('-password'),
+    Group.find({ isActive: { $ne: false } }).sort({ name: 1 }),
+  ]);
+  return res.json({ students, groups });
+});
+
+router.get('/admin/students/template', requireMobileUser, requireRole('admin'), (req, res) => {
+  controllerSession(req);
+  return adminController.downloadStudentTemplate(req, res);
+});
+
+router.get('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const student = await User.findOne({ _id: req.params.studentId, role: 'student' }).select('-password');
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+  const [memberships, results, documents] = await Promise.all([
+    GroupMember.find({ userId: student._id, role: 'student' }).populate('groupId', 'name course academicYear'),
+    Result.find({ studentId: student._id, status: completedStatuses }).populate('testId', 'title subject course').sort({ submittedAt: -1 }),
+    StudentDocument.find({ studentId: student._id }).sort({ createdAt: -1 }),
+  ]);
+  const averageScore = results.length
+    ? Number((results.reduce((total, result) => total + (result.totalMarks ? (result.score / result.totalMarks) * 100 : 0), 0) / results.length).toFixed(1))
+    : 0;
+  return res.json({ student, groups: memberships.map((item) => item.groupId).filter(Boolean), results, documents, stats: { tests: results.length, averageScore } });
 });
 
 router.post('/admin/students', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
-    const { name, rollNo, parentContact, groupId } = req.body;
+    const { name, rollNo, parentContact, phone, email, groupId } = req.body;
     if (!name?.trim() || !rollNo?.trim()) return res.status(400).json({ error: 'Name and roll number are required.' });
     if (await User.exists({ rollNo: rollNo.trim() })) return res.status(409).json({ error: 'Roll number already exists.' });
     const initialPassword = `CET@${rollNo.trim().slice(-4).padStart(4, '0')}`;
-    const student = await User.create({ name: name.trim(), rollNo: rollNo.trim(), parentContact: parentContact?.trim() || null, role: 'student', password: initialPassword, isFirstLogin: true });
+    const student = await User.create({ name: name.trim(), rollNo: rollNo.trim(), parentContact: parentContact?.trim() || null, phone: phone?.trim() || null, email: email?.trim().toLowerCase() || null, role: 'student', password: initialPassword, isFirstLogin: true });
     if (groupId) await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
     await Notification.create({ userId: student._id, title: 'Account Created', message: `Welcome ${student.name}!`, type: 'info' });
     return res.status(201).json({ student: serializeUser(student), initialPassword });
@@ -426,18 +717,28 @@ router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin
     const workbook = xlsx.read(file.data, { type: 'buffer' });
     const rows = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
     let created = 0;
+    let existing = 0;
+    let assigned = 0;
     let skipped = 0;
     const duplicates = [];
     for (const row of rows) {
       const rollNo = String(row['Roll No'] || row.rollNo || '').trim();
       const name = String(row.Name || row.name || '').trim();
       if (!rollNo || !name) { skipped += 1; continue; }
-      if (await User.exists({ rollNo })) { duplicates.push(rollNo); skipped += 1; continue; }
-      const student = await User.create({ name, rollNo, parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null, role: 'student', password: `CET@${rollNo.slice(-4).padStart(4, '0')}`, isFirstLogin: true });
-      if (groupId) await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
-      created += 1;
+      let student = await User.findOne({ rollNo });
+      if (student) {
+        duplicates.push(rollNo);
+        existing += 1;
+      } else {
+        student = await User.create({ name, rollNo, email: String(row.Email || row.email || '').trim().toLowerCase() || null, phone: String(row.Phone || row.phone || '').trim() || null, parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null, role: 'student', password: `CET@${rollNo.slice(-4).padStart(4, '0')}`, isFirstLogin: true });
+        created += 1;
+      }
+      if (groupId) {
+        await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
+        assigned += 1;
+      }
     }
-    return res.json({ created, skipped, duplicates, groupAssigned: Boolean(groupId) });
+    return res.json({ created, existing, assigned, skipped, duplicates, groupAssigned: Boolean(groupId) });
   } catch (error) {
     console.error('Mobile bulk student import error:', error);
     return res.status(500).json({ error: 'Unable to import students.' });
@@ -446,8 +747,8 @@ router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin
 
 router.delete('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
   await GroupMember.deleteMany({ userId: req.params.studentId });
-  const result = await User.deleteOne({ _id: req.params.studentId, role: 'student' });
-  if (!result.deletedCount) return res.status(404).json({ error: 'Student not found.' });
+  const student = await User.findOneAndUpdate({ _id: req.params.studentId, role: 'student' }, { isActive: false }, { new: true });
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
   return res.sendStatus(204);
 });
 
@@ -482,12 +783,80 @@ router.post('/admin/groups/:groupId/members', requireMobileUser, requireRole('ad
   return res.status(201).json({ assigned: true });
 });
 
+router.get('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const group = await Group.findOne({ _id: req.params.groupId, isActive: { $ne: false } });
+  if (!group) return res.status(404).json({ error: 'Batch not found.' });
+  const [memberships, students, otherGroups] = await Promise.all([
+    GroupMember.find({ groupId: group._id, role: 'student' }).populate('userId', '-password').sort({ createdAt: 1 }),
+    User.find({ role: 'student', isActive: true }).sort({ rollNo: 1 }).select('-password'),
+    Group.find({ _id: { $ne: group._id }, isActive: { $ne: false } }).sort({ name: 1 }),
+  ]);
+  const memberIds = new Set(memberships.map((item) => item.userId?._id.toString()).filter(Boolean));
+  return res.json({
+    group,
+    members: memberships.map((item) => item.userId).filter(Boolean),
+    availableStudents: students.filter((student) => !memberIds.has(student._id.toString())),
+    otherGroups,
+  });
+});
+
+router.patch('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => ['name', 'description', 'academicYear', 'course'].includes(key)));
+    if (update.name !== undefined && !String(update.name).trim()) return res.status(400).json({ error: 'Batch name is required.' });
+    if (update.name) update.name = String(update.name).trim();
+    if (update.description !== undefined) update.description = String(update.description).trim() || null;
+    if (update.course !== undefined && ![...COURSES, null, ''].includes(update.course)) return res.status(400).json({ error: 'Invalid course.' });
+    if (update.course === '') update.course = null;
+    const group = await Group.findOneAndUpdate({ _id: req.params.groupId, isActive: { $ne: false } }, update, { new: true, runValidators: true });
+    if (!group) return res.status(404).json({ error: 'Batch not found.' });
+    return res.json({ group });
+  } catch (error) {
+    return res.status(409).json({ error: 'Unable to update batch. Its name may already exist.' });
+  }
+});
+
+router.delete('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const group = await Group.findOneAndUpdate({ _id: req.params.groupId, isActive: { $ne: false } }, { isActive: false }, { new: true });
+  if (!group) return res.status(404).json({ error: 'Batch not found.' });
+  await Promise.all([
+    GroupMember.deleteMany({ groupId: group._id }),
+    Test.updateMany({ groups: group._id }, { $pull: { groups: group._id } }),
+  ]);
+  return res.sendStatus(204);
+});
+
+router.delete('/admin/groups/:groupId/members/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  await GroupMember.deleteOne({ groupId: req.params.groupId, userId: req.params.studentId, role: 'student' });
+  return res.sendStatus(204);
+});
+
+router.post('/admin/groups/:groupId/members/:studentId/move', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const { targetGroupId } = req.body;
+  if (!targetGroupId) return res.status(400).json({ error: 'Target batch is required.' });
+  const target = await Group.findOne({ _id: targetGroupId, isActive: { $ne: false } });
+  if (!target) return res.status(404).json({ error: 'Target batch not found.' });
+  await GroupMember.deleteOne({ groupId: req.params.groupId, userId: req.params.studentId });
+  await GroupMember.findOneAndUpdate({ groupId: target._id, userId: req.params.studentId }, { role: 'student' }, { upsert: true });
+  return res.json({ moved: true, targetGroup: target });
+});
+
+router.get('/admin/groups/:groupId/credentials', requireMobileUser, requireRole('admin'), (req, res) => {
+  req.params.id = req.params.groupId;
+  controllerSession(req);
+  return adminController.exportGroupCredentials(req, res);
+});
+
 router.get('/admin/topics', requireMobileUser, requireRole('admin'), async (req, res) => {
   const query = { isActive: true };
   if (req.query.course) query.course = req.query.course;
   if (req.query.subject) query.subject = req.query.subject;
   const topics = await Topic.find(query).sort({ course: 1, subject: 1, name: 1 });
   return res.json({ topics });
+});
+
+router.get('/admin/subjects/:course', requireMobileUser, requireRole('admin'), (req, res) => {
+  return res.json({ subjects: SUBJECTS_BY_COURSE[req.params.course] || ALL_SUBJECTS });
 });
 
 router.post('/admin/topics', requireMobileUser, requireRole('admin'), async (req, res) => {
@@ -506,6 +875,46 @@ router.post('/admin/topics', requireMobileUser, requireRole('admin'), async (req
   }
 });
 
+router.post('/admin/topics/import-pdf', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const course = String(req.body.course || '').trim().toUpperCase();
+    const subject = String(req.body.subject || '').trim();
+    const file = req.files?.syllabusPdf;
+    if (!COURSES.includes(course)) return res.status(400).json({ error: 'Select a valid course.' });
+    if (subject && !(SUBJECTS_BY_COURSE[course] || []).includes(subject)) return res.status(400).json({ error: 'Select a valid subject.' });
+    if (!file || Array.isArray(file)) return res.status(400).json({ error: 'Choose one syllabus PDF.' });
+    if (path.extname(file.name || '').toLowerCase() !== '.pdf') return res.status(400).json({ error: 'Only PDF files are supported.' });
+    const maxSize = Number(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024;
+    if (file.size > maxSize) return res.status(413).json({ error: `PDF must be below ${Math.floor(maxSize / 1024 / 1024)} MB.` });
+    const extraction = await extractSyllabusFromPdf(file, { course, subject, adminId: req.mobileUser._id.toString() });
+    if (!extraction.units.length) return res.status(422).json({ error: 'No valid syllabus units were detected.' });
+    let created = 0;
+    let updated = 0;
+    for (const unit of extraction.units) {
+      const name = String(unit.unitName || '').replace(/\s+/g, ' ').trim();
+      const unitSubject = String(unit.subject || subject || '').trim();
+      if (!name || !(SUBJECTS_BY_COURSE[course] || []).includes(unitSubject)) continue;
+      const rows = await Topic.find({ course, subject: unitSubject });
+      const existing = rows.find((row) => row.name.toLowerCase() === name.toLowerCase());
+      const subtopics = [...new Set((unit.subtopics || []).map((item) => String(item).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+      if (existing) {
+        existing.name = name;
+        existing.subtopics = [...new Set([...(existing.subtopics || []), ...subtopics])];
+        existing.isActive = true;
+        await existing.save();
+        updated += 1;
+      } else {
+        await Topic.create({ course, subject: unitSubject, name, subtopics, isActive: true });
+        created += 1;
+      }
+    }
+    return res.json({ created, updated, warnings: extraction.warnings || [], model: extraction.model });
+  } catch (error) {
+    console.error('Mobile syllabus import error:', error);
+    return res.status(500).json({ error: error.message || 'Unable to import syllabus.' });
+  }
+});
+
 router.patch('/admin/topics/:topicId', requireMobileUser, requireRole('admin'), async (req, res) => {
   const { name, subtopics } = req.body;
   const update = {};
@@ -521,6 +930,11 @@ router.delete('/admin/topics/:topicId', requireMobileUser, requireRole('admin'),
   return res.sendStatus(204);
 });
 
+router.get('/admin/questions/template', requireMobileUser, requireRole('admin'), (req, res) => {
+  controllerSession(req);
+  return adminController.downloadQuestionTemplate(req, res);
+});
+
 router.get('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
   const query = { isActive: true };
   ['subject', 'topic', 'subtopic', 'difficulty'].forEach((key) => { if (req.query[key]) query[key] = req.query[key]; });
@@ -531,6 +945,12 @@ router.get('/admin/questions', requireMobileUser, requireRole('admin'), async (r
     Question.countDocuments(query),
   ]);
   return res.json({ questions, total, page, totalPages: Math.ceil(total / limit) });
+});
+
+router.get('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const question = await Question.findOne({ _id: req.params.questionId, isActive: true });
+  if (!question) return res.status(404).json({ error: 'Question not found.' });
+  return res.json({ question });
 });
 
 router.post('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
@@ -650,6 +1070,70 @@ router.get('/admin/tests', requireMobileUser, requireRole('admin'), async (req, 
   return res.json({ tests });
 });
 
+router.get('/admin/tests/template/pdf', requireMobileUser, requireRole('admin'), (req, res) => {
+  controllerSession(req);
+  return adminController.downloadPdfTestTemplate(req, res);
+});
+
+router.get('/admin/tests/template/answer-key', requireMobileUser, requireRole('admin'), (req, res) => {
+  controllerSession(req);
+  return adminController.downloadAnswerKeyTemplate(req, res);
+});
+
+router.get('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const test = await Test.findOne({ _id: req.params.testId, isActive: { $ne: false } })
+    .populate('questions')
+    .populate('groups', 'name course academicYear');
+  if (!test) return res.status(404).json({ error: 'Test not found.' });
+  const resultCount = await Result.countDocuments({ testId: test._id, status: completedStatuses });
+  return res.json({ test, resultCount });
+});
+
+router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), async (req, res) => {
+  try {
+    const questionPdf = req.files?.questionPdf;
+    if (!questionPdf || Array.isArray(questionPdf)) return res.status(400).json({ error: 'Question PDF is required.' });
+    if (path.extname(questionPdf.name || '').toLowerCase() !== '.pdf') return res.status(400).json({ error: 'Question paper must be a PDF.' });
+    const { title, description, duration = 180, negativeMarking = 0.25, startTime, endTime, instructions, marksPerQuestion = 1 } = req.body;
+    if (!String(title || '').trim()) return res.status(400).json({ error: 'Test title is required.' });
+    const maxSize = Number(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024;
+    if (questionPdf.size > maxSize) return res.status(413).json({ error: 'Question PDF is too large.' });
+    const qName = `q_${Date.now()}_${fileNameSafe(questionPdf.name)}`;
+    fs.writeFileSync(path.join(pdfDirectory, qName), questionPdf.data);
+    let solutionPdfPath = null;
+    const solutionPdf = req.files?.solutionPdf;
+    if (solutionPdf && !Array.isArray(solutionPdf)) {
+      const sName = `s_${Date.now()}_${fileNameSafe(solutionPdf.name)}`;
+      fs.writeFileSync(path.join(pdfDirectory, sName), solutionPdf.data);
+      solutionPdfPath = `/uploads/pdfs/${sName}`;
+    }
+    const source = questionPdf.data.toString('latin1');
+    const pageMatches = source.match(/\/Type\s*\/Page[^s]/g);
+    const countMatch = source.match(/\/Count\s+(\d+)/);
+    const pageCount = pageMatches?.length || Number(countMatch?.[1]) || 0;
+    const perQuestion = Math.max(0.25, Number(marksPerQuestion) || 1);
+    const parsedStart = startTime ? new Date(startTime) : null;
+    const parsedEnd = endTime ? new Date(endTime) : null;
+    if (parsedStart && parsedEnd && parsedEnd <= parsedStart) return res.status(400).json({ error: 'Test end time must be after start time.' });
+    const test = await Test.create({
+      title: String(title).trim(), description: String(description || '').trim() || null,
+      duration: Math.max(5, Number(duration) || 180), negativeMarking: Math.max(0, Number(negativeMarking) || 0),
+      startTime: parsedStart, endTime: parsedEnd, instructions: String(instructions || '').trim() || null,
+      totalMarks: Math.max(1, pageCount) * perQuestion, marksPerQuestion: perQuestion,
+      createdBy: req.mobileUser._id, status: 'draft', course: cleanList(req.body.course || req.body.courses),
+      subject: cleanList(req.body.subject || req.body.subjects), groups: cleanList(req.body.groupIds),
+      questionPdfPath: `/uploads/pdfs/${qName}`, solutionPdfPath,
+      autoSubmitOnViolation: Boolean(req.body.autoSubmitOnViolation), maxTabSwitches: Number(req.body.maxTabSwitches) || 3,
+      maxFocusLosses: Number(req.body.maxFocusLosses) || 5, blockCopyPaste: req.body.blockCopyPaste !== false,
+      requireFullscreen: Boolean(req.body.requireFullscreen),
+    });
+    return res.status(201).json({ test, pageCount });
+  } catch (error) {
+    console.error('Mobile PDF test upload error:', error);
+    return res.status(500).json({ error: 'Unable to create PDF test.' });
+  }
+});
+
 router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
     const { title, questionIds, groupIds = [], course = [], subject = [], description, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false } = req.body;
@@ -674,10 +1158,19 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
 });
 
 router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const allowed = ['title', 'description', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
+  const allowed = ['title', 'description', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'groupIds', 'questions', 'questionIds', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
   const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
+  if (update.groupIds !== undefined) { update.groups = cleanList(update.groupIds); delete update.groupIds; }
+  if (update.questionIds !== undefined) { update.questions = cleanList(update.questionIds); delete update.questionIds; }
+  if (update.questions !== undefined) {
+    update.questions = cleanList(update.questions);
+    const questions = await Question.find({ _id: { $in: update.questions }, isActive: true });
+    if (questions.length !== update.questions.length) return res.status(400).json({ error: 'One or more selected questions are unavailable.' });
+    update.totalMarks = questions.reduce((total, question) => total + Number(question.marks || 0), 0);
+  }
   if (update.startTime) update.startTime = new Date(update.startTime);
   if (update.endTime) update.endTime = new Date(update.endTime);
+  if (update.startTime && update.endTime && update.endTime <= update.startTime) return res.status(400).json({ error: 'Test end time must be after start time.' });
   const test = await Test.findByIdAndUpdate(req.params.testId, update, { new: true });
   if (!test) return res.status(404).json({ error: 'Test not found.' });
   return res.json({ test });
@@ -706,7 +1199,25 @@ router.get('/admin/results', requireMobileUser, requireRole('admin'), async (req
     query.studentId = { $in: members.map((member) => member.userId) };
   }
   const results = await Result.find(query).sort({ submittedAt: -1 }).populate('studentId', 'name rollNo').populate('testId', 'title course subject');
-  return res.json({ results });
+  const [groups, tests] = await Promise.all([
+    Group.find({ isActive: { $ne: false } }).sort({ name: 1 }),
+    Test.find({ isActive: { $ne: false } }).sort({ createdAt: -1 }).select('title groups course subject').populate('groups', 'name'),
+  ]);
+  return res.json({ results, groups, tests });
+});
+
+router.get('/admin/results/export', requireMobileUser, requireRole('admin'), (req, res) => {
+  controllerSession(req);
+  return adminController.exportResultsExcel(req, res);
+});
+
+router.get('/admin/results/:resultId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const result = await Result.findById(req.params.resultId)
+    .populate('studentId', 'name rollNo email')
+    .populate({ path: 'testId', populate: { path: 'questions' } });
+  if (!result) return res.status(404).json({ error: 'Result not found.' });
+  const percentage = result.totalMarks > 0 ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0;
+  return res.json({ result, percentage });
 });
 
 router.get('/admin/documents', requireMobileUser, requireRole('admin'), async (req, res) => {

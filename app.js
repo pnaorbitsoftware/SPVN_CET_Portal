@@ -91,6 +91,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// Connect before any web or mobile route handles a request. This also covers
+// serverless deployments, where `require.main === module` is false.
+app.use(async (req, res, next) => {
+  try { await boot(); next(); }
+  catch (e) { res.status(500).send('Server init failed: ' + e.message); }
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/auth',    require('./routes/auth'));
 app.use('/admin',   require('./routes/admin'));
@@ -106,31 +113,29 @@ app.get('/', (req, res) => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-let booted = false;
+let bootPromise = null;
 
-async function boot() {
-  if (booted) return;
-  booted = true;
-  await connect();
+function boot() {
+  if (bootPromise) return bootPromise;
+  bootPromise = (async () => {
+    await connect();
 
-  // Auto-seed admin
-  try {
-    const { User } = require('./models');
-    const exists = await User.findOne({ role: 'admin' });
-    if (!exists) {
-      const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@college.edu';
-      const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1234';
-      const adminName     = process.env.ADMIN_NAME     || 'Administrator';
-      await User.create({ name: adminName, email: adminEmail, password: adminPassword, role: 'admin', isActive: true, isFirstLogin: false });
-      console.log(`✅ Admin seeded → ${adminEmail}`);
-    }
-  } catch (e) { console.error('Admin seed error:', e.message); }
+    // Auto-seed admin
+    try {
+      const { User } = require('./models');
+      const exists = await User.findOne({ role: 'admin' });
+      if (!exists) {
+        const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@college.edu';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1234';
+        const adminName     = process.env.ADMIN_NAME     || 'Administrator';
+        await User.create({ name: adminName, email: adminEmail, password: adminPassword, role: 'admin', isActive: true, isFirstLogin: false });
+        console.log(`✅ Admin seeded → ${adminEmail}`);
+      }
+    } catch (e) { console.error('Admin seed error:', e.message); }
+  })();
+  bootPromise.catch(() => { bootPromise = null; });
+  return bootPromise;
 }
-
-app.use(async (req, res, next) => {
-  try { await boot(); next(); }
-  catch (e) { res.status(500).send('Server init failed: ' + e.message); }
-});
 
 app.use(notFound);
 app.use(errorHandler);

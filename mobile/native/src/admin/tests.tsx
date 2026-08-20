@@ -1,0 +1,89 @@
+import * as DocumentPicker from 'expo-document-picker';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Linking, Pressable, Text, View } from 'react-native';
+
+import { assetUrl, mobileApi, type MobileAdminGroup, type MobileAdminTest, type MobileMeta, type MobileQuestion, type TestPayload } from '../api';
+import { shareLocalFile } from '../share';
+import { Badge, Body, Button, Card, Chips, DataLine, Empty, Field, Loading, Row, SectionTitle } from '../ui';
+import { colors } from '../theme';
+
+const blank = (): TestPayload => ({ title: '', description: '', duration: 180, negativeMarking: 0.25, passingMarks: null, questionIds: [], groupIds: [], course: ['CET'], subject: [], topic: '', subtopic: '', startTime: null, endTime: null, instructions: '', shuffleQuestions: true, shuffleOptions: false, autoSubmitOnViolation: false, maxTabSwitches: 3, maxFocusLosses: 5, blockCopyPaste: true, requireFullscreen: false });
+
+export function AdminTests() {
+  const [meta, setMeta] = useState<MobileMeta | null>(null);
+  const [groups, setGroups] = useState<MobileAdminGroup[]>([]);
+  const [tests, setTests] = useState<MobileAdminTest[]>([]);
+  const [questions, setQuestions] = useState<MobileQuestion[]>([]);
+  const [form, setForm] = useState<TestPayload>(blank());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [questionSubject, setQuestionSubject] = useState('All');
+  const [questionTopic, setQuestionTopic] = useState('');
+  const [pdfMode, setPdfMode] = useState(false);
+  const [pdfQuestion, setPdfQuestion] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [pdfSolution, setPdfSolution] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const loadAllQuestions = async () => {
+    const first = await mobileApi.getAdminQuestions({ page: 1, limit: 100 });
+    if (first.totalPages <= 1) return first.questions;
+    const pages = await Promise.all(Array.from({ length: first.totalPages - 1 }, (_, index) => mobileApi.getAdminQuestions({ page: index + 2, limit: 100 })));
+    return [...first.questions, ...pages.flatMap((page) => page.questions)];
+  };
+  const load = useCallback(async () => {
+    try {
+      const [metaData, groupData, testData, questionData] = await Promise.all([mobileApi.getMeta(), mobileApi.getAdminGroups(), mobileApi.getAdminTests(), loadAllQuestions()]);
+      setMeta(metaData); setGroups(groupData.groups); setTests(testData.tests); setQuestions(questionData);
+    } catch (error) { Alert.alert('Unable to load tests', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const visibleQuestions = useMemo(() => questions.filter((question) => (questionSubject === 'All' || question.subject === questionSubject) && (!questionTopic.trim() || (question.topic || '').toLowerCase().includes(questionTopic.trim().toLowerCase()))), [questionSubject, questionTopic, questions]);
+  const toggleQuestion = (id: string) => setForm({ ...form, questionIds: form.questionIds.includes(id) ? form.questionIds.filter((value) => value !== id) : [...form.questionIds, id] });
+  const toggleAllVisible = () => {
+    const visibleIds = visibleQuestions.map((question) => question._id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => form.questionIds.includes(id));
+    setForm({ ...form, questionIds: allSelected ? form.questionIds.filter((id) => !visibleIds.includes(id)) : [...new Set([...form.questionIds, ...visibleIds])] });
+  };
+
+  const save = async () => {
+    if (!form.title.trim() || !form.questionIds.length) return Alert.alert('Test title and at least one question are required.');
+    try { setBusy(true); editingId ? await mobileApi.updateAdminTest(editingId, form) : await mobileApi.createAdminTest(form); setEditingId(null); setForm(blank()); await load(); Alert.alert('Saved', editingId ? 'Test updated.' : 'Draft test created.'); }
+    catch (error) { Alert.alert('Unable to save test', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  };
+  const edit = async (testId: string) => {
+    try {
+      setBusy(true); const { test } = await mobileApi.getAdminTest(testId);
+      setEditingId(test._id); setPdfMode(false); setForm({ title: test.title, description: test.description || '', duration: test.duration, negativeMarking: test.negativeMarking ?? 0.25, passingMarks: test.passingMarks ?? null, questionIds: test.questions?.map((question) => question._id) || [], groupIds: test.groups?.map((group) => group._id) || [], course: test.course || [], subject: test.subject || [], topic: test.topic || '', subtopic: test.subtopic || '', startTime: test.startTime ? new Date(test.startTime).toISOString() : null, endTime: test.endTime ? new Date(test.endTime).toISOString() : null, instructions: test.instructions || '', shuffleQuestions: test.shuffleQuestions ?? true, shuffleOptions: test.shuffleOptions ?? false, autoSubmitOnViolation: test.autoSubmitOnViolation ?? false, maxTabSwitches: test.maxTabSwitches ?? 3, maxFocusLosses: test.maxFocusLosses ?? 5, blockCopyPaste: test.blockCopyPaste ?? true, requireFullscreen: test.requireFullscreen ?? false });
+    } catch (error) { Alert.alert('Unable to edit test', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  };
+  const publish = (test: MobileAdminTest) => Alert.alert('Publish test?', `Students in ${test.groups?.length || 0} batch(es) will be notified.`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Publish', onPress: async () => { try { setBusy(true); const result = await mobileApi.publishAdminTest(test._id); Alert.alert('Published', `${result.notifiedStudents} student(s) notified.`); await load(); } finally { setBusy(false); } } }]);
+  const remove = (test: MobileAdminTest) => Alert.alert('Delete test?', test.title, [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: async () => { try { setBusy(true); await mobileApi.deleteAdminTest(test._id); await load(); } finally { setBusy(false); } } }]);
+
+  const pickPdf = async (solution = false) => { const picked = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true }); if (!picked.canceled) solution ? setPdfSolution(picked.assets[0]) : setPdfQuestion(picked.assets[0]); };
+  const uploadPdf = async () => {
+    if (!pdfQuestion || !form.title.trim()) return Alert.alert('Question PDF and test title are required.');
+    const data = new FormData(); data.append('questionPdf', { uri: pdfQuestion.uri, name: pdfQuestion.name, type: pdfQuestion.mimeType || 'application/pdf' } as unknown as Blob);
+    if (pdfSolution) data.append('solutionPdf', { uri: pdfSolution.uri, name: pdfSolution.name, type: pdfSolution.mimeType || 'application/pdf' } as unknown as Blob);
+    Object.entries({ title: form.title, description: form.description, duration: form.duration, negativeMarking: form.negativeMarking, startTime: form.startTime || '', endTime: form.endTime || '', instructions: form.instructions, marksPerQuestion: 1, autoSubmitOnViolation: form.autoSubmitOnViolation, maxTabSwitches: form.maxTabSwitches, maxFocusLosses: form.maxFocusLosses, blockCopyPaste: form.blockCopyPaste, requireFullscreen: form.requireFullscreen }).forEach(([key, value]) => data.append(key, String(value ?? '')));
+    form.groupIds.forEach((id) => data.append('groupIds', id)); form.course.forEach((value) => data.append('courses', value)); form.subject.forEach((value) => data.append('subjects', value));
+    try { setBusy(true); const response = await mobileApi.uploadAdminPdfTest(data); Alert.alert('PDF test created', `${response.pageCount || 'Unknown'} page(s) detected.`); setPdfQuestion(null); setPdfSolution(null); setForm(blank()); setPdfMode(false); await load(); }
+    catch (error) { Alert.alert('PDF upload failed', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  };
+
+  if (loading || !meta) return <Loading message="Loading test manager…" />;
+  const updateToggle = (key: keyof TestPayload) => setForm({ ...form, [key]: !form[key] });
+  return <>
+    <Card><Row><View style={{ flex: 1 }}><Button title={pdfMode ? 'Question Bank Test' : 'Create from Questions'} variant={pdfMode ? 'secondary' : 'primary'} onPress={() => setPdfMode(false)} /></View><View style={{ flex: 1 }}><Button title="PDF Test" variant={pdfMode ? 'primary' : 'secondary'} onPress={() => { setPdfMode(true); setEditingId(null); }} /></View></Row></Card>
+    <Card><SectionTitle>{editingId ? 'Edit test' : pdfMode ? 'Create PDF test' : 'Create test'}</SectionTitle><Field label="Title" value={form.title} onChangeText={(title) => setForm({ ...form, title })} /><Field label="Description" value={form.description || ''} onChangeText={(description) => setForm({ ...form, description })} multiline /><Row><View style={{ flex: 1 }}><Field label="Duration (minutes)" value={String(form.duration)} onChangeText={(duration) => setForm({ ...form, duration: Number(duration) || 180 })} keyboardType="number-pad" /></View><View style={{ flex: 1 }}><Field label="Negative Marks" value={String(form.negativeMarking)} onChangeText={(negativeMarking) => setForm({ ...form, negativeMarking: Number(negativeMarking) || 0 })} keyboardType="decimal-pad" /></View></Row><Field label="Start Time (ISO, optional)" value={form.startTime || ''} onChangeText={(startTime) => setForm({ ...form, startTime: startTime || null })} autoCapitalize="none" placeholder="2026-08-20T10:00:00+05:30" /><Field label="End Time (ISO, optional)" value={form.endTime || ''} onChangeText={(endTime) => setForm({ ...form, endTime: endTime || null })} autoCapitalize="none" /><Field label="Instructions" value={form.instructions || ''} onChangeText={(instructions) => setForm({ ...form, instructions })} multiline /><Body muted>Course</Body><Chips values={meta.courses} selected={form.course} multiple onChange={(course) => setForm({ ...form, course })} /><Body muted>Subjects</Body><Chips values={meta.allSubjects} selected={form.subject} multiple onChange={(subject) => setForm({ ...form, subject })} /><Body muted>Assigned batches</Body><Chips values={groups.map((group) => group.name)} selected={groups.filter((group) => form.groupIds.includes(group._id)).map((group) => group.name)} multiple onChange={(names) => setForm({ ...form, groupIds: groups.filter((group) => names.includes(group.name)).map((group) => group._id) })} />
+      <SectionTitle>Exam controls</SectionTitle><Row wrap>{([['shuffleQuestions', 'Shuffle Questions'], ['shuffleOptions', 'Shuffle Options'], ['autoSubmitOnViolation', 'Auto-submit Violations'], ['blockCopyPaste', 'Block Copy/Paste'], ['requireFullscreen', 'Require Fullscreen']] as [keyof TestPayload, string][]).map(([key, label]) => <Button key={key} title={`${form[key] ? '✓ ' : ''}${label}`} variant={form[key] ? 'primary' : 'secondary'} compact onPress={() => updateToggle(key)} />)}</Row><Row><View style={{ flex: 1 }}><Field label="Max App Switches" value={String(form.maxTabSwitches)} onChangeText={(maxTabSwitches) => setForm({ ...form, maxTabSwitches: Number(maxTabSwitches) || 3 })} keyboardType="number-pad" /></View><View style={{ flex: 1 }}><Field label="Max Focus Losses" value={String(form.maxFocusLosses)} onChangeText={(maxFocusLosses) => setForm({ ...form, maxFocusLosses: Number(maxFocusLosses) || 5 })} keyboardType="number-pad" /></View></Row>
+      {pdfMode ? <><DataLine label="Question PDF" value={pdfQuestion?.name || 'Not selected'} /><Button title="Select Question PDF" variant="secondary" onPress={() => pickPdf(false)} /><DataLine label="Solution PDF" value={pdfSolution?.name || 'Optional'} /><Button title="Select Solution PDF" variant="secondary" onPress={() => pickPdf(true)} /><Button title="Create PDF Test" onPress={uploadPdf} busy={busy} /></> : <><SectionTitle>Select questions ({form.questionIds.length})</SectionTitle><Chips values={['All', ...meta.allSubjects]} selected={[questionSubject]} onChange={(values) => setQuestionSubject(values[0])} /><Field label="Filter visible by topic" value={questionTopic} onChangeText={setQuestionTopic} /><Button title={visibleQuestions.length && visibleQuestions.every((question) => form.questionIds.includes(question._id)) ? 'Clear Visible Selection' : 'Select All Visible'} variant="secondary" onPress={toggleAllVisible} />{visibleQuestions.map((question) => { const active = form.questionIds.includes(question._id); return <Pressable key={question._id} onPress={() => toggleQuestion(question._id)} style={{ borderWidth: active ? 2 : 1, borderColor: active ? colors.primary : colors.separator, padding: 12, borderRadius: 14, backgroundColor: active ? colors.primarySoft : colors.card }}><Text selectable style={{ color: colors.label, fontWeight: '800' }}>{active ? '✓ ' : ''}{question.question}</Text><Body muted>{question.subject} · {question.topic || 'No topic'} · {question.marks} mark(s)</Body></Pressable>; })}<Row><View style={{ flex: 1 }}><Button title={editingId ? 'Save Test' : 'Create Draft Test'} onPress={save} busy={busy} /></View>{editingId ? <View style={{ flex: 1 }}><Button title="Cancel Edit" variant="secondary" onPress={() => { setEditingId(null); setForm(blank()); }} /></View> : null}</Row></>}
+    </Card>
+    <Card><SectionTitle>Templates</SectionTitle><Button title="Question Paper PDF Template" variant="secondary" onPress={async () => { try { await shareLocalFile(await mobileApi.downloadPdfTestTemplate(), 'application/pdf', 'Question paper template'); } catch (error) { Alert.alert('Download failed', error instanceof Error ? error.message : 'Please try again.'); } }} /><Button title="Answer Key PDF Template" variant="secondary" onPress={async () => { try { await shareLocalFile(await mobileApi.downloadAnswerKeyTemplate(), 'application/pdf', 'Answer key template'); } catch (error) { Alert.alert('Download failed', error instanceof Error ? error.message : 'Please try again.'); } }} /></Card>
+    <SectionTitle>Tests ({tests.length})</SectionTitle>{tests.length ? tests.map((test) => <Card key={test._id}><Row><Badge tone={test.status === 'draft' ? 'warning' : test.status === 'closed' ? 'danger' : 'primary'}>{test.status}</Badge><Body muted>{test.duration} min · {test.totalMarks} marks</Body></Row><Text selectable style={{ color: colors.label, fontWeight: '900', fontSize: 17 }}>{test.title}</Text><Body muted>{test.groups?.map((group) => group.name).join(', ') || 'No batches assigned'}</Body>{test.questionPdfPath ? <Button title="Open Question PDF" variant="ghost" compact onPress={() => { const url = assetUrl(test.questionPdfPath); if (url) Linking.openURL(url); }} /> : null}<Row wrap><Button title="Edit" variant="secondary" compact onPress={() => edit(test._id)} busy={busy} />{test.status === 'draft' ? <Button title="Publish" compact onPress={() => publish(test)} /> : null}<Button title="Delete" variant="danger" compact onPress={() => remove(test)} /></Row></Card>) : <Empty message="No tests created." />}
+  </>;
+}

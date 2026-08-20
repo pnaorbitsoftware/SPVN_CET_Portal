@@ -1,20 +1,21 @@
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { mobileApi, SmartScanDraft, SmartScanQuestion } from './api';
 
-export function SmartScannerScreen({ onClose }: { onClose: () => void }) {
+type ScanAsset = { uri: string; name: string; mimeType?: string | null };
+
+export function SmartScannerScreen({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const [draft, setDraft] = useState<SmartScanDraft | null>(null);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const selectAndScan = async () => {
-    const selection = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: true });
-    if (selection.canceled) return;
-    setFileNames(selection.assets.map((asset) => asset.name));
+  const scanAssets = async (assets: ScanAsset[]) => {
+    setFileNames(assets.map((asset) => asset.name));
     const data = new FormData();
-    selection.assets.forEach((asset) => data.append('questionFiles', { uri: asset.uri, name: asset.name, type: asset.mimeType || 'application/octet-stream' } as unknown as Blob));
+    assets.forEach((asset) => data.append('questionFiles', { uri: asset.uri, name: asset.name, type: asset.mimeType || 'application/octet-stream' } as unknown as Blob));
     try {
       setBusy(true);
       const response = await mobileApi.scanAdminQuestions(data);
@@ -22,6 +23,21 @@ export function SmartScannerScreen({ onClose }: { onClose: () => void }) {
     } catch (error) {
       Alert.alert('Scan failed', error instanceof Error ? error.message : 'Unable to scan selected files.');
     } finally { setBusy(false); }
+  };
+
+  const selectAndScan = async () => {
+    const selection = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: true });
+    if (selection.canceled) return;
+    await scanAssets(selection.assets);
+  };
+
+  const captureAndScan = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Camera permission required', 'Allow camera access to scan a handwritten question page.');
+    const capture = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+    if (capture.canceled) return;
+    const asset = capture.assets[0];
+    await scanAssets([{ uri: asset.uri, name: asset.fileName || `question_${Date.now()}.jpg`, mimeType: asset.mimeType || 'image/jpeg' }]);
   };
 
   const updateQuestion = (index: number, field: keyof SmartScanQuestion, value: string | boolean) => {
@@ -48,10 +64,10 @@ export function SmartScannerScreen({ onClose }: { onClose: () => void }) {
     catch (error) { Alert.alert('Discard failed', error instanceof Error ? error.message : 'Please try again.'); }
   };
 
-  return <ScrollView contentContainerStyle={styles.page}>
+  const content = <>
     <Text style={styles.title}>Smart Question Scanner</Text>
     <Text style={styles.help}>Select images, PDFs, Word files or spreadsheets. The scanner identifies questions, options and hierarchy automatically.</Text>
-    {!draft ? <><Pressable style={styles.primary} onPress={selectAndScan} disabled={busy}>{busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Select Files & Scan</Text>}</Pressable>{fileNames.length ? <Text style={styles.files}>Selected: {fileNames.join(', ')}</Text> : null}</> : <>
+    {!draft ? <><Pressable style={styles.primary} onPress={selectAndScan} disabled={busy}>{busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Select Files & Scan</Text>}</Pressable><Pressable style={styles.secondary} onPress={captureAndScan} disabled={busy}><Text style={styles.secondaryText}>Camera Scan</Text></Pressable>{fileNames.length ? <Text style={styles.files}>Selected: {fileNames.join(', ')}</Text> : null}</> : <>
       <Text style={styles.status}>{draft.questions.length} questions found · {draft.extractionMethod}</Text>
       {draft.warnings.map((warning, index) => <Text key={`${warning}-${index}`} style={styles.warning}>• {warning}</Text>)}
       {draft.questions.map((question, index) => <View key={`${question.question}-${index}`} style={styles.card}>
@@ -59,11 +75,18 @@ export function SmartScannerScreen({ onClose }: { onClose: () => void }) {
         <TextInput style={styles.input} multiline value={question.question} onChangeText={(value) => updateQuestion(index, 'question', value)} placeholder="Question" />
         {(['optionA', 'optionB', 'optionC', 'optionD'] as const).map((field) => <TextInput key={field} style={styles.input} value={question[field]} onChangeText={(value) => updateQuestion(index, field, value)} placeholder={field.replace('option', 'Option ')} />)}
         <TextInput style={styles.input} value={question.correctAnswer} onChangeText={(value) => updateQuestion(index, 'correctAnswer', value.toUpperCase())} placeholder="Correct answer: A/B/C/D" maxLength={1} />
+        <TextInput style={styles.input} value={question.subject} onChangeText={(value) => updateQuestion(index, 'subject', value)} placeholder="Subject" />
+        <TextInput style={styles.input} value={question.topic || ''} onChangeText={(value) => updateQuestion(index, 'topic', value)} placeholder="Topic" />
+        <TextInput style={styles.input} value={question.subtopic || ''} onChangeText={(value) => updateQuestion(index, 'subtopic', value)} placeholder="Subtopic" />
+        <TextInput style={styles.input} value={question.difficulty} onChangeText={(value) => updateQuestion(index, 'difficulty', value)} placeholder="Easy / Medium / Hard" />
+        <TextInput style={styles.input} value={String(question.marks)} onChangeText={(value) => updateQuestion(index, 'marks', value)} placeholder="Marks" keyboardType="decimal-pad" />
+        <TextInput style={styles.input} value={question.explanation || ''} onChangeText={(value) => updateQuestion(index, 'explanation', value)} placeholder="Explanation" multiline />
         <Text style={styles.meta}>{question.subject} · {question.topic || 'No topic'} · {question.subtopic || 'No subtopic'}</Text>
       </View>)}
       <View style={styles.actions}><Pressable style={styles.secondary} onPress={discard} disabled={busy}><Text style={styles.secondaryText}>Discard</Text></Pressable><Pressable style={styles.primary} onPress={commit} disabled={busy}>{busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Save Selected Questions</Text>}</Pressable></View>
     </>}
-  </ScrollView>;
+  </>;
+  return embedded ? <View style={styles.page}>{content}</View> : <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.page}>{content}</ScrollView>;
 }
 
 const styles = StyleSheet.create({

@@ -1,39 +1,49 @@
 # SPVN CET Native App Feature Parity
 
-The APK must implement every portal function using native screens and mobile APIs. A WebView or browser redirect is not accepted.
+The native application mirrors every interactive web portal area through protected mobile APIs. It does not use a WebView.
 
 ## Student
 
-- [x] Student login
-- [x] Dashboard summary
-- [x] Test list API
-- [x] Result list API
-- [x] Notification list API
-- [x] Start test, load questions, save answers, submit test
-- [ ] Native question palette, timer, section navigation and review marks
-- [ ] Document upload and document viewing
-- [ ] Result detail, leaderboard and PDF download/share
-- [ ] Password change and profile
-- [ ] Exam violation tracking and auto-submit
+- [x] Student login and secure session restore
+- [x] First-login and regular password change
+- [x] Dashboard, test categories, results and notifications
+- [x] Test instructions, CET section summary, start and resume
+- [x] Native question palette, timer, section locking and review marks
+- [x] Answer persistence on navigation and exam exit
+- [x] App-background violation tracking and threshold auto-submit
+- [x] Manual and timer auto-submit with rank calculation
+- [x] Document upload, list and viewing
+- [x] Result detail, subject breakdown and question review
+- [x] Leaderboard and result PDF download/share
+- [x] Profile and logout
 
 ## Admin
 
-- [x] Admin login and dashboard summary
-- [ ] Student list, profile, create, delete and credentials
-- [ ] Bulk student import with selected-file state and group assignment
-- [ ] Group create, edit, member add/remove/move and credentials export
-- [ ] Syllabus topic/subtopic create, edit, delete and PDF import
-- [ ] Question list, create, delete and Excel bulk import/template
-- [ ] Smart scanner: camera/file selection, scan, review, commit and discard
-- [ ] Test create, edit, PDF upload, publish, delete and templates
-- [ ] Test hierarchy question selection and visible-select toggle
-- [ ] Result list, result detail and Excel export
-- [ ] Student document review and delete
+- [x] Admin login, dashboard counts and recent activity
+- [x] Student search, profile, create, deactivate and credentials
+- [x] Bulk student import, template and batch assignment
+- [x] Batch create/edit/delete and member add/remove/move
+- [x] New student and bulk import inside a batch
+- [x] Batch credentials PDF download/share
+- [x] Syllabus filters and topic/subtopic create/edit/delete
+- [x] AI syllabus PDF import
+- [x] Question list/filter/create/edit/delete
+- [x] Question Excel/CSV bulk import and template
+- [x] Smart scanner camera/file scan, editable review, commit and discard
+- [x] Test create/edit/delete, hierarchy filters and visible-select toggle
+- [x] PDF test upload, solution upload and both PDF templates
+- [x] Batch assignment, anti-cheat settings and publishing notifications
+- [x] Result filters, detail, result PDF and Excel export
+- [x] Student document review/open/delete
 
-## Release
+## Quality and release readiness
 
-- [ ] Android icon, splash and branding
-- [ ] Secure token persistence and logout
-- [ ] Offline/error states, input validation and loading states
-- [ ] Functional testing against production API
-- [ ] Signed Android App Bundle for Play Store
+- [x] Android icon, splash, package ID and SPVN branding
+- [x] SecureStore token persistence and logout cleanup
+- [x] API error states, validation, loading states and pull-to-refresh
+- [x] TypeScript check
+- [x] Expo Doctor (21/21)
+- [x] Android Metro production bundle smoke test
+- [x] Live MongoDB/API admin route and download smoke tests
+- [ ] Deploy the updated backend before testing the production APK URL
+- [ ] Signed Android App Bundle / Play Store release
