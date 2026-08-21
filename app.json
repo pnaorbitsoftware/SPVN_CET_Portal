@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "e9512a1f-efa7-43de-b85f-224c1bf7c25f"
+      }
+    },
+    "android": {
+      "package": "com.krushnar.cetexamsystem"
+    }
+  }
+}

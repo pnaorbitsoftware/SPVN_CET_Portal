@@ -4,10 +4,30 @@
 <div class="min-h-screen bg-slate-50 py-5 lg:py-10 px-4">
   <div class="max-w-4xl mx-auto space-y-5">
 
+    <!-- Back to Dashboard (Top Left) -->
+    <div class="flex">
+      <% if (typeof locals.currentUser !== 'undefined' && locals.currentUser && locals.currentUser.role === 'admin') { %>
+      <a href="/admin/dashboard" class="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-semibold text-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        Back to Dashboard
+      </a>
+      <% } else { %>
+      <a href="/student/dashboard" class="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-semibold text-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        Back to Dashboard
+      </a>
+      <% } %>
+    </div>
+
     <!-- Score Hero -->
     <div class="bg-white rounded-2xl shadow-card-md overflow-hidden">
       <div class="<%= percentage>=60?'bg-gradient-to-r from-emerald-600 to-emerald-500':percentage>=40?'bg-gradient-to-r from-amber-500 to-amber-400':'bg-gradient-to-r from-rose-600 to-rose-500' %> px-5 py-8 text-white text-center">
         <p class="text-white/70 text-sm mb-1 truncate"><%= result.test.title %></p>
+        <% if (result.rank) { %>
+        <div class="inline-flex items-center gap-1.5 bg-white/20 border border-white/30 text-white text-xs font-bold px-3 py-1 rounded-full my-2">
+          Rank #<%= result.rank %>
+        </div>
+        <% } %>
         <div class="text-5xl sm:text-7xl font-bold mb-2"><%= percentage %>%</div>
         <p class="text-xl sm:text-2xl font-semibold"><%= result.score %> / <%= result.totalMarks %> Marks</p>
         <% if (result.absentSubjects?.length) { %>
@@ -60,16 +80,6 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           Download PDF
         </a>
-        <a href="/results/leaderboard/<%= result.testId %>" class="flex items-center gap-2 bg-navy-950 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-navy-900 transition-colors text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z'/></svg>
-          Leaderboard
-        </a>
-        <% if (currentUser.role === 'student') { %>
-        <a href="/student/tests" class="flex items-center gap-2 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-          Back to Tests
-        </a>
-        <% } %>
       </div>
     </div>
 

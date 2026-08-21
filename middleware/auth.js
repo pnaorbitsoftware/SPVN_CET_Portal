@@ -1,12 +1,25 @@
-// middleware/auth.js
-// Authentication and role-based access control middleware
+const mongoose = require('mongoose');
 
 /**
  * Checks if user is logged in
  */
-const isAuthenticated = (req, res, next) => {
+const isAuthenticated = async (req, res, next) => {
   if (req.session && req.session.user) {
-    return next();
+    try {
+      const User = mongoose.model('User');
+      const user = await User.findById(req.session.user.id);
+      if (user && user.isActive) {
+        return next();
+      }
+    } catch (err) {
+      console.error('Auth verification error:', err);
+    }
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid');
+      req.flash('error', 'Your session has expired or your account has been removed. Please login again.');
+      return res.redirect('/auth/login');
+    });
+    return;
   }
   req.flash('error', 'Please login to access this page.');
   return res.redirect('/auth/login');
@@ -41,16 +54,25 @@ const requirePasswordChange = (req, res, next) => {
  */
 const requireRole = (roles) => {
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.session || !req.session.user) {
       req.flash('error', 'Please login to access this page.');
       return res.redirect('/auth/login');
     }
-    if (!allowedRoles.includes(req.session.user.role)) {
-      req.flash('error', 'Access denied. Insufficient permissions.');
-      return res.redirect(`/${req.session.user.role}/dashboard`);
+    try {
+      const User = mongoose.model('User');
+      const user = await User.findById(req.session.user.id);
+      if (user && user.isActive && allowedRoles.includes(user.role)) {
+        return next();
+      }
+    } catch (err) {
+      console.error('Role verification error:', err);
     }
-    return next();
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid');
+      req.flash('error', 'Access denied or session invalid.');
+      return res.redirect('/auth/login');
+    });
   };
 };
 

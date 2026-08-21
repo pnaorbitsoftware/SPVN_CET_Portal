@@ -95,10 +95,12 @@ exports.getQuestion = async (req, res) => {
     const totalQuestions = questionIds.length;
     if (questionNumber < 1 || questionNumber > totalQuestions) return res.redirect(`/exam/${testId}/question/1`);
 
-    const questionRows = await Question.find(
-      { _id: { $in: questionIds } },
-      '_id subject'
-    );
+    const questionsList = await Question.find({ _id: { $in: questionIds } });
+    const questionsMap = {};
+    questionsList.forEach(q => { questionsMap[String(q._id)] = q; });
+    const orderedQuestions = questionIds.map(id => questionsMap[String(id)]).filter(Boolean);
+    const questionRows = orderedQuestions.map(q => ({ _id: q._id, subject: q.subject }));
+
     const cetSectionFlow = isCetSectionTest(test, questionRows);
     const sectionState = cetSectionFlow
       ? buildSectionState(questionIds, questionRows, result.answers || {}, result.visitedQuestionIds || [])
@@ -123,7 +125,7 @@ exports.getQuestion = async (req, res) => {
       );
     }
 
-    const question = await Question.findById(currentQuestionId);
+    const question = orderedQuestions[questionNumber - 1];
     if (!question) { req.flash('error','Question not found.'); return res.redirect('/student/tests'); }
 
     let options = [
@@ -133,6 +135,26 @@ exports.getQuestion = async (req, res) => {
       { key:'D', value: question.optionD, image: question.optionDImage },
     ];
     if (test.shuffleOptions) options = shuffle(options);
+
+    const clientQuestions = orderedQuestions.map(q => {
+      let qOptions = [
+        { key: 'A', value: q.optionA, image: q.optionAImage },
+        { key: 'B', value: q.optionB, image: q.optionBImage },
+        { key: 'C', value: q.optionC, image: q.optionCImage },
+        { key: 'D', value: q.optionD, image: q.optionDImage },
+      ];
+      if (test.shuffleOptions) qOptions = shuffle(qOptions);
+      return {
+        _id: q._id.toString(),
+        question: q.question,
+        questionImage: q.questionImage,
+        options: qOptions,
+        subject: q.subject,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        marks: q.marks,
+      };
+    });
 
     const answers = result.answers || {};
     const markedForReview = result.markedForReview || [];
@@ -177,6 +199,7 @@ exports.getQuestion = async (req, res) => {
       sectionState,
       currentSection,
       sectionQuestionNumber,
+      clientQuestions,
     });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
@@ -282,6 +305,28 @@ exports.submitExam = async (req, res) => {
       return res.redirect('/student/tests');
     }
 
+    // Sync latest client state if provided in request body
+    if (req.body.answers) {
+      try {
+        result.answers = JSON.parse(req.body.answers);
+      } catch (e) { console.error('Failed to parse client answers:', e); }
+    }
+    if (req.body.markedForReview) {
+      try {
+        result.markedForReview = JSON.parse(req.body.markedForReview);
+      } catch (e) { console.error('Failed to parse client markedForReview:', e); }
+    }
+    if (req.body.questionTimings) {
+      try {
+        result.questionTimings = JSON.parse(req.body.questionTimings);
+      } catch (e) { console.error('Failed to parse client questionTimings:', e); }
+    }
+    if (req.body.visitedQuestionIds) {
+      try {
+        result.visitedQuestionIds = JSON.parse(req.body.visitedQuestionIds);
+      } catch (e) { console.error('Failed to parse client visitedQuestionIds:', e); }
+    }
+
     const test = await Test.findById(testId).populate('questions');
     const answers = result.answers || {};
     let score = 0, correct = 0, wrong = 0, skipped = 0;
@@ -333,6 +378,10 @@ exports.submitExam = async (req, res) => {
     const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
 
     await Result.findByIdAndUpdate(result._id, {
+      answers: result.answers,
+      markedForReview: result.markedForReview,
+      questionTimings: result.questionTimings,
+      visitedQuestionIds: result.visitedQuestionIds,
       score, totalMarks: resultTotalMarks, fullTotalMarks: test.totalMarks,
       correctAnswers: correct, wrongAnswers: wrong, skippedAnswers: skipped,
       timeTaken, subjectScores, topicScores, attemptedSubjects, absentSubjects,
@@ -398,9 +447,25 @@ async function updateRanks(testId) {
   const results = await Result.find({ testId, status: { $in: ['submitted','auto_submitted'] } })
     .sort({ score: -1, timeTaken: 1 });
   const n = results.length;
-  await Promise.all(results.map((r, i) =>
-    Result.findByIdAndUpdate(r._id, { rank: i+1, percentile: parseFloat((((n-i)/n)*100).toFixed(2)) })
-  ));
+  if (n === 0) return;
+
+  let currentRank = 1;
+  const bulkOps = [];
+
+  for (let i = 0; i < n; i++) {
+    const r = results[i];
+    if (i > 0) {
+      const prev = results[i - 1];
+      if (r.score !== prev.score || r.timeTaken !== prev.timeTaken) {
+        currentRank = i + 1;
+      }
+    }
+    const percentile = parseFloat((((n - currentRank + 1) / n) * 100).toFixed(2));
+    bulkOps.push(
+      Result.findByIdAndUpdate(r._id, { rank: currentRank, percentile })
+    );
+  }
+  await Promise.all(bulkOps);
 }
 
 exports.getResult = async (req, res) => {
