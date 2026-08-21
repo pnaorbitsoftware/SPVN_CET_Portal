@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { ApiError, assetUrl, mobileApi, type ExamQuestionState } from '../../src/api';
 import { Badge, Body, Button, Loading, Row } from '../../src/ui';
@@ -22,6 +23,9 @@ export default function ExamRoute() {
   const submitting = useRef(false);
   const latest = useRef({ state, selectedAnswer, markedForReview });
   latest.current = { state, selectedAnswer, markedForReview };
+
+  // ── Camera Permissions Hook ─────────────────────────────────────────────
+  const [permission, requestPermission] = useCameraPermissions();
 
   const autoSubmit = useCallback(async (message: string) => {
     if (submitting.current) return;
@@ -48,9 +52,23 @@ export default function ExamRoute() {
     } finally { setLoading(false); }
   }, [autoSubmit, testId]);
 
+  // Request camera permission on mount and only start test if/when granted
   useEffect(() => {
-    mobileApi.startStudentTest(testId).then((session) => loadQuestion(session.firstQuestionNumber)).catch((error) => { setLoading(false); Alert.alert('Unable to start exam', error instanceof Error ? error.message : 'Please try again.', [{ text: 'Back', onPress: () => router.back() }]); });
-  }, [loadQuestion, testId]);
+    if (permission && !permission.granted) {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
+
+  useEffect(() => {
+    if (permission?.granted) {
+      mobileApi.startStudentTest(testId)
+        .then((session) => loadQuestion(session.firstQuestionNumber))
+        .catch((error) => {
+          setLoading(false);
+          Alert.alert('Unable to start exam', error instanceof Error ? error.message : 'Please try again.', [{ text: 'Back', onPress: () => router.back() }]);
+        });
+    }
+  }, [permission?.granted, loadQuestion, testId]);
 
   useEffect(() => {
     const timer = setInterval(() => setRemainingSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
@@ -109,7 +127,28 @@ export default function ExamRoute() {
     finally { setBusy(false); }
   } }]);
 
-  if (loading || !state) return <Loading message="Preparing secure exam…" />;
+  // ── Render Permissions Loading and Requests ─────────────────────────────
+  if (!permission) {
+    return <Loading message="Checking camera permissions…" />;
+  }
+
+  if (!permission.granted) {
+    return (
+      <SafeAreaView style={styles.permissionSafe}>
+        <View style={styles.permissionCard}>
+          <Text style={styles.permissionTitle}>Camera Permission Required</Text>
+          <Text style={styles.permissionText}>
+            This exam is camera-monitored. You must grant camera access to verify your identity and protect exam integrity.
+          </Text>
+          <Button title="Grant Permission" onPress={requestPermission} />
+          <View style={{ height: 10 }} />
+          <Button title="Go Back" variant="secondary" onPress={() => router.back()} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!state) return <Loading message="Preparing secure exam…" />;
   const image = assetUrl(state.question.questionImage);
 
   return <SafeAreaView style={styles.safe}>
@@ -118,24 +157,37 @@ export default function ExamRoute() {
       <Text selectable style={styles.timer}>Q {state.questionNumber}/{state.totalQuestions} · {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, '0')}</Text>
       <Pressable onPress={submit}><Text style={styles.submit}>Submit</Text></Pressable>
     </View>
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-      <Row wrap><Badge>{state.question.subject}</Badge>{state.question.topic ? <Badge>{state.question.topic}</Badge> : null}{violations ? <Badge tone="warning">Violations {violations}</Badge> : null}</Row>
-      {state.sections.length ? <View style={styles.sections}>{state.sections.map((section) => <Badge key={section.name} tone={section.locked ? 'warning' : 'primary'}>{section.name}{section.locked ? ' 🔒' : ''}</Badge>)}</View> : null}
-      <Text selectable style={styles.question}>{state.question.question}</Text>
-      {image ? <Image source={image} style={styles.questionImage} contentFit="contain" /> : null}
-      {state.question.options.map((option) => {
-        const optionImage = assetUrl(option.image);
-        return <Pressable key={option.key} onPress={() => setSelectedAnswer(option.key)} style={[styles.option, selectedAnswer === option.key && styles.optionSelected]}>
-          <View style={styles.optionKey}><Text style={styles.optionKeyText}>{option.key}</Text></View>
-          <View style={{ flex: 1, gap: 8 }}><Text selectable style={styles.optionText}>{option.value}</Text>{optionImage ? <Image source={optionImage} style={styles.optionImage} contentFit="contain" /> : null}</View>
-        </Pressable>;
-      })}
-      <Text selectable style={styles.paletteTitle}>Question palette</Text>
-      <View style={styles.palette}>{state.palette.map((item) => <Pressable key={item.number} disabled={state.sections.some((section) => section.locked && section.questionNumbers.includes(item.number))} onPress={() => saveAndGo(item.number)} style={[styles.paletteItem, item.visited && styles.paletteVisited, item.answered && styles.paletteAnswered, item.marked && styles.paletteMarked, item.number === state.questionNumber && styles.paletteCurrent]}><Text style={styles.paletteText}>{item.number}</Text></Pressable>)}</View>
-      <Button title={markedForReview ? 'Remove Review Mark' : 'Mark for Review'} variant="secondary" onPress={() => setMarkedForReview((value) => !value)} />
-      <Row><View style={{ flex: 1 }}><Button title="Previous" variant="secondary" disabled={state.questionNumber <= 1 || busy} onPress={() => saveAndGo(state.questionNumber - 1)} /></View><View style={{ flex: 1 }}><Button title={state.questionNumber === state.totalQuestions ? 'Save Answer' : 'Save & Next'} busy={busy} onPress={() => saveAndGo(Math.min(state.totalQuestions, state.questionNumber + 1))} /></View></Row>
-      <Body muted>Green: answered · Gold: review · Outline: current. App switching is recorded during the exam.</Body>
-    </ScrollView>
+
+    <View style={{ flex: 1, position: 'relative' }}>
+      {/* Scrollable exam question content container */}
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} style={loading && { opacity: 0.5 }}>
+        <Row wrap><Badge>{state.question.subject}</Badge>{state.question.topic ? <Badge>{state.question.topic}</Badge> : null}{violations ? <Badge tone="warning">Violations {violations}</Badge> : null}</Row>
+        {state.sections.length ? <View style={styles.sections}>{state.sections.map((section) => <Badge key={section.name} tone={section.locked ? 'warning' : 'primary'}>{section.name}{section.locked ? ' 🔒' : ''}</Badge>)}</View> : null}
+        <Text selectable style={styles.question}>{state.question.question}</Text>
+        {image ? <Image source={image} style={styles.questionImage} contentFit="contain" /> : null}
+        {state.question.options.map((option) => {
+          const optionImage = assetUrl(option.image);
+          return <Pressable key={option.key} onPress={() => setSelectedAnswer(option.key)} style={[styles.option, selectedAnswer === option.key && styles.optionSelected]}>
+            <View style={styles.optionKey}><Text style={styles.optionKeyText}>{option.key}</Text></View>
+            <View style={{ flex: 1, gap: 8 }}><Text selectable style={styles.optionText}>{option.value}</Text>{optionImage ? <Image source={optionImage} style={styles.optionImage} contentFit="contain" /> : null}</View>
+          </Pressable>;
+        })}
+        <Text selectable style={styles.paletteTitle}>Question palette</Text>
+        <View style={styles.palette}>{state.palette.map((item) => <Pressable key={item.number} disabled={state.sections.some((section) => section.locked && section.questionNumbers.includes(item.number))} onPress={() => saveAndGo(item.number)} style={[styles.paletteItem, item.visited && styles.paletteVisited, item.answered && styles.paletteAnswered, item.marked && styles.paletteMarked, item.number === state.questionNumber && styles.paletteCurrent]}><Text style={styles.paletteText}>{item.number}</Text></Pressable>)}</View>
+        <Button title={markedForReview ? 'Remove Review Mark' : 'Mark for Review'} variant="secondary" onPress={() => setMarkedForReview((value) => !value)} />
+        <Row><View style={{ flex: 1 }}><Button title="Previous" variant="secondary" disabled={state.questionNumber <= 1 || busy} onPress={() => saveAndGo(state.questionNumber - 1)} /></View><View style={{ flex: 1 }}><Button title={state.questionNumber === state.totalQuestions ? 'Save Answer' : 'Save & Next'} busy={busy} onPress={() => saveAndGo(Math.min(state.totalQuestions, state.questionNumber + 1))} /></View></Row>
+        <Body muted>Green: answered · Gold: review · Outline: current. App switching is recorded during the exam.</Body>
+      </ScrollView>
+
+      {/* Floating Circular Camera Proctoring Overlay */}
+      <View style={styles.cameraBubble}>
+        <CameraView style={styles.camera} facing="front" mute />
+        <View style={styles.liveIndicator}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+      </View>
+    </View>
   </SafeAreaView>;
 }
 
@@ -146,4 +198,17 @@ const styles = StyleSheet.create({
   content: { padding: 18, paddingBottom: 42, gap: 14 }, sections: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, question: { color: colors.label, fontSize: 19, lineHeight: 28, fontWeight: '800' }, questionImage: { width: '100%', height: 230, backgroundColor: colors.card, borderRadius: 14 },
   option: { flexDirection: 'row', gap: 12, padding: 14, borderWidth: 1, borderColor: colors.separator, borderRadius: 16, borderCurve: 'continuous', backgroundColor: colors.card, alignItems: 'center' }, optionSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft, borderWidth: 2 }, optionKey: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#dfeae2', alignItems: 'center', justifyContent: 'center' }, optionKeyText: { color: colors.primary, fontWeight: '900' }, optionText: { color: colors.label, fontSize: 16, lineHeight: 22 }, optionImage: { width: '100%', height: 130 },
   paletteTitle: { color: colors.label, fontWeight: '900', fontSize: 16, paddingTop: 4 }, palette: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, paletteItem: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#e2e9e4' }, paletteVisited: { borderWidth: 1, borderColor: '#8da096' }, paletteAnswered: { backgroundColor: '#9de2b5' }, paletteMarked: { backgroundColor: '#f7d75c' }, paletteCurrent: { borderWidth: 3, borderColor: colors.primary }, paletteText: { color: colors.label, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  
+  // Camera styles
+  cameraBubble: { position: 'absolute', top: 16, right: 16, width: 80, height: 80, borderRadius: 40, overflow: 'hidden', borderWidth: 3, borderColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5, backgroundColor: '#131330' },
+  camera: { flex: 1, width: '100%', height: '100%' },
+  liveIndicator: { position: 'absolute', top: 6, left: 6, backgroundColor: '#dc2626', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#ffffff' },
+  liveText: { color: '#ffffff', fontSize: 7, fontWeight: '900' },
+  
+  // Permission styles
+  permissionSafe: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  permissionCard: { width: '100%', maxWidth: 340, padding: 24, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.separator, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 3 },
+  permissionTitle: { fontSize: 20, fontWeight: '900', color: colors.label, marginBottom: 12, textAlign: 'center' },
+  permissionText: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 24, textAlign: 'center' }
 });

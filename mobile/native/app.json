@@ -24,6 +24,12 @@
           "cameraPermission": "Allow SPVN CET Portal to scan question papers with the camera.",
           "photosPermission": "Allow SPVN CET Portal to select question papers and documents."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow SPVN CET Portal to access your camera for exam proctoring monitoring."
+        }
       ]
     ],
     "ios": {
