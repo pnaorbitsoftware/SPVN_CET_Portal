@@ -16,6 +16,8 @@ const {
   removeQuestionImportAssets,
 } = require('../utils/questionImporter');
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
+const { organizationIdForWrite } = require('../services/organizationService');
+const { questionInputFromBody } = require('../services/questionService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -204,17 +206,20 @@ exports.commitSmartImport = async (req, res) => {
     const selectedQuestions = editedQuestions.filter(question => question.isSelected);
     if (!selectedQuestions.length) throw new Error('Select at least one question.');
 
-    const invalidRows = [];
-    selectedQuestions.forEach((question, index) => {
-      const missing = ['question','optionA','optionB','optionC','optionD','subject']
-        .filter(field => !String(question[field] || '').trim());
-      if (missing.length || !['A','B','C','D'].includes(question.correctAnswer)) {
-        invalidRows.push(index + 1);
+    const preparedQuestions = selectedQuestions.map((question, index) => {
+      try {
+        const validated = questionInputFromBody({
+          ...question,
+          numericalValue:question.numericalAnswer?.value,
+          numericalMin:question.numericalAnswer?.min,
+          numericalMax:question.numericalAnswer?.max,
+          numericalTolerance:question.numericalAnswer?.tolerance,
+        }, importDraft.defaults);
+        return { ...question, ...validated };
+      } catch (error) {
+        throw new Error(`Question ${index + 1}: ${error.message}`);
       }
     });
-    if (invalidRows.length) {
-      throw new Error(`Fix missing text/options/answers in selected question(s): ${invalidRows.slice(0, 12).join(', ')}.`);
-    }
 
     const importAction = req.body.importAction;
     if (!['save_questions', 'publish_test'].includes(importAction)) {
@@ -240,14 +245,20 @@ exports.commitSmartImport = async (req, res) => {
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        const questionDocuments = selectedQuestions.map(question => ({
+        const questionDocuments = preparedQuestions.map(question => ({
+          organization: organizationIdForWrite(req),
           question: question.question,
           questionImage: question.questionImage || null,
           optionA: question.optionA,
           optionB: question.optionB,
           optionC: question.optionC,
           optionD: question.optionD,
+          questionType: question.questionType,
+          questionSubType: question.questionSubType,
           correctAnswer: question.correctAnswer,
+          correctAnswers: question.correctAnswers,
+          numericalAnswer: question.numericalAnswer,
+          tags: question.tags,
           subject: question.subject,
           topic: question.topic || null,
           subtopic: question.subtopic || null,
@@ -282,7 +293,7 @@ exports.commitSmartImport = async (req, res) => {
             instructions: String(req.body.instructions || '').trim() || null,
             course: courses,
             subject: subjectList,
-            marksPerQuestion: selectedQuestions[0]?.marks || 1,
+            marksPerQuestion: preparedQuestions[0]?.marks || 1,
             questions: createdQuestions.map(question => question._id),
             groups: validGroups.map(group => group._id),
             blockCopyPaste: true,

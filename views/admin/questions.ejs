@@ -33,6 +33,10 @@
       <form method="GET" id="filterForm" class="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Filter Questions</p>
         <div class="flex flex-wrap gap-3 items-end">
+          <div class="flex flex-col gap-1 flex-1 min-w-[220px]">
+            <label class="text-xs font-semibold text-slate-600">Search / Question ID</label>
+            <input name="search" value="<%= filters.search || '' %>" placeholder="Question text, explanation or tag" class="border border-slate-200 rounded-lg px-3 py-2 text-sm"/>
+          </div>
           <!-- Subject -->
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-slate-600">Subject</label>
@@ -73,6 +77,25 @@
             </select>
           </div>
 
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Question Type</label>
+            <select name="questionType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-48">
+              <option value="">All types</option>
+              <% QUESTION_TYPES.forEach(type => { %><option value="<%= type %>" <%= filters.questionType === type ? 'selected' : '' %>><%= type.replaceAll('_',' ') %></option><% }) %>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Sub-Type</label>
+            <select name="questionSubType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-44">
+              <option value="">All sub-types</option>
+              <% QUESTION_SUB_TYPES.forEach(type => { %><option value="<%= type %>" <%= filters.questionSubType === type ? 'selected' : '' %>><%= type.replaceAll('_',' ') %></option><% }) %>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-slate-600">Tag</label>
+            <input name="tag" value="<%= filters.tag || '' %>" placeholder="e.g. PYQ" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-36"/>
+          </div>
+
           <!-- Sort -->
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-slate-600">Sort By</label>
@@ -92,13 +115,16 @@
         </div>
 
         <!-- Active filter breadcrumb -->
-        <% if (filters.subject || filters.topic || filters.subtopic || filters.difficulty) { %>
+        <% if (filters.subject || filters.topic || filters.subtopic || filters.difficulty || filters.questionType || filters.questionSubType || filters.tag || filters.search) { %>
         <div class="flex items-center gap-2 mt-3 flex-wrap">
           <span class="text-xs text-slate-400">Active:</span>
           <% if (filters.subject) { %><span class="bg-blue-100 text-blue-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.subject %></span><% } %>
           <% if (filters.topic) { %><span class="text-slate-400 text-xs">›</span><span class="bg-purple-100 text-purple-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.topic %></span><% } %>
           <% if (filters.subtopic) { %><span class="text-slate-400 text-xs">›</span><span class="bg-orange-100 text-orange-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.subtopic %></span><% } %>
           <% if (filters.difficulty) { %><span class="bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.difficulty %></span><% } %>
+          <% if (filters.questionType) { %><span class="bg-cyan-100 text-cyan-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.questionType.replaceAll('_',' ') %></span><% } %>
+          <% if (filters.questionSubType) { %><span class="bg-fuchsia-100 text-fuchsia-700 text-xs px-2.5 py-1 rounded-full font-medium"><%= filters.questionSubType.replaceAll('_',' ') %></span><% } %>
+          <% if (filters.tag) { %><span class="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full font-medium">#<%= filters.tag %></span><% } %>
           <span class="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full font-medium">Sort: <%= filters.sort||'subject' %></span>
         </div>
         <% } %>
@@ -138,17 +164,22 @@
                   <span style="display:none" class="text-xs text-rose-500 bg-rose-50 px-2 py-1 rounded">⚠ Image failed to load</span>
                 </div>
                 <% } %>
-                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
+                <% if ((q.questionType || 'SINGLE_CORRECT') !== 'NUMERICAL') { %><div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
                   <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">A.</span><span class="math-content"><%= q.optionA %></span></span>
                   <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">B.</span><span class="math-content"><%= q.optionB %></span></span>
+                  <% if ((q.questionType || 'SINGLE_CORRECT') !== 'TRUE_FALSE') { %>
                   <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">C.</span><span class="math-content"><%= q.optionC %></span></span>
                   <span class="flex items-start gap-1"><span class="font-semibold text-slate-400">D.</span><span class="math-content"><%= q.optionD %></span></span>
-                </div>
+                  <% } %>
+                </div><% } %>
                 <div class="flex flex-wrap gap-2 items-center">
-                  <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-semibold">✓ <%= q.correctAnswer %></span>
+                  <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-semibold">✓ <%= answerForDisplay(q) %></span>
+                  <span class="bg-cyan-50 text-cyan-700 text-xs px-2 py-0.5 rounded"><%= (q.questionType || 'SINGLE_CORRECT').replaceAll('_',' ') %></span>
+                  <% if (q.questionSubType) { %><span class="bg-fuchsia-50 text-fuchsia-700 text-xs px-2 py-0.5 rounded"><%= q.questionSubType.replaceAll('_',' ') %></span><% } %>
                   <% if (q.subtopic) { %><span class="bg-orange-100 text-orange-600 text-xs px-2 py-0.5 rounded"><%= q.subtopic %></span><% } %>
                   <span class="<%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> text-xs px-2 py-0.5 rounded"><%= q.difficulty %></span>
                   <span class="text-xs text-slate-400"><%= q.marks %> mk</span>
+                  <% (q.tags || []).forEach(tag => { %><span class="text-[10px] text-indigo-600">#<%= tag %></span><% }) %>
                 </div>
               </div>
               <form action="/admin/questions/<%= q.id %>/delete" method="POST" onsubmit="return confirm('Delete this question?')">
@@ -161,7 +192,7 @@
         <% if (totalPages > 1) { %>
         <div class="flex justify-center gap-1 px-6 py-4 border-t border-slate-100">
           <% for(let p=1;p<=totalPages;p++) { %>
-          <a href="?page=<%= p %>&subject=<%= encodeURIComponent(filters.subject||'') %>&topic=<%= encodeURIComponent(filters.topic||'') %>&subtopic=<%= encodeURIComponent(filters.subtopic||'') %>&difficulty=<%= filters.difficulty||'' %>&sort=<%= filters.sort||'subject' %>"
+          <a href="?page=<%= p %>&subject=<%= encodeURIComponent(filters.subject||'') %>&topic=<%= encodeURIComponent(filters.topic||'') %>&subtopic=<%= encodeURIComponent(filters.subtopic||'') %>&difficulty=<%= filters.difficulty||'' %>&questionType=<%= filters.questionType||'' %>&questionSubType=<%= filters.questionSubType||'' %>&tag=<%= encodeURIComponent(filters.tag||'') %>&search=<%= encodeURIComponent(filters.search||'') %>&sort=<%= filters.sort||'subject' %>"
             class="w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium <%= p===currentPage?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200' %>">
             <%= p %>
           </a>
@@ -199,25 +230,49 @@
         <img id="qp" class="hidden mt-2 max-h-24 rounded-lg border object-contain"/>
       </div>
 
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <label class="text-xs font-semibold text-slate-600">Question Type *
+          <select id="questionType" name="questionType" onchange="toggleQuestionType()" class="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
+            <% QUESTION_TYPES.forEach(type => { %><option value="<%= type %>"><%= type.replaceAll('_',' ') %></option><% }) %>
+          </select>
+        </label>
+        <label class="text-xs font-semibold text-slate-600">Question Sub-Type
+          <select name="questionSubType" class="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"><option value="">Not set</option><% QUESTION_SUB_TYPES.forEach(type => { %><option value="<%= type %>"><%= type.replaceAll('_',' ') %></option><% }) %></select>
+        </label>
+        <label class="text-xs font-semibold text-slate-600">Tags
+          <input name="tags" placeholder="PYQ, Revision, CET-2026" class="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"/>
+        </label>
+      </div>
+
       <!-- Options -->
-      <div class="grid grid-cols-2 gap-3">
+      <div id="mcqOptions" class="grid grid-cols-2 gap-3">
         <% ['A','B','C','D'].forEach(o => { %>
         <div data-math-field>
           <label class="block text-xs font-semibold mb-1 text-slate-600">Option <%= o %> *</label>
-          <input type="text" name="option<%= o %>" required class="math-input w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Option <%= o %>"/>
+          <input type="text" name="option<%= o %>" data-option-input class="math-input w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Option <%= o %>"/>
           <div class="math-preview hidden mt-2 overflow-x-auto rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2 text-slate-900"></div>
         </div>
         <% }) %>
       </div>
 
-      <!-- Correct + Difficulty + Marks -->
+      <div id="singleCorrectWrap">
+        <label class="block text-xs font-semibold mb-1 text-slate-600">Correct Answer *</label>
+        <select id="singleCorrectAnswer" name="correctAnswer" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"><% ['A','B','C','D'].forEach(o => { %><option value="<%= o %>"><%= o %></option><% }) %></select>
+      </div>
+      <div id="multipleCorrectWrap" class="hidden border border-cyan-100 bg-cyan-50 rounded-xl p-3">
+        <p class="text-xs font-semibold text-cyan-800 mb-2">Correct Options * (select at least two)</p>
+        <div class="flex gap-4"><% ['A','B','C','D'].forEach(o => { %><label class="text-sm"><input type="checkbox" name="correctAnswers" value="<%= o %>"/> <%= o %></label><% }) %></div>
+      </div>
+      <div id="numericalAnswerWrap" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 border border-violet-100 bg-violet-50 rounded-xl p-3">
+        <label class="text-xs font-semibold text-violet-800">Exact Value<input type="number" step="any" name="numericalValue" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 bg-white"/></label>
+        <label class="text-xs font-semibold text-violet-800">Range Min<input type="number" step="any" name="numericalMin" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 bg-white"/></label>
+        <label class="text-xs font-semibold text-violet-800">Range Max<input type="number" step="any" name="numericalMax" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 bg-white"/></label>
+        <label class="text-xs font-semibold text-violet-800">Tolerance<input type="number" min="0" step="any" name="numericalTolerance" value="0" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 bg-white"/></label>
+        <p class="col-span-full text-[11px] text-violet-700">Use an exact value (optionally with tolerance) or provide both range values.</p>
+      </div>
+
+      <!-- Difficulty + Marks -->
       <div class="grid grid-cols-3 gap-3">
-        <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-600">Correct Answer *</label>
-          <select name="correctAnswer" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
-            <% ['A','B','C','D'].forEach(o => { %><option><%= o %></option><% }) %>
-          </select>
-        </div>
         <div>
           <label class="block text-xs font-semibold mb-1 text-slate-600">Difficulty</label>
           <select name="difficulty" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
@@ -228,6 +283,7 @@
           <label class="block text-xs font-semibold mb-1 text-slate-600">Marks</label>
           <input type="number" name="marks" value="1" step="0.5" min="0.5" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"/>
         </div>
+        <div><label class="block text-xs font-semibold mb-1 text-slate-600">Courses</label><div class="flex flex-wrap gap-2 pt-2"><% COURSES.forEach(course => { %><label class="text-xs"><input type="checkbox" name="courses" value="<%= course %>"/> <%= course %></label><% }) %></div></div>
       </div>
 
       <!-- Subject → Topic → Subtopic cascade -->
@@ -329,6 +385,24 @@ function prev(input, id) {
   r.onload = e => { const p = document.getElementById(id); p.src = e.target.result; p.classList.remove('hidden'); };
   r.readAsDataURL(input.files[0]);
 }
+
+function toggleQuestionType() {
+  const type = document.getElementById('questionType').value;
+  const isMcq = type === 'SINGLE_CORRECT' || type === 'MULTIPLE_CORRECT';
+  document.getElementById('mcqOptions').classList.toggle('hidden', !isMcq);
+  document.getElementById('singleCorrectWrap').classList.toggle('hidden', type === 'MULTIPLE_CORRECT' || type === 'NUMERICAL');
+  document.getElementById('multipleCorrectWrap').classList.toggle('hidden', type !== 'MULTIPLE_CORRECT');
+  document.getElementById('numericalAnswerWrap').classList.toggle('hidden', type !== 'NUMERICAL');
+  document.querySelectorAll('[data-option-input]').forEach(input => { input.required = isMcq; });
+  const select = document.getElementById('singleCorrectAnswer');
+  if (type === 'TRUE_FALSE') {
+    select.innerHTML = '<option value="A">True</option><option value="B">False</option>';
+  } else if (type === 'SINGLE_CORRECT') {
+    select.innerHTML = '<option>A</option><option>B</option><option>C</option><option>D</option>';
+  }
+}
+
+toggleQuestionType();
 
 // ── Filter bar cascades ───────────────────────────────────────────────────
 async function onFilterSubjectChange(subject) {

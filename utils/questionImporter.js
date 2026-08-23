@@ -11,6 +11,7 @@ const { GoogleGenAI } = require('@google/genai');
 const { createCanvas } = require('@napi-rs/canvas');
 const { z } = require('zod');
 const { zodTextFormat } = require('openai/helpers/zod');
+const { QUESTION_SUB_TYPES, QUESTION_TYPES, cleanList } = require('../services/questionService');
 
 const execFileAsync = promisify(execFile);
 
@@ -62,6 +63,14 @@ const MCQSchema = z.object({
   optionC: z.string(),
   optionD: z.string(),
   correctAnswer: z.enum(['A','B','C','D','UNKNOWN']),
+  correctAnswers: z.array(z.enum(['A','B','C','D'])),
+  questionType: z.enum(['SINGLE_CORRECT','MULTIPLE_CORRECT','NUMERICAL','TRUE_FALSE']),
+  questionSubType: z.enum([...QUESTION_SUB_TYPES, '']).nullable(),
+  numericalValue: z.number().nullable(),
+  numericalMin: z.number().nullable(),
+  numericalMax: z.number().nullable(),
+  numericalTolerance: z.number().nullable(),
+  tags: z.array(z.string()),
   subject: z.string(),
   topic: z.string(),
   subtopic: z.string(),
@@ -134,6 +143,14 @@ const FIELD_ALIASES = {
   optionC: ['optionc','c','answerc','choicec','पर्यायक'],
   optionD: ['optiond','d','answerd','choiced','पर्यायद'],
   correctAnswer: ['correctanswer','answer','correctoption','answerkey','key','ans','उत्तर'],
+  correctAnswers: ['correctanswers','answers','correctoptions','multipleanswers'],
+  questionType: ['questiontype','type','answertype'],
+  questionSubType: ['questionsubtype','subtype','questioncategory'],
+  numericalValue: ['numericalvalue','numericanswer','numericalanswer','exactvalue'],
+  numericalMin: ['numericalmin','minimum','minvalue'],
+  numericalMax: ['numericalmax','maximum','maxvalue'],
+  numericalTolerance: ['numericaltolerance','tolerance'],
+  tags: ['tags','tag','labels'],
   questionNo: ['questionno','questionnumber','qno','qnumber','number','no','srno','क्रमांक'],
   subject: ['subject','विषय'],
   topic: ['topic','chapter','धडा'],
@@ -197,6 +214,11 @@ function normalizeVisualBox(value) {
 }
 
 function normalizeQuestion(raw, defaults = {}) {
+  const questionType = QUESTION_TYPES.includes(String(raw.questionType || '').toUpperCase())
+    ? String(raw.questionType).toUpperCase()
+    : 'SINGLE_CORRECT';
+  const correctAnswers = cleanList(raw.correctAnswers, { uppercase: true })
+    .filter(answer => ['A','B','C','D'].includes(answer));
   const normalized = {
     question: cleanText(raw.question),
     questionImage: cleanText(raw.questionImage || raw.questionImageUrl) || null,
@@ -210,6 +232,16 @@ function normalizeQuestion(raw, defaults = {}) {
     optionB: cleanText(raw.optionB),
     optionC: cleanText(raw.optionC),
     optionD: cleanText(raw.optionD),
+    questionType,
+    questionSubType: QUESTION_SUB_TYPES.includes(raw.questionSubType) ? raw.questionSubType : null,
+    correctAnswers,
+    numericalAnswer: {
+      value: raw.numericalValue === null || raw.numericalValue === undefined || raw.numericalValue === '' ? null : Number(raw.numericalValue),
+      min: raw.numericalMin === null || raw.numericalMin === undefined || raw.numericalMin === '' ? null : Number(raw.numericalMin),
+      max: raw.numericalMax === null || raw.numericalMax === undefined || raw.numericalMax === '' ? null : Number(raw.numericalMax),
+      tolerance: Math.max(0, Number(raw.numericalTolerance) || 0),
+    },
+    tags: cleanList(raw.tags),
     subject: cleanText(raw.subject) || cleanText(defaults.subject) || 'Physics',
     topic: cleanText(raw.topic) || cleanText(defaults.topic) || '',
     subtopic: cleanText(raw.subtopic) || cleanText(defaults.subtopic) || '',
@@ -223,11 +255,26 @@ function normalizeQuestion(raw, defaults = {}) {
       : 'unknown',
   };
   normalized.correctAnswer = normalizeCorrectAnswer(raw.correctAnswer, normalized);
+  if (questionType === 'MULTIPLE_CORRECT') {
+    normalized.correctAnswers = correctAnswers.length
+      ? correctAnswers
+      : cleanList(raw.correctAnswer, { uppercase:true }).filter(answer => ['A','B','C','D'].includes(answer));
+    normalized.correctAnswer = normalized.correctAnswers[0] || 'UNKNOWN';
+  } else if (questionType === 'TRUE_FALSE') {
+    normalized.optionA = 'True';
+    normalized.optionB = 'False';
+    normalized.optionC = '';
+    normalized.optionD = '';
+  }
   return normalized;
 }
 
 function questionCompleteness(question) {
-  const required = ['question','optionA','optionB','optionC','optionD'];
+  const required = question.questionType === 'NUMERICAL'
+    ? ['question']
+    : question.questionType === 'TRUE_FALSE'
+      ? ['question','optionA','optionB']
+      : ['question','optionA','optionB','optionC','optionD'];
   return required.filter(field => question[field]).length / required.length;
 }
 
@@ -361,6 +408,14 @@ function extractSpreadsheetQuestions(files, defaults = {}) {
       optionB: firstValue(row, FIELD_ALIASES.optionB),
       optionC: firstValue(row, FIELD_ALIASES.optionC),
       optionD: firstValue(row, FIELD_ALIASES.optionD),
+      questionType: firstValue(row, FIELD_ALIASES.questionType),
+      questionSubType: firstValue(row, FIELD_ALIASES.questionSubType),
+      correctAnswers: firstValue(row, FIELD_ALIASES.correctAnswers),
+      numericalValue: firstValue(row, FIELD_ALIASES.numericalValue),
+      numericalMin: firstValue(row, FIELD_ALIASES.numericalMin),
+      numericalMax: firstValue(row, FIELD_ALIASES.numericalMax),
+      numericalTolerance: firstValue(row, FIELD_ALIASES.numericalTolerance),
+      tags: firstValue(row, FIELD_ALIASES.tags),
       subject: firstValue(row, FIELD_ALIASES.subject),
       topic: firstValue(row, FIELD_ALIASES.topic),
       subtopic: firstValue(row, FIELD_ALIASES.subtopic),
@@ -386,13 +441,18 @@ function extractSpreadsheetQuestions(files, defaults = {}) {
     }
 
     const question = normalizeQuestion(rawQuestion, defaults);
-    if (question.correctAnswer === 'UNKNOWN') {
+    const answerMissing = question.questionType === 'NUMERICAL'
+      ? !Number.isFinite(question.numericalAnswer?.value) && !(Number.isFinite(question.numericalAnswer?.min) && Number.isFinite(question.numericalAnswer?.max))
+      : question.questionType === 'MULTIPLE_CORRECT'
+        ? question.correctAnswers.length < 2
+        : question.correctAnswer === 'UNKNOWN';
+    if (answerMissing) {
       question.confidence = Math.min(question.confidence, 0.75);
       question.answerSource = 'unknown';
     }
     if (questionCompleteness(question) < 1) {
       question.confidence = Math.min(question.confidence, 0.5);
-      warnings.push(`${sourceLabel}: one or more options are missing.`);
+      warnings.push(`${sourceLabel}: required question fields are missing.`);
     }
     questions.push(question);
   });
@@ -808,13 +868,13 @@ function removeQuestionImportAssets(importId) {
 function extractionPrompt(defaults, fileNames) {
   return `You are a high-accuracy exam question digitization engine.
 
-Extract EVERY multiple-choice question from the attached files. A page may contain 1, 10, 100, or any other number of questions. Detect question blocks from their text and A/B/C/D options; NEVER use page count as question count.
+Extract EVERY exam question from the attached files. A page may contain 1, 10, 100, or any other number of questions. Detect single-correct, multiple-correct, numerical-answer and true/false questions; NEVER use page count as question count.
 
 Rules:
 1. Read typed text, scans, photographs, and handwriting carefully. Preserve Marathi, English, scientific notation, equations, and Unicode.
-2. Each output item must contain exactly one question and its four corresponding options A, B, C, and D.
+2. Set questionType to SINGLE_CORRECT, MULTIPLE_CORRECT, NUMERICAL, or TRUE_FALSE. MCQs must include their corresponding options. True/false uses A=True and B=False. Numerical questions use numericalValue or numericalMin/numericalMax and may leave options empty.
 3. Match a separate answer key to question numbers across any of the attached files.
-4. Determine correctAnswer in this priority order: visibly ticked/circled/marked answer ("marked"), separate answer key ("answer_key"), answer explicitly written beside the question ("provided"), then solve the MCQ yourself only when sufficiently certain ("inferred"). If uncertain, use "UNKNOWN".
+4. Determine answers in this priority order: visibly marked answer, separate answer key, explicitly provided answer, then inference only when sufficiently certain. Use correctAnswer for single/true-false, correctAnswers for multiple-correct, and numerical fields for numerical questions. If uncertain, use UNKNOWN/empty values and add a warning.
 5. Never invent unreadable or missing text. Use an empty string for unreadable fields, lower confidence, and add a warning.
 6. Ignore headings, page numbers, instructions, examples without four options, watermarks, and duplicate questions.
 7. sourceLabel must identify the filename plus page/row/question number when visible.
@@ -829,7 +889,7 @@ Rules:
 11. questionImageSource must be the exact attached image filename, embedded-image filename, or PDF filename plus page number only when the answer depends on genuinely non-text visual information such as a circuit, graph, geometry figure, map, labelled scientific diagram, or picture. A matrix, determinant, equation, formula, symbolic expression, normal text table, or mathematical notation is NOT a question image when it can be transcribed into the question/options; for those, use an empty string.
 12. questionImageBox must be null when no genuine visual is required. When one is required, inspect at high detail and return the bounding box of the COMPLETE visual as x, y, width, and height normalized from 0 to 1000. Include every connected line, arrow, endpoint, dot, label, legend, axis, scale, caption and boundary belonging to that visual. Exclude page margins, headings, question text, options, answers and neighbouring questions. Check all four edges before returning; never return a partial visual or the whole page.
 13. For every mathematical question, compare the final question and each option character-by-character with the source before returning it. Never simplify an expression or substitute variables, digits, matrix values, operators, signs, brackets, powers or subscripts based on what seems likely.
-14. explanation may be empty. topic and subtopic may be empty.
+14. explanation, topic, subtopic, questionSubType and tags may be empty. Use a supported questionSubType only when clear from the source.
 
 Attached source names: ${fileNames.join(', ')}`;
 }

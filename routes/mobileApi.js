@@ -13,6 +13,7 @@ const { SUPPORTED_EXTENSIONS, extensionOf, extractQuestionFiles, normalizeQuesti
 const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
 const { organizationIdForWrite, organizationScope, resolveUserOrganization } = require('../services/organizationService');
 const { parseDateOnly, validateDateRange } = require('../utils/validation');
+const { questionInputFromBody } = require('../services/questionService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -76,6 +77,10 @@ const requireMobileUser = async (req, res, next) => {
     const user = await User.findById(payload.sub);
     if (!user || !user.isActive) return res.status(401).json({ error: 'Account is unavailable.' });
     req.mobileUser = user;
+    req.organization = await resolveUserOrganization(user);
+    if (req.organization.status !== 'active' && !(user.role === 'admin' && user.isSuperAdmin)) {
+      return res.status(403).json({ error: `Your organization is ${req.organization.status}.` });
+    }
     return next();
   } catch (error) {
     return res.status(401).json({ error: 'Your session has expired. Please login again.' });
@@ -325,13 +330,16 @@ const questionForMobile = (question, options) => ({
   subject: question.subject,
   topic: question.topic || null,
   subtopic: question.subtopic || null,
+  questionType: question.questionType || 'SINGLE_CORRECT',
+  questionSubType: question.questionSubType || null,
+  tags: question.tags || [],
   marks: question.marks,
-  options: options || [
+  options: (options || [
     { key: 'A', value: question.optionA, image: question.optionAImage || null },
     { key: 'B', value: question.optionB, image: question.optionBImage || null },
     { key: 'C', value: question.optionC, image: question.optionCImage || null },
     { key: 'D', value: question.optionD, image: question.optionDImage || null },
-  ],
+  ]).filter(option => option.value !== null && option.value !== undefined && option.value !== ''),
 });
 
 router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole('student'), async (req, res) => {
@@ -948,8 +956,9 @@ router.get('/admin/questions/template', requireMobileUser, requireRole('admin'),
 });
 
 router.get('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const query = { isActive: true };
-  ['subject', 'topic', 'subtopic', 'difficulty'].forEach((key) => { if (req.query[key]) query[key] = req.query[key]; });
+  const query = { isActive: true, ...organizationScope(req.organization) };
+  ['subject', 'topic', 'subtopic', 'difficulty', 'questionType', 'questionSubType'].forEach((key) => { if (req.query[key]) query[key] = req.query[key]; });
+  if (req.query.tag) query.tags = req.query.tag;
   const page = Math.max(Number(req.query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
   const [questions, total] = await Promise.all([
@@ -967,24 +976,35 @@ router.get('/admin/questions/:questionId', requireMobileUser, requireRole('admin
 
 router.post('/admin/questions', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
-    const { question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic, subtopic, difficulty = 'Medium', marks = 1, explanation } = req.body;
-    if (![question, optionA, optionB, optionC, optionD, correctAnswer, subject].every((value) => String(value || '').trim())) return res.status(400).json({ error: 'Question, options, answer and subject are required.' });
-    const created = await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic: topic || null, subtopic: subtopic || null, difficulty, marks: Number(marks) || 1, explanation: explanation || null, createdBy: req.mobileUser._id });
+    const input = questionInputFromBody(req.body);
+    const created = await Question.create({ ...input, organization:organizationIdForWrite(req), createdBy: req.mobileUser._id });
     return res.status(201).json({ question: created });
   } catch (error) {
     console.error('Mobile create question error:', error);
-    return res.status(500).json({ error: 'Unable to create question.' });
+    return res.status(400).json({ error: error.message || 'Unable to create question.' });
   }
 });
 
 router.patch('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const allowed = ['question', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'subject', 'topic', 'subtopic', 'difficulty', 'marks', 'explanation'];
-  const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
-  if (update.marks !== undefined) update.marks = Number(update.marks) || 1;
-  if (update.correctAnswer && !['A', 'B', 'C', 'D'].includes(update.correctAnswer)) return res.status(400).json({ error: 'Correct answer must be A, B, C or D.' });
-  const question = await Question.findOneAndUpdate({ _id: req.params.questionId, isActive: true }, update, { new: true });
-  if (!question) return res.status(404).json({ error: 'Question not found.' });
-  return res.json({ question });
+  try {
+    const existing = await Question.findOne({ _id:req.params.questionId, isActive:true, ...organizationScope(req.organization) });
+    if (!existing) return res.status(404).json({ error: 'Question not found.' });
+    const current = existing.toObject();
+    const numerical = current.numericalAnswer || {};
+    const input = questionInputFromBody({
+      ...current,
+      numericalValue:numerical.value,
+      numericalMin:numerical.min,
+      numericalMax:numerical.max,
+      numericalTolerance:numerical.tolerance,
+      ...req.body,
+    });
+    Object.assign(existing, input);
+    await existing.save();
+    return res.json({ question:existing });
+  } catch (error) {
+    return res.status(400).json({ error:error.message });
+  }
 });
 
 router.post('/admin/questions/bulk-import', requireMobileUser, requireRole('admin'), async (req, res) => {
@@ -997,13 +1017,24 @@ router.post('/admin/questions/bulk-import', requireMobileUser, requireRole('admi
     let skipped = 0;
     for (const row of rows) {
       try {
-        const question = row.question || row.Question;
-        const optionA = row.optionA || row['Option A'];
-        const optionB = row.optionB || row['Option B'];
-        const optionC = row.optionC || row['Option C'];
-        const optionD = row.optionD || row['Option D'];
-        if (![question, optionA, optionB, optionC, optionD].every(Boolean)) { skipped += 1; continue; }
-        await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer: String(row.correctAnswer || row['Correct Answer'] || 'A').toUpperCase(), subject: row.subject || row.Subject || 'Physics', topic: row.topic || row.Topic || null, subtopic: row.subtopic || row.Subtopic || null, difficulty: row.difficulty || row.Difficulty || 'Medium', marks: Number(row.marks || row.Marks || 1), explanation: row.explanation || row.Explanation || null, createdBy: req.mobileUser._id });
+        const input = questionInputFromBody({
+          ...row,
+          question:row.question||row.Question,
+          optionA:row.optionA||row['Option A'], optionB:row.optionB||row['Option B'],
+          optionC:row.optionC||row['Option C'], optionD:row.optionD||row['Option D'],
+          correctAnswer:row.correctAnswer||row['Correct Answer']||'A',
+          correctAnswers:row.correctAnswers||row['Correct Answers'],
+          questionType:row.questionType||row['Question Type']||'SINGLE_CORRECT',
+          questionSubType:row.questionSubType||row['Question Sub-Type'],
+          numericalValue:row.numericalValue||row['Numerical Value'],
+          numericalMin:row.numericalMin||row['Numerical Min'],
+          numericalMax:row.numericalMax||row['Numerical Max'],
+          numericalTolerance:row.numericalTolerance||row['Numerical Tolerance'],
+          tags:row.tags||row.Tags,
+          subject:row.subject||row.Subject||'Physics',
+          difficulty:row.difficulty||row.Difficulty||'Medium',
+        });
+        await Question.create({ ...input, organization:organizationIdForWrite(req), createdBy:req.mobileUser._id });
         created += 1;
       } catch { skipped += 1; }
     }
@@ -1025,7 +1056,7 @@ router.post('/admin/smart-scanner/scan', requireMobileUser, requireRole('admin')
     const defaults = { subject: String(req.body.subject || 'Physics').trim(), topic: String(req.body.topic || '').trim(), subtopic: String(req.body.subtopic || '').trim(), difficulty: ['Easy', 'Medium', 'Hard'].includes(req.body.difficulty) ? req.body.difficulty : 'Medium', marks: Math.max(0.25, Number(req.body.marks) || 1) };
     draft = await QuestionImport.create({ createdBy: req.mobileUser._id, sourceFiles: files.map((file) => ({ name: file.name, mimeType: file.mimetype, size: file.size })), defaults, status: 'scanning' });
     const extracted = await extractQuestionFiles(files, defaults, req.mobileUser._id.toString());
-    if (!extracted.questions.length) throw new Error('No MCQ questions were detected. Ensure A/B/C/D options are visible.');
+    if (!extracted.questions.length) throw new Error('No supported exam questions were detected. Review source quality and answer formatting.');
     const visuals = await preserveQuestionVisuals(files, extracted.questions, draft._id);
     draft.questions = visuals.questions.map((question) => ({ ...question, isSelected: true }));
     draft.warnings = [...new Set([...(extracted.warnings || []), ...(visuals.warnings || [])])];
@@ -1054,9 +1085,17 @@ router.post('/admin/smart-scanner/:draftId/commit', requireMobileUser, requireRo
     const edited = Array.isArray(req.body.questions) ? req.body.questions : draft.questions;
     const selected = edited.filter((question) => question.isSelected !== false).map((question) => normalizeQuestion(question, draft.defaults));
     if (!selected.length) return res.status(400).json({ error: 'Select at least one scanned question.' });
-    const invalid = selected.find((question) => !question.question || !question.optionA || !question.optionB || !question.optionC || !question.optionD || !['A', 'B', 'C', 'D'].includes(question.correctAnswer));
-    if (invalid) return res.status(400).json({ error: 'Complete the question text, all options, and correct answer before saving.' });
-    const questions = await Question.insertMany(selected.map((question) => ({ ...question, createdBy: req.mobileUser._id, isActive: true })));
+    const prepared = selected.map(question => ({
+      ...question,
+      ...questionInputFromBody({
+        ...question,
+        numericalValue:question.numericalAnswer?.value,
+        numericalMin:question.numericalAnswer?.min,
+        numericalMax:question.numericalAnswer?.max,
+        numericalTolerance:question.numericalAnswer?.tolerance,
+      }, draft.defaults),
+    }));
+    const questions = await Question.insertMany(prepared.map((question) => ({ ...question, organization:organizationIdForWrite(req), createdBy: req.mobileUser._id, isActive: true })));
     draft.questions = edited;
     draft.status = 'imported';
     draft.importedQuestionIds = questions.map((question) => question._id);

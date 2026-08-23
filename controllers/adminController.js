@@ -7,6 +7,12 @@ const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime')
 const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
 const { organizationIdForWrite, organizationScope } = require('../services/organizationService');
 const { dateInputValue, parseDateOnly, validateDateRange } = require('../utils/validation');
+const {
+  QUESTION_SUB_TYPES,
+  QUESTION_TYPES,
+  answerForDisplay,
+  questionInputFromBody,
+} = require('../services/questionService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -452,11 +458,27 @@ exports.getSubtopicsForTopic = async (req, res) => {
 // ── QUESTIONS ─────────────────────────────────────────────────────────────────
 exports.getQuestions = async (req, res) => {
   try {
-    const { subject, topic, subtopic, difficulty, course, sort='subject', page=1 } = req.query;
+    const {
+      subject, topic, subtopic, difficulty, course, questionType,
+      questionSubType, tag, search, questionId, sort='subject', page=1,
+    } = req.query;
     const limit=25, skip=(page-1)*limit;
-    const q = { isActive:true };
+    const q = { isActive:true, ...organizationScope(req.organization) };
     if (subject)   q.subject   = hierarchyValuePattern(subject);
     if (difficulty) q.difficulty = difficulty;
+    if (course) q.course = course;
+    if (QUESTION_TYPES.includes(questionType)) q.questionType = questionType;
+    if (QUESTION_SUB_TYPES.includes(questionSubType)) q.questionSubType = questionSubType;
+    if (tag) q.tags = hierarchyValuePattern(tag);
+    if (questionId && /^[a-f\d]{24}$/i.test(questionId)) q._id = questionId;
+    if (search) {
+      const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      q.$or = [
+        { question:new RegExp(escaped, 'i') },
+        { explanation:new RegExp(escaped, 'i') },
+        { tags:new RegExp(escaped, 'i') },
+      ];
+    }
     const sortMap = {
       difficulty: { difficulty:1, subject:1 },
       newest:     { createdAt:-1 },
@@ -488,23 +510,24 @@ exports.getQuestions = async (req, res) => {
     res.render('admin/questions', {
       title:'Question Bank', questions, total,
       currentPage:parseInt(page), totalPages:Math.ceil(total/limit),
-      filters:{ subject, topic, subtopic, difficulty, course, sort },
       COURSES, SUBJECTS:ALL_SUBJECTS, topicRows, subtopicList,
+      QUESTION_TYPES, QUESTION_SUB_TYPES, answerForDisplay,
+      filters:{ subject, topic, subtopic, difficulty, course, questionType, questionSubType, tag, search, questionId, sort },
     });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.createQuestion = async (req, res) => {
   try {
-    const { question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic, subtopic, difficulty, marks, explanation, questionImageUrl } = req.body;
-    let questionImage = questionImageUrl || null;
+    const input = questionInputFromBody(req.body);
+    let questionImage = req.body.questionImageUrl || null;
     if (req.files?.questionImage) {
       const { processQuestionImage } = require('../utils/imageUpload');
       questionImage = await processQuestionImage(req.files.questionImage, `q_${Date.now()}`);
     }
-    await Question.create({ question, optionA, optionB, optionC, optionD, correctAnswer, subject, topic:topic||null, subtopic:subtopic||null, difficulty, marks:parseFloat(marks)||1, explanation:explanation||null, questionImage, createdBy:req.session.user.id });
+    await Question.create({ ...input, organization:organizationIdForWrite(req), questionImage, createdBy:req.session.user.id });
     req.flash('success','Question added.');
-    res.redirect(`/admin/questions?subject=${encodeURIComponent(subject||'')}&topic=${encodeURIComponent(topic||'')}`);
+    res.redirect(`/admin/questions?subject=${encodeURIComponent(input.subject||'')}&topic=${encodeURIComponent(input.topic||'')}`);
   } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/questions'); }
 };
 
@@ -516,13 +539,27 @@ exports.bulkImportQuestions = async (req, res) => {
     let created=0;
     for (const row of rows) {
       try {
+        const input = questionInputFromBody({
+          ...row,
+          question:row.question||row.Question,
+          optionA:row.optionA||row['Option A'], optionB:row.optionB||row['Option B'],
+          optionC:row.optionC||row['Option C'], optionD:row.optionD||row['Option D'],
+          correctAnswer:row.correctAnswer||row['Correct Answer']||'A',
+          correctAnswers:row.correctAnswers||row['Correct Answers'],
+          questionType:row.questionType||row['Question Type']||'SINGLE_CORRECT',
+          questionSubType:row.questionSubType||row['Question Sub-Type'],
+          numericalValue:row.numericalValue||row['Numerical Value'],
+          numericalMin:row.numericalMin||row['Numerical Min'],
+          numericalMax:row.numericalMax||row['Numerical Max'],
+          numericalTolerance:row.numericalTolerance||row['Numerical Tolerance'],
+          tags:row.tags||row.Tags,
+          subject:row.subject||row.Subject||'Physics',
+          difficulty:row.difficulty||row.Difficulty||'Medium',
+        });
         await Question.create({
-          question:row.question||row.Question, optionA:row.optionA||row['Option A'],
-          optionB:row.optionB||row['Option B'], optionC:row.optionC||row['Option C'], optionD:row.optionD||row['Option D'],
-          correctAnswer:(row.correctAnswer||'A').toUpperCase(), subject:row.subject||'Physics',
-          difficulty:row.difficulty||'Medium', marks:parseFloat(row.marks||1),
-          topic:row.topic||null, subtopic:row.subtopic||null, explanation:row.explanation||null,
+          ...input,
           questionImage: row.questionImageUrl || row.questionImage || row['Image URL'] || row['Question Image URL'] || null,
+          organization:organizationIdForWrite(req),
           createdBy:req.session.user.id,
         });
         created++;
@@ -916,13 +953,14 @@ exports.deleteTest = async (req, res) => {
 // ── QUESTION TEMPLATE DOWNLOAD ────────────────────────────────────────────
 exports.downloadQuestionTemplate = (req, res) => {
   const rows = [
-    { question:'What is the SI unit of force?', optionA:'Joule', optionB:'Newton', optionC:'Watt', optionD:'Pascal', correctAnswer:'B', subject:'Physics', topic:'Laws of Motion', subtopic:'', difficulty:'Easy', marks:1, explanation:'Force = mass × acceleration. SI unit is Newton (N).', questionImageUrl:'' },
-    { question:'pH of pure water at 25°C?', optionA:'0', optionB:'7', optionC:'14', optionD:'1', correctAnswer:'B', subject:'Chemistry', topic:'Acids and Bases', subtopic:'', difficulty:'Easy', marks:1, explanation:'Pure water is neutral with pH = 7.', questionImageUrl:'' },
-    { question:'Derivative of sin(x) is?', optionA:'-cos(x)', optionB:'cos(x)', optionC:'tan(x)', optionD:'-sin(x)', correctAnswer:'B', subject:'Mathematics', topic:'Calculus', subtopic:'', difficulty:'Easy', marks:1, explanation:'d/dx sin(x) = cos(x)', questionImageUrl:'' },
+    { question:'What is the SI unit of force?', questionType:'SINGLE_CORRECT', questionSubType:'conceptual', optionA:'Joule', optionB:'Newton', optionC:'Watt', optionD:'Pascal', correctAnswer:'B', correctAnswers:'', numericalValue:'', numericalMin:'', numericalMax:'', numericalTolerance:'', tags:'Physics,Revision', subject:'Physics', topic:'Laws of Motion', subtopic:'', difficulty:'Easy', marks:1, explanation:'Force = mass × acceleration. SI unit is Newton (N).', questionImageUrl:'' },
+    { question:'Select all prime numbers.', questionType:'MULTIPLE_CORRECT', questionSubType:'conceptual', optionA:'2', optionB:'3', optionC:'4', optionD:'6', correctAnswer:'', correctAnswers:'A,B', numericalValue:'', numericalMin:'', numericalMax:'', numericalTolerance:'', tags:'Practice', subject:'Mathematics', topic:'Numbers', subtopic:'', difficulty:'Easy', marks:2, explanation:'2 and 3 are prime.', questionImageUrl:'' },
+    { question:'Enter the value of 2 + 2.', questionType:'NUMERICAL', questionSubType:'numerical', optionA:'', optionB:'', optionC:'', optionD:'', correctAnswer:'', correctAnswers:'', numericalValue:4, numericalMin:'', numericalMax:'', numericalTolerance:0, tags:'Practice', subject:'Mathematics', topic:'Arithmetic', subtopic:'', difficulty:'Easy', marks:1, explanation:'2 + 2 = 4.', questionImageUrl:'' },
   ];
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.json_to_sheet(rows);
-  ws['!cols'] = [{wch:60},{wch:20},{wch:20},{wch:20},{wch:20},{wch:15},{wch:15},{wch:20},{wch:15},{wch:12},{wch:6},{wch:60},{wch:40}];
+  ws['!cols'] = Array(Object.keys(rows[0]).length).fill({wch:18});
+  ws['!cols'][0] = {wch:60};
   xlsx.utils.book_append_sheet(wb, ws, 'Questions');
   const buf = xlsx.write(wb, { type:'buffer', bookType:'xlsx' });
   res.setHeader('Content-Disposition','attachment; filename=question_import_template.xlsx');
