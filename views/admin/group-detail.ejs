@@ -11,7 +11,7 @@
           <a href="/admin/groups" class="text-slate-400 hover:text-slate-600">&larr;</a>
           <div>
             <h1 class="text-lg font-bold text-slate-900"><%= group.name %></h1>
-            <p class="text-xs text-slate-400"><%= members.length %> students &middot; AY <%= group.academicYear %></p>
+            <p class="text-xs text-slate-400"><%= members.length %> students &middot; AY <%= group.academicYear %><% if (group.startDate || group.endDate) { %> &middot; <%= group.startDate ? new Date(group.startDate).toISOString().slice(0,10) : 'Open' %> → <%= group.endDate ? new Date(group.endDate).toISOString().slice(0,10) : 'Open' %><% } %></p>
           </div>
         </div>
         <div class="flex items-center gap-2">

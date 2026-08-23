@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
+    "test": "node --test test/*.test.js",
+    "verify": "node scripts/verify.js",
     "seed": "node seeders/seed.js",
     "seed:fresh": "node seeders/seed.js"
   },

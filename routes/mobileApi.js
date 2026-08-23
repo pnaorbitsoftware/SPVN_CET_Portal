@@ -11,6 +11,8 @@ const examController = require('../controllers/examController');
 const { buildQuestionOrder, buildSectionState, isCetSectionTest } = require('../utils/cetExam');
 const { SUPPORTED_EXTENSIONS, extensionOf, extractQuestionFiles, normalizeQuestion, preserveQuestionVisuals, removeQuestionImportAssets } = require('../utils/questionImporter');
 const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
+const { organizationIdForWrite, organizationScope, resolveUserOrganization } = require('../services/organizationService');
+const { parseDateOnly, validateDateRange } = require('../utils/validation');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -769,7 +771,12 @@ router.post('/admin/groups', requireMobileUser, requireRole('admin'), async (req
   try {
     const { name, description, academicYear, course } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Batch name is required.' });
-    const group = await Group.create({ name: name.trim(), description: description?.trim() || null, academicYear: academicYear?.trim() || process.env.ACADEMIC_YEAR, course: course || null });
+    const organization = await resolveUserOrganization(req.mobileUser);
+    req.organization = organization;
+    const startDate = parseDateOnly(req.body.startDate, 'Batch start date');
+    const endDate = parseDateOnly(req.body.endDate, 'Batch end date');
+    validateDateRange(startDate, endDate, { start:'Batch start date', end:'Batch end date' });
+    const group = await Group.create({ organization:organizationIdForWrite(req), name: name.trim(), description: description?.trim() || null, academicYear: academicYear?.trim() || process.env.ACADEMIC_YEAR, course: course || null, startDate, endDate });
     return res.status(201).json({ group });
   } catch (error) {
     return res.status(409).json({ error: 'Unable to create batch. Its name may already exist.' });
@@ -802,12 +809,17 @@ router.get('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), as
 
 router.patch('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
-    const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => ['name', 'description', 'academicYear', 'course'].includes(key)));
+    const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => ['name', 'description', 'academicYear', 'course', 'startDate', 'endDate'].includes(key)));
     if (update.name !== undefined && !String(update.name).trim()) return res.status(400).json({ error: 'Batch name is required.' });
     if (update.name) update.name = String(update.name).trim();
     if (update.description !== undefined) update.description = String(update.description).trim() || null;
     if (update.course !== undefined && ![...COURSES, null, ''].includes(update.course)) return res.status(400).json({ error: 'Invalid course.' });
     if (update.course === '') update.course = null;
+    if (Object.prototype.hasOwnProperty.call(update, 'startDate')) update.startDate = parseDateOnly(update.startDate, 'Batch start date');
+    if (Object.prototype.hasOwnProperty.call(update, 'endDate')) update.endDate = parseDateOnly(update.endDate, 'Batch end date');
+    const current = await Group.findById(req.params.groupId).select('startDate endDate');
+    if (!current) return res.status(404).json({ error: 'Batch not found.' });
+    validateDateRange(update.startDate ?? current.startDate, update.endDate ?? current.endDate, { start:'Batch start date', end:'Batch end date' });
     const group = await Group.findOneAndUpdate({ _id: req.params.groupId, isActive: { $ne: false } }, update, { new: true, runValidators: true });
     if (!group) return res.status(404).json({ error: 'Batch not found.' });
     return res.json({ group });

@@ -61,7 +61,7 @@
             </div>
             <div class="flex items-center gap-1.5">
               <span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">AY <%= g.academicYear %></span>
-              <button onclick="openEditGroup('<%= g.id %>', `<%= g.name.replace(/`/g, '\\`') %>`, `<%= (g.description||'').replace(/`/g, '\\`') %>`, '<%= g.academicYear %>')"
+              <button onclick="openEditGroup('<%= g.id %>', `<%= g.name.replace(/`/g, '\\`') %>`, `<%= (g.description||'').replace(/`/g, '\\`') %>`, '<%= g.academicYear %>', '<%= g.course || '' %>', '<%= dateInputValue(g.startDate) %>', '<%= dateInputValue(g.endDate) %>')"
                 class="w-7 h-7 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors shrink-0" title="Edit batch">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
               </button>
@@ -77,6 +77,7 @@
             <h3 class="font-bold text-slate-900 mb-1"><%= g.name %></h3>
             <% if (g.course) { %><span class="inline-flex text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full mb-2"><%= g.course %></span><% } %>
             <p class="text-xs text-slate-400 mb-4 leading-relaxed"><%= g.description || 'No description' %></p>
+            <% if (g.startDate || g.endDate) { %><p class="text-[11px] text-slate-500 mb-3"><%= g.startDate ? dateInputValue(g.startDate) : 'Open' %> → <%= g.endDate ? dateInputValue(g.endDate) : 'Open' %></p><% } %>
             <div class="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-50">
               <span class="flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -372,6 +373,17 @@ document.addEventListener('DOMContentLoaded', () => {
         <input type="text" name="academicYear" value="<%= academicYear %>"
           class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"/>
       </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Course
+          <select name="course" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-3 text-sm bg-white"><option value="">Not set</option><% COURSES.forEach(course => { %><option value="<%= course %>"><%= course %></option><% }) %></select>
+        </label>
+        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Start Date
+          <input type="date" name="startDate" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-3 text-sm"/>
+        </label>
+        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">End Date
+          <input type="date" name="endDate" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-3 text-sm"/>
+        </label>
+      </div>
 
       <!-- ── Divider ── -->
       <div class="relative my-2">
@@ -503,6 +515,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Academic Year</label>
         <input type="text" name="academicYear" id="editGroupAY" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/>
       </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Course<select name="course" id="editGroupCourse" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white"><option value="">Not set</option><% COURSES.forEach(course => { %><option value="<%= course %>"><%= course %></option><% }) %></select></label>
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start<input type="date" name="startDate" id="editGroupStartDate" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"/></label>
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">End<input type="date" name="endDate" id="editGroupEndDate" class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"/></label>
+      </div>
       <div class="flex gap-3 pt-1">
         <button type="submit" class="flex-1 bg-navy-950 text-white font-semibold py-3 rounded-xl hover:bg-navy-900 transition-colors">Save Changes</button>
         <button type="button" onclick="document.getElementById('editGroupModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
@@ -546,11 +563,14 @@ function filterBatches() {
   document.getElementById('visibleBatchCount').textContent = visible;
   document.getElementById('noBatchResults').classList.toggle('hidden', visible !== 0 || cards.length === 0);
 }
-function openEditGroup(id, name, description, academicYear) {
+function openEditGroup(id, name, description, academicYear, course, startDate, endDate) {
   document.getElementById('editGroupForm').action = '/admin/groups/' + id;
   document.getElementById('editGroupName').value = name;
   document.getElementById('editGroupDescription').value = description;
   document.getElementById('editGroupAY').value = academicYear;
+  document.getElementById('editGroupCourse').value = course || '';
+  document.getElementById('editGroupStartDate').value = startDate || '';
+  document.getElementById('editGroupEndDate').value = endDate || '';
   document.getElementById('editGroupModal').classList.remove('hidden');
 }
 function openDeleteGroup(id, name) {

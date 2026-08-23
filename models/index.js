@@ -9,8 +9,9 @@ const Notification    = require('./Notification');
 const Topic           = require('./Topic');
 const StudentDocument = require('./StudentDocument');
 const QuestionImport  = require('./QuestionImport');
+const Organization    = require('./Organization');
 
 module.exports = {
   User, Group, GroupMember, Question, Test,
-  Result, Notification, Topic, StudentDocument, QuestionImport,
+  Result, Notification, Topic, StudentDocument, QuestionImport, Organization,
 };

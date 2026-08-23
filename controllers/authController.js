@@ -1,17 +1,45 @@
 // controllers/authController.js
 const { User } = require('../models');
+const { resolveUserOrganization } = require('../services/organizationService');
+
+async function organizationLoginAllowed(user) {
+  const organization = await resolveUserOrganization(user);
+  return {
+    organization,
+    allowed: organization.status === 'active' || Boolean(user.isSuperAdmin),
+  };
+}
+
+function sessionUser(user, organization) {
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    rollNo: user.rollNo,
+    role: user.role,
+    isFirstLogin: user.isFirstLogin,
+    profilePhoto: user.profilePhoto,
+    organizationId: organization?._id?.toString() || null,
+    isSuperAdmin: Boolean(user.isSuperAdmin),
+  };
+}
 
 exports.getAdminLogin = (req, res) =>
   res.render('auth/admin-login', { title: 'Admin Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal' });
 
 exports.postAdminLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email = '', password = '' } = req.body;
     const user = await User.findOne({ email: email.toLowerCase().trim(), role: 'admin' });
     if (!user || !user.isActive) { req.flash('error', 'Invalid admin credentials.'); return res.redirect('/auth/admin'); }
     const valid = await user.verifyPassword(password);
     if (!valid) { req.flash('error', 'Incorrect password.'); return res.redirect('/auth/admin'); }
-    req.session.user = { id: user._id.toString(), name: user.name, email: user.email, rollNo: user.rollNo, role: user.role, isFirstLogin: user.isFirstLogin, profilePhoto: user.profilePhoto };
+    const { organization, allowed } = await organizationLoginAllowed(user);
+    if (!allowed) {
+      req.flash('error', `Your organization is ${organization.status}. Contact the platform administrator.`);
+      return res.redirect('/auth/admin');
+    }
+    req.session.user = sessionUser(user, organization);
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
     if (user.isFirstLogin) { req.flash('warning', 'Please change your default password.'); return res.redirect('/auth/change-password'); }
     req.flash('success', `Welcome, ${user.name}!`);
@@ -24,12 +52,17 @@ exports.getLogin = (req, res) =>
 
 exports.postLogin = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier = '', password = '' } = req.body;
     const user = await User.findOne({ rollNo: identifier.trim(), role: 'student' });
     if (!user || !user.isActive) { req.flash('error', 'Invalid credentials or account inactive.'); return res.redirect('/auth/login'); }
     const valid = await user.verifyPassword(password);
     if (!valid) { req.flash('error', 'Incorrect password.'); return res.redirect('/auth/login'); }
-    req.session.user = { id: user._id.toString(), name: user.name, email: user.email, rollNo: user.rollNo, role: user.role, isFirstLogin: user.isFirstLogin, profilePhoto: user.profilePhoto };
+    const { organization, allowed } = await organizationLoginAllowed(user);
+    if (!allowed) {
+      req.flash('error', `Your organization is ${organization.status}. Contact your administrator.`);
+      return res.redirect('/auth/login');
+    }
+    req.session.user = sessionUser(user, organization);
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
     if (user.isFirstLogin) { req.flash('warning', 'Please change your default password.'); return res.redirect('/auth/change-password'); }
     req.flash('success', `Welcome back, ${user.name}!`);

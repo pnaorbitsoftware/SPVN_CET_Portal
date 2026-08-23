@@ -2,11 +2,18 @@ const express        = require('express');
 const router         = express.Router();
 const c              = require('../controllers/adminController');
 const questionImport = require('../controllers/questionImportController');
+const organization    = require('../controllers/organizationController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
 
 router.get('/dashboard', ...guard, c.getDashboard);
+
+// Organization management and defaults
+router.get('/organizations',                 ...guard, organization.getOrganizations);
+router.post('/organizations',                ...guard, organization.createOrganization);
+router.post('/organizations/:id',            ...guard, organization.updateOrganization);
+router.post('/organizations/:id/status',     ...guard, organization.updateOrganizationStatus);
 
 // Students
 router.get('/students',              ...guard, c.getStudents);

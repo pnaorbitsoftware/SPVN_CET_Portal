@@ -5,6 +5,8 @@ const fs   = require('fs');
 const path = require('path');
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
 const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
+const { organizationIdForWrite, organizationScope } = require('../services/organizationService');
+const { dateInputValue, parseDateOnly, validateDateRange } = require('../utils/validation');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -122,13 +124,15 @@ function safeFilenamePart(value, fallback) {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
+    const userScope = organizationScope(req.organization);
+    const groupScope = organizationScope(req.organization);
     const [studentCount, testCount, groupCount, questionCount, recentResults, recentUsers] = await Promise.all([
-      User.countDocuments({ role:'student', isActive:true }),
+      User.countDocuments({ role:'student', isActive:true, ...userScope }),
       Test.countDocuments(),
-      Group.countDocuments({ isActive:true }),
+      Group.countDocuments({ isActive:true, ...groupScope }),
       Question.countDocuments({ isActive:true }),
       Result.find().sort({ createdAt:-1 }).limit(8).populate('studentId','name rollNo').populate('testId','title'),
-      User.find({ role:'student' }).sort({ createdAt:-1 }).limit(5),
+      User.find({ role:'student', ...userScope }).sort({ createdAt:-1 }).limit(5),
     ]);
     res.render('admin/dashboard', { title:'Admin Dashboard', stats:{ studentCount, testCount, groupCount, questionCount }, recentResults, recentUsers, COURSES });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/auth/login'); }
@@ -137,9 +141,10 @@ exports.getDashboard = async (req, res) => {
 // ── STUDENT MANAGEMENT ────────────────────────────────────────────────────────
 exports.getStudents = async (req, res) => {
   try {
+    const scope = organizationScope(req.organization);
     const [students, groups] = await Promise.all([
-      User.find({ role:'student' }).sort({ rollNo:1 }),
-      Group.find({ isActive:true }),
+      User.find({ role:'student', ...scope }).sort({ rollNo:1 }),
+      Group.find({ isActive:true, ...scope }),
     ]);
     res.render('admin/students', { title:'Manage Students', students, groups });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
@@ -152,7 +157,7 @@ exports.createStudent = async (req, res) => {
     const exists = await User.findOne({ rollNo });
     if (exists) { req.flash('error',`Roll No ${rollNo} already exists.`); return res.redirect(req.get('Referer')||'/admin/students'); }
     const pwd = generatePassword(rollNo);
-    const student = await User.create({ name, rollNo, parentContact:parentContact||null, role:'student', password:pwd, isFirstLogin:true });
+    const student = await User.create({ name, rollNo, parentContact:parentContact||null, role:'student', password:pwd, isFirstLogin:true, organization:organizationIdForWrite(req) });
     if (groupId) await GroupMember.create({ groupId, userId:student._id, role:'student' });
     await Notification.create({ userId:student._id, title:'Account Created', message:`Welcome ${name}! Roll: ${rollNo}, Password: ${pwd}`, type:'info' });
     req.flash('success',`Student created. Password: ${pwd}`);
@@ -185,7 +190,7 @@ exports.bulkImportStudents = async (req, res) => {
           existing++;
         } else {
           const pwd = generatePassword(rollNo);
-          student = await User.create({ name, rollNo, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pwd, isFirstLogin:true });
+          student = await User.create({ name, rollNo, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pwd, isFirstLogin:true, organization:organizationIdForWrite(req) });
           created++;
         }
         if (group) {
@@ -210,10 +215,11 @@ exports.bulkImportStudents = async (req, res) => {
 // ── GROUPS ────────────────────────────────────────────────────────────────────
 exports.getGroups = async (req, res) => {
   try {
+    const scope = organizationScope(req.organization);
     const [groups, students, memberships] = await Promise.all([
-      Group.find({ isActive:{ $ne:false } }).sort({ createdAt:-1 }),
-      User.find({ role:'student', isActive:true }).sort({ rollNo:1 }),
-      GroupMember.find().populate('userId','name rollNo').populate('groupId','name'),
+      Group.find({ isActive:{ $ne:false }, ...scope }).sort({ createdAt:-1 }),
+      User.find({ role:'student', isActive:true, ...scope }).sort({ rollNo:1 }),
+      GroupMember.find().populate({ path:'userId', match:{ role:'student', ...scope }, select:'name rollNo' }).populate({ path:'groupId', match:{ ...scope }, select:'name' }),
     ]);
     // Attach members array to each group
     const memberMap = {};
@@ -228,14 +234,17 @@ exports.getGroups = async (req, res) => {
       id: g._id.toString(),
       members: memberMap[g._id.toString()] || [],
     }));
-    res.render('admin/groups', { title:'Batches', groups: groupsWithMembers, students, COURSES });
+    res.render('admin/groups', { title:'Batches', groups: groupsWithMembers, students, COURSES, dateInputValue });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.createGroup = async (req, res) => {
   try {
     const { name, description, academicYear, course } = req.body;
-    const group = await Group.create({ name, description, academicYear:academicYear||process.env.ACADEMIC_YEAR, course:course||null });
+    const startDate = parseDateOnly(req.body.startDate, 'Batch start date');
+    const endDate = parseDateOnly(req.body.endDate, 'Batch end date');
+    validateDateRange(startDate, endDate, { start:'Batch start date', end:'Batch end date' });
+    const group = await Group.create({ organization:organizationIdForWrite(req), name, description, academicYear:academicYear||process.env.ACADEMIC_YEAR, course:course||null, startDate, endDate });
     let imported=0, skipped=0;
     if (req.files?.csvFile) {
       const wb   = xlsx.read(req.files.csvFile.data, { type:'buffer' });
@@ -248,7 +257,7 @@ exports.createGroup = async (req, res) => {
           const pw = generatePassword(rollNo);
           let student = await User.findOne({ rollNo });
           const isNew = !student;
-          if (!student) student = await User.create({ name:sName, rollNo, email:String(row['Email']||row.email||'').trim()||null, phone:String(row['Phone']||row.phone||'').trim()||null, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pw, isFirstLogin:true });
+          if (!student) student = await User.create({ name:sName, rollNo, email:String(row['Email']||row.email||'').trim()||null, phone:String(row['Phone']||row.phone||'').trim()||null, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pw, isFirstLogin:true, organization:organizationIdForWrite(req) });
           await GroupMember.findOneAndUpdate({ groupId:group._id, userId:student._id }, { role:'student' }, { upsert:true });
           if (isNew) imported++; else skipped++;
         } catch { skipped++; }
@@ -745,19 +754,28 @@ exports.deleteDocument = async (req, res) => {
 // ── GROUP DETAIL / EDIT / DELETE ──────────────────────────────────────────
 exports.getGroupDetail = async (req, res) => {
   try {
-    const group = await Group.findById(req.params.id);
+    const scope = organizationScope(req.organization);
+    const group = await Group.findOne({ _id:req.params.id, ...scope });
     if (!group) { req.flash('error','Batch not found.'); return res.redirect('/admin/groups'); }
     const memberships = await GroupMember.find({ groupId: group._id, role: 'student' }).populate('userId');
     const members = memberships.map(m => m.userId).filter(Boolean);
-    const allGroups = await Group.find({ isActive: true });
+    const allGroups = await Group.find({ isActive: true, ...scope });
     res.render('admin/group-detail', { title: group.name, group, members, allGroups });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/admin/groups'); }
 };
 
 exports.updateGroup = async (req, res) => {
   try {
-    const { name, description, academicYear } = req.body;
-    await Group.findByIdAndUpdate(req.params.id, { name, description: description || null, academicYear: academicYear || process.env.ACADEMIC_YEAR });
+    const { name, description, academicYear, course } = req.body;
+    const startDate = parseDateOnly(req.body.startDate, 'Batch start date');
+    const endDate = parseDateOnly(req.body.endDate, 'Batch end date');
+    validateDateRange(startDate, endDate, { start:'Batch start date', end:'Batch end date' });
+    const group = await Group.findOneAndUpdate(
+      { _id:req.params.id, ...organizationScope(req.organization) },
+      { name, description: description || null, academicYear: academicYear || process.env.ACADEMIC_YEAR, course:course||null, startDate, endDate },
+      { new:true, runValidators:true }
+    );
+    if (!group) throw new Error('Batch not found.');
     req.flash('success', 'Batch updated.');
     res.redirect('/admin/groups');
   } catch (e) { req.flash('error', 'Failed: ' + e.message); res.redirect('/admin/groups'); }

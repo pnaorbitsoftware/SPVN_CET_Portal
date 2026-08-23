@@ -1,11 +1,23 @@
 // middleware/auth.js
 // Authentication and role-based access control middleware
+const { User } = require('../models');
+const { resolveUserOrganization } = require('../services/organizationService');
+
+function organizationAllowsAccess(req) {
+  if (!req.organization || req.organization.status === 'active') return true;
+  return Boolean(req.session?.user?.role === 'admin' && req.session.user.isSuperAdmin);
+}
 
 /**
  * Checks if user is logged in
  */
 const isAuthenticated = (req, res, next) => {
   if (req.session && req.session.user) {
+    if (!organizationAllowsAccess(req)) {
+      req.flash('error', `Your organization is ${req.organization.status}. Contact the platform administrator.`);
+      req.session.user = null;
+      return res.redirect('/auth/login');
+    }
     return next();
   }
   req.flash('error', 'Please login to access this page.');
@@ -50,8 +62,50 @@ const requireRole = (roles) => {
       req.flash('error', 'Access denied. Insufficient permissions.');
       return res.redirect(`/${req.session.user.role}/dashboard`);
     }
+    if (!organizationAllowsAccess(req)) {
+      req.flash('error', `Your organization is ${req.organization.status}. Contact the platform administrator.`);
+      req.session.user = null;
+      return res.redirect('/auth/login');
+    }
     return next();
   };
+};
+
+/**
+ * Resolve the current organization after MongoDB boot and expose its branding.
+ * Legacy users without an organization are treated as members of the default
+ * SPVN organization, so existing sessions and documents continue to work.
+ */
+const attachOrganization = async (req, res, next) => {
+  try {
+    let user = null;
+    if (req.session?.user?.id) {
+      user = await User.findById(req.session.user.id)
+        .select('organization isSuperAdmin role isActive');
+      if (!user || !user.isActive) {
+        req.session.user = null;
+      } else {
+        req.session.user.organizationId = user.organization?.toString() || null;
+        req.session.user.isSuperAdmin = Boolean(user.isSuperAdmin);
+      }
+    }
+
+    const organization = await resolveUserOrganization(user);
+    req.organization = organization;
+    res.locals.organization = organization;
+    res.locals.organizationStatus = organization.status;
+    res.locals.collegeName = organization.organizationName || res.locals.collegeName;
+    res.locals.collegeShort = organization.settings?.branding?.shortName
+      || organization.organizationCode
+      || res.locals.collegeShort;
+    res.locals.academicYear = organization.settings?.academicDefaults?.academicYear
+      || res.locals.academicYear;
+    res.locals.collegeLogo = organization.logo || res.locals.collegeLogo;
+    res.locals.collegeAddress = organization.address || res.locals.collegeAddress;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 };
 
 /**
@@ -103,6 +157,7 @@ module.exports = {
   requireRole,
   requirePasswordChange,
   attachUser,
+  attachOrganization,
   errorHandler,
   notFound,
 };

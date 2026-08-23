@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema({
   rollNo:        { type: String, unique: true, sparse: true, trim: true },
   password:      { type: String, required: true },
   role:          { type: String, enum: ['admin', 'student'], default: 'student' },
+  organization:  { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
+  isSuperAdmin:  { type: Boolean, default: false },
   isFirstLogin:  { type: Boolean, default: true },
   isActive:      { type: Boolean, default: true },
   phone:         { type: String, default: null },

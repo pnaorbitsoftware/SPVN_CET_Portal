@@ -14,7 +14,7 @@ const { connect } = require('./config/database');
 const { APP_TIME_ZONE } = require('./utils/dateTime');
 require('./models'); // register all schemas
 
-const { attachUser, errorHandler, notFound } = require('./middleware/auth');
+const { attachUser, attachOrganization, errorHandler, notFound } = require('./middleware/auth');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -97,6 +97,7 @@ app.use(async (req, res, next) => {
   try { await boot(); next(); }
   catch (e) { res.status(500).send('Server init failed: ' + e.message); }
 });
+app.use(attachOrganization);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/auth',    require('./routes/auth'));
@@ -120,16 +121,37 @@ function boot() {
   bootPromise = (async () => {
     await connect();
 
-    // Auto-seed admin
+    // Backward-compatible default organization + auto-seed admin.
     try {
       const { User } = require('./models');
-      const exists = await User.findOne({ role: 'admin' });
-      if (!exists) {
+      const { ensureDefaultOrganization } = require('./services/organizationService');
+      const organization = await ensureDefaultOrganization();
+      let admin = await User.findOne({ role: 'admin' }).sort({ createdAt: 1 });
+      if (!admin) {
         const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@college.edu';
         const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1234';
         const adminName     = process.env.ADMIN_NAME     || 'Administrator';
-        await User.create({ name: adminName, email: adminEmail, password: adminPassword, role: 'admin', isActive: true, isFirstLogin: false });
+        admin = await User.create({
+          name: adminName,
+          email: adminEmail,
+          password: adminPassword,
+          role: 'admin',
+          organization: organization._id,
+          isSuperAdmin: true,
+          isActive: true,
+          isFirstLogin: false,
+        });
         console.log(`✅ Admin seeded → ${adminEmail}`);
+      } else {
+        const hasSuperAdmin = await User.exists({ role: 'admin', isSuperAdmin: true });
+        let changed = false;
+        if (!admin.organization) { admin.organization = organization._id; changed = true; }
+        if (!hasSuperAdmin) { admin.isSuperAdmin = true; changed = true; }
+        if (changed) await admin.save();
+      }
+      if (!organization.administrator && admin) {
+        organization.administrator = admin._id;
+        await organization.save();
       }
     } catch (e) { console.error('Admin seed error:', e.message); }
   })();
