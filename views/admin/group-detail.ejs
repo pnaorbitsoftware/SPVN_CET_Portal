@@ -15,6 +15,7 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <a href="/admin/reports?reportType=batch&amp;groupId=<%= group.id %>" class="text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors">Batch Report</a>
           <a href="/admin/groups/<%= group.id %>/credentials-pdf" class="text-xs font-semibold border border-slate-200 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">Credentials PDF</a>
           <button onclick="document.getElementById('addStudentModal').classList.remove('hidden')" class="text-xs font-semibold bg-navy-950 text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-colors">+ Add Student</button>
         </div>

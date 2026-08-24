@@ -6,6 +6,7 @@ const organization    = require('../controllers/organizationController');
 const questionPapers  = require('../controllers/questionPaperController');
 const autoPapers      = require('../controllers/autoPaperController');
 const examConfig      = require('../controllers/examConfigurationController');
+const reports         = require('../controllers/reportController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -108,6 +109,8 @@ router.post('/tests/:id/results/release', ...guard, c.releaseTestResults);
 // Results
 router.get('/results',        ...guard, c.getAllResults);
 router.get('/results/export', ...guard, c.exportResultsExcel);
+router.get('/reports',        ...guard, reports.getReports);
+router.get('/reports/export', ...guard, reports.exportReports);
 
 // Documents
 router.get('/documents',          ...guard, c.getDocuments);
