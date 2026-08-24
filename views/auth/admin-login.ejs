@@ -1,169 +1,76 @@
 <%- include('../partials/head') %>
-<div class="min-h-screen flex">
 
-  <!-- Right Panel — Login Form (first on mobile) -->
-  <div class="flex-1 flex items-center justify-center p-6 lg:p-12 order-2 lg:order-1"
-       style="background: #0f172a;">
-    <div class="w-full max-w-[400px]">
+<main class="admin-auth-shell">
+  <div class="admin-background-grid" aria-hidden="true"></div>
+  <div class="admin-background-glow admin-glow-one" aria-hidden="true"></div>
+  <div class="admin-background-glow admin-glow-two" aria-hidden="true"></div>
+  <div class="admin-watermark-wrap" aria-hidden="true">
+    <img src="/brand/spvn-logo.png" alt="" />
+  </div>
 
-      <!-- Logo -->
-      <div class="flex items-center gap-4 mb-10 justify-center lg:justify-start">
-        <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-slate-900"
-             style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-          <%= (collegeShort||'X').charAt(0) %>
-        </div>
-        <div>
-          <p class="text-white font-bold text-base"><%= collegeShort %></p>
-          <p class="text-slate-500 text-xs">Admin Control Panel</p>
+  <a class="admin-page-brand" href="/" aria-label="Return to SPVN home">
+    <span><img src="/brand/spvn-logo.png" alt="SPVN emblem" /></span>
+    <div><strong><%= collegeShort %></strong><small>Administration Portal</small></div>
+  </a>
+
+  <a class="admin-home-link" href="/">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 19-7-7 7-7M3 12h18"/></svg>
+    Back to website
+  </a>
+
+  <section class="admin-login-card" aria-labelledby="admin-login-title">
+    <header class="admin-login-header">
+      <div class="admin-shield">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-10V5l-7-3-7 3v6c0 6.5 7 10 7 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+      </div>
+      <div class="admin-label"><i></i> Secure administration</div>
+      <h1 id="admin-login-title">Administrator Login</h1>
+      <p>Authorised SPVN personnel only.</p>
+    </header>
+
+    <%- include('../partials/flash') %>
+
+    <form class="admin-login-form" action="/auth/admin" method="POST">
+      <div class="admin-field">
+        <label for="adminEmail">Email address</label>
+        <div class="admin-field-control">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-9 9c2 0 3.5-.45 4.5-1.2"/></svg>
+          <input id="adminEmail" type="email" name="email" required autofocus autocomplete="username" placeholder="admin@spvn.edu.in" />
         </div>
       </div>
 
-      <!-- Form card -->
-      <div class="rounded-3xl p-8 border border-white/10" style="background: rgba(255,255,255,0.04); backdrop-filter: blur(20px);">
-        <!-- Header -->
-        <div class="mb-7">
-          <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-               style="background: rgba(245,158,11,0.15);">
-            <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-            </svg>
-          </div>
-          <h2 class="text-2xl font-black text-white">Administrator Login</h2>
-          <p class="text-slate-500 text-sm mt-1">Restricted access — authorised personnel only</p>
-        </div>
-
-        <%- include('../partials/flash') %>
-
-        <form action="/auth/admin" method="POST" class="space-y-4">
-
-          <!-- Email -->
-          <div>
-            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Email Address</label>
-            <div class="relative">
-              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
-                </svg>
-              </div>
-              <input type="email" name="email" required autofocus
-                class="w-full pl-11 pr-4 py-3.5 rounded-2xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
-                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);"
-                placeholder="admin@xyzcollege.edu.in"
-                onfocus="this.style.background='rgba(255,255,255,0.1)'"
-                onblur="this.style.background='rgba(255,255,255,0.06)'"/>
-            </div>
-          </div>
-
-          <!-- Password -->
-          <div>
-            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
-            <div class="relative">
-              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                </svg>
-              </div>
-              <input type="password" name="password" id="aPw" required
-                class="w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
-                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);"
-                placeholder="Enter admin password"
-                onfocus="this.style.background='rgba(255,255,255,0.1)'"
-                onblur="this.style.background='rgba(255,255,255,0.06)'"/>
-              <button type="button"
-                onclick="const i=document.getElementById('aPw');i.type=i.type==='password'?'text':'password'"
-                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- Security note -->
-          <div class="rounded-2xl p-3.5 flex items-start gap-3" style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);">
-            <svg class="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-            <p class="text-amber-400 text-xs leading-relaxed">
-              This is a restricted area. Unauthorised access attempts are logged and monitored.
-            </p>
-          </div>
-
-          <!-- Submit -->
-          <button type="submit"
-            class="w-full font-bold py-4 rounded-2xl transition-all active:scale-95 mt-2 flex items-center justify-center gap-2 text-slate-900"
-            style="background: linear-gradient(135deg, #f59e0b, #f97316); box-shadow: 0 8px 24px rgba(245,158,11,0.3);">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-            </svg>
-            Access Admin Panel
+      <div class="admin-field">
+        <label for="aPw">Password</label>
+        <div class="admin-field-control">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>
+          <input id="aPw" type="password" name="password" required autocomplete="current-password" placeholder="Enter admin password" />
+          <button class="admin-password-toggle" id="adminPasswordToggle" type="button" aria-label="Show password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>
           </button>
-        </form>
-
-        <!-- Student link -->
-        <div class="mt-6 pt-5 border-t text-center" style="border-color: rgba(255,255,255,0.08);">
-          <a href="/auth/login" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-            </svg>
-            Go to Student Login
-          </a>
         </div>
       </div>
 
-      <p class="text-center text-xs text-slate-700 mt-5">
-        © <%= new Date().getFullYear() %> <%= collegeName %>
-      </p>
-    </div>
-  </div>
-
-  <!-- Left Panel — Visual (hidden on mobile) -->
-  <div class="hidden lg:flex lg:w-[45%] relative overflow-hidden flex-col justify-between p-14 order-1 lg:order-2"
-       style="background: linear-gradient(135deg, #1c1917 0%, #292524 40%, #1c1917 100%);">
-    <!-- Decorative elements -->
-    <div class="absolute inset-0" style="background: radial-gradient(ellipse at 70% 30%, rgba(245,158,11,0.15) 0%, transparent 60%);"></div>
-    <div class="absolute inset-0" style="background: radial-gradient(ellipse at 30% 80%, rgba(239,68,68,0.08) 0%, transparent 50%);"></div>
-
-    <!-- Grid pattern -->
-    <div class="absolute inset-0 opacity-5"
-         style="background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 40px 40px;"></div>
-
-    <div class="relative z-10 flex items-center gap-3">
-      <span class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
-      <span class="text-amber-400 text-xs font-semibold uppercase tracking-widest">Admin Portal</span>
-    </div>
-
-    <div class="relative z-10">
-      <h2 class="text-4xl font-black text-white leading-tight mb-6">
-        Control.<br/>
-        <span style="color: #f59e0b;">Manage.</span><br/>
-        Analyse.
-      </h2>
-      <div class="space-y-4">
-        <% [
-          ['M17 20H3v-1a6 6 0 0114 0v1zm7 0h-3v-1a4.5 4.5 0 00-3.21-4.3M15 7a4 4 0 11-8 0 4 4 0 018 0z', 'Manage Students & Batches'],
-          ['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', 'Create & Schedule Tests'],
-          ['M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'View Analytics & Results'],
-          ['M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 'Anti-Cheat & Proctoring'],
-        ].forEach(([path, text]) => { %>
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-               style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.2);">
-            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="<%= path %>"/>
-            </svg>
-          </div>
-          <span class="text-slate-300 text-sm font-medium"><%= text %></span>
-        </div>
-        <% }) %>
+      <div class="admin-security-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-10V5l-7-3-7 3v6c0 6.5 7 10 7 10Z"/><path d="M12 8v5M12 16h.01"/></svg>
+        <p>This is a restricted area. Unauthorised access attempts are logged and monitored.</p>
       </div>
-    </div>
 
-    <p class="relative z-10 text-stone-700 text-xs">
-      <%= collegeAddress %>
-    </p>
-  </div>
+      <button class="admin-submit" type="submit">
+        <span>Access Admin Panel</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
 
-</div>
+    <footer class="admin-card-footer">
+      <a href="/auth/login">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 19-7-7 7-7M3 12h18"/></svg>
+        Go to Student Login
+      </a>
+    </footer>
+  </section>
+
+  <p class="admin-page-meta">© <%= new Date().getFullYear() %> <%= collegeName %> · Academic Year <%= academicYear %></p>
+</main>
+
+<script src="/admin-login.js?v=1.0" defer></script>
 </body></html>
