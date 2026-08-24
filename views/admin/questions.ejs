@@ -177,6 +177,7 @@
                   <span class="bg-cyan-50 text-cyan-700 text-xs px-2 py-0.5 rounded"><%= (q.questionType || 'SINGLE_CORRECT').replaceAll('_',' ') %></span>
                   <% if (q.questionSubType) { %><span class="bg-fuchsia-50 text-fuchsia-700 text-xs px-2 py-0.5 rounded"><%= q.questionSubType.replaceAll('_',' ') %></span><% } %>
                   <% if (q.subtopic) { %><span class="bg-orange-100 text-orange-600 text-xs px-2 py-0.5 rounded"><%= q.subtopic %></span><% } %>
+                  <% if (q.sourceType === 'PYQ' && q.pyq) { %><a href="/admin/pyq?exam=<%= q.pyq.exam %>&year=<%= q.pyq.year %>" class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded font-semibold">PYQ · <%= q.pyq.variant %> <%= q.pyq.year %></a><% } %>
                   <span class="<%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> text-xs px-2 py-0.5 rounded"><%= q.difficulty %></span>
                   <span class="text-xs text-slate-400"><%= q.marks %> mk</span>
                   <% (q.tags || []).forEach(tag => { %><span class="text-[10px] text-indigo-600">#<%= tag %></span><% }) %>

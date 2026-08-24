@@ -131,14 +131,15 @@ exports.list = async (req, res) => {
 };
 
 async function renderForm(req, res, paper = null) {
+  const requestedIds = paper
+    ? paper.questionIds.map(id => String(id))
+    : [...new Set(values(req.query.questionIds || req.query.questionId).map(id => String(id).trim()).filter(id => mongoose.isValidObjectId(id)))];
   const [initialQuestions, selectedQuestions] = await Promise.all([
     Question.find({ isActive:true, ...organizationScope(req.organization) }).sort({ createdAt:-1 }).limit(50),
-    paper ? Question.find({ _id:{ $in:paper.questionIds }, ...organizationScope(req.organization) }) : [],
+    requestedIds.length ? Question.find({ _id:{ $in:requestedIds }, isActive:true, ...organizationScope(req.organization) }) : [],
   ]);
   const selectedMap = new Map(selectedQuestions.map(question => [String(question._id), question]));
-  const orderedSelected = paper
-    ? paper.questionIds.map(id => selectedMap.get(String(id))).filter(Boolean)
-    : [];
+  const orderedSelected = requestedIds.map(id => selectedMap.get(String(id))).filter(Boolean);
   res.render('admin/question-paper-form', {
     title:paper ? 'Edit Question Paper' : 'Create Question Paper',
     paper, COURSES, SUBJECTS, QUESTION_TYPES, QUESTION_SUB_TYPES,

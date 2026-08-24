@@ -1,0 +1,162 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+
+  <main class="flex-1 overflow-y-auto lg:ml-64">
+    <header class="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur lg:px-8">
+      <button onclick="openSidebar()" class="text-slate-500 lg:hidden" aria-label="Open navigation">
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-lg font-bold text-slate-900">Previous Year Questions</h1>
+        <p class="text-xs text-slate-400">One verified library, reusable in Question Bank, Papers, Generator and Tests</p>
+      </div>
+      <a href="/admin/question-papers/create" class="hidden rounded-xl bg-navy-950 px-4 py-2.5 text-xs font-bold text-white shadow-card hover:bg-navy-900 sm:inline-flex">Create paper</a>
+    </header>
+
+    <div class="mx-auto max-w-[1500px] p-5 lg:p-8">
+      <%- include('../partials/flash') %>
+
+      <section class="relative overflow-hidden rounded-[28px] bg-navy-950 px-6 py-7 text-white shadow-card-lg lg:px-9">
+        <div class="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl"></div>
+        <div class="pointer-events-none absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-amber-400/10 blur-3xl"></div>
+        <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div class="max-w-2xl">
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[.2em] text-amber-300">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span> PYQ Library
+            </span>
+            <h2 class="mt-4 text-3xl font-bold tracking-tight lg:text-4xl">Real exam practice, cleanly organised.</h2>
+            <p class="mt-3 max-w-xl text-sm leading-6 text-white/55">Browse by exam, subject, chapter and year, with subtopics shown where the verified source supplies them. Every listed question keeps its answer and provenance while remaining a normal reusable portal question.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+            <div class="rounded-2xl border border-white/10 bg-white/5 px-5 py-3"><strong class="block text-xl"><%= examCounts.reduce((sum,item)=>sum+item.count,0).toLocaleString('en-IN') %></strong><span class="text-[10px] uppercase tracking-wider text-white/40">Total PYQs</span></div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 px-5 py-3"><strong class="block text-xl"><%= Object.keys(hierarchyBySubject).length %></strong><span class="text-[10px] uppercase tracking-wider text-white/40">Subjects</span></div>
+            <div class="col-span-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 sm:col-span-1"><strong class="block text-xl"><%= topics.length %></strong><span class="text-[10px] uppercase tracking-wider text-white/40">Chapters</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mt-5 grid gap-3 md:grid-cols-3" aria-label="Choose exam">
+        <% examCounts.forEach(item => { const active=filters.exam===item.code; %>
+        <a href="/admin/pyq?exam=<%= item.code %>" class="group rounded-2xl border p-4 transition <%= active ? 'border-indigo-200 bg-indigo-50 shadow-card-md' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card' %>">
+          <div class="flex items-center gap-3">
+            <span class="grid h-11 w-11 place-items-center rounded-xl text-sm font-extrabold <%= active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-slate-900 group-hover:text-white' %>"><%= item.code==='CET'?'MH':item.code.charAt(0) %></span>
+            <span class="min-w-0 flex-1"><strong class="block text-sm text-slate-900"><%= item.label %></strong><small class="text-xs text-slate-400"><%= item.description %></small></span>
+            <span class="rounded-full px-2.5 py-1 text-xs font-bold <%= active ? 'bg-white text-indigo-700' : 'bg-slate-100 text-slate-600' %>"><%= item.count.toLocaleString('en-IN') %></span>
+          </div>
+        </a>
+        <% }) %>
+      </section>
+
+      <form method="GET" class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+        <input type="hidden" name="exam" value="<%= filters.exam %>"/>
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div><h3 class="text-sm font-bold text-slate-900"><%= selectedExam.label %> filters</h3><p class="text-[11px] text-slate-400">Subject → chapter → subtopic → year</p></div>
+          <a href="/admin/pyq?exam=<%= filters.exam %>" class="text-xs font-bold text-slate-400 hover:text-slate-700">Clear all</a>
+        </div>
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-8">
+          <input name="search" value="<%= filters.search %>" placeholder="Search question or concept…" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs xl:col-span-2"/>
+          <select name="variant" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All papers</option><% variants.forEach(value=>{ %><option value="<%= value %>" <%= filters.variant===value?'selected':'' %>><%= value %></option><% }) %></select>
+          <select name="subject" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All subjects</option><% subjects.forEach(value=>{ %><option value="<%= value %>" <%= filters.subject===value?'selected':'' %>><%= value %></option><% }) %></select>
+          <select name="topic" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All chapters</option><% topics.forEach(value=>{ %><option value="<%= value %>" <%= filters.topic===value?'selected':'' %>><%= value %></option><% }) %></select>
+          <% if(subtopics.length){ %><select name="subtopic" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All subtopics</option><% subtopics.forEach(value=>{ %><option value="<%= value %>" <%= filters.subtopic===value?'selected':'' %>><%= value %></option><% }) %></select><% } else { %><select disabled class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-400"><option>No source subtopics</option></select><% } %>
+          <select name="year" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All years</option><% years.forEach(value=>{ %><option value="<%= value %>" <%= filters.year==value?'selected':'' %>><%= value %></option><% }) %></select>
+          <button class="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700">Apply filters</button>
+        </div>
+        <div class="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-8">
+          <select name="questionType" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs xl:col-start-6"><option value="">All question types</option><% ['SINGLE_CORRECT','MULTIPLE_CORRECT','NUMERICAL'].forEach(value=>{ %><option value="<%= value %>" <%= filters.questionType===value?'selected':'' %>><%= value.replaceAll('_',' ') %></option><% }) %></select>
+          <select name="difficulty" class="rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><option value="">All difficulty</option><% ['Easy','Medium','Hard'].forEach(value=>{ %><option value="<%= value %>" <%= filters.difficulty===value?'selected':'' %>><%= value %></option><% }) %></select>
+        </div>
+      </form>
+
+      <div class="mt-5 grid gap-5 xl:grid-cols-[270px_minmax(0,1fr)]">
+        <aside class="self-start rounded-2xl border border-slate-200 bg-white p-4 shadow-card xl:sticky xl:top-24">
+          <div class="flex items-center justify-between"><h3 class="text-sm font-bold text-slate-900">Browse syllabus</h3><span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500"><%= total.toLocaleString('en-IN') %> found</span></div>
+          <div class="mt-3 max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+            <% Object.entries(hierarchyBySubject).forEach(([subject, rows]) => { %>
+            <details class="group rounded-xl border border-slate-100 bg-slate-50/70" <%= filters.subject===subject?'open':'' %>>
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5">
+                <span class="text-xs font-bold text-slate-800"><%= subject %></span><span class="text-[10px] text-slate-400"><%= rows.reduce((sum,row)=>sum+row.count,0) %> Q</span>
+              </summary>
+              <div class="space-y-0.5 border-t border-slate-100 bg-white p-1.5">
+                <% rows.slice(0,40).forEach(row => { %>
+                <a href="<%= pageUrl({subject,topic:row.name,page:1}) %>" class="flex items-start justify-between gap-2 rounded-lg px-2 py-2 text-[11px] <%= filters.subject===subject&&filters.topic===row.name?'bg-indigo-50 font-bold text-indigo-700':'text-slate-500 hover:bg-slate-50 hover:text-slate-800' %>"><span><%= row.name %></span><span class="shrink-0 text-[9px] text-slate-400"><%= row.count %></span></a>
+                <% }) %>
+              </div>
+            </details>
+            <% }) %>
+            <% if (!Object.keys(hierarchyBySubject).length) { %><p class="py-8 text-center text-xs text-slate-400">No verified chapters available yet.</p><% } %>
+          </div>
+        </aside>
+
+        <section class="min-w-0">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div><h3 class="font-bold text-slate-900"><%= selectedExam.label %> question library</h3><p class="text-xs text-slate-400">Page <%= page %> of <%= totalPages %> · <%= total.toLocaleString('en-IN') %> matching question<%= total===1?'':'s' %></p></div>
+            <div class="flex gap-2"><a href="/admin/question-papers/generate" class="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700">Auto generate</a><a href="/admin/questions?tag=PYQ" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">Open in Question Bank</a></div>
+          </div>
+
+          <% if (!questions.length && filters.exam==='CET') { %>
+          <div class="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center">
+            <span class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white text-2xl shadow-card">MH</span>
+            <h3 class="mt-4 text-lg font-bold text-slate-900">MHT-CET library is ready for verified data</h3>
+            <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">No openly licensed structured MHT-CET question bank with complete answers passed the source audit. We have kept this section separate and empty instead of relabelling JEE questions as CET. Import official papers with Smart Scan or the CSV template when verified files are available.</p>
+            <div class="mt-5 flex flex-wrap justify-center gap-2"><a href="/admin/questions/smart-import" class="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white">Import official paper</a><a href="https://cetcell.mahacet.org/" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-bold text-amber-800">Official CET Cell ↗</a></div>
+          </div>
+          <% } else if (!questions.length) { %>
+          <div class="rounded-3xl border border-slate-200 bg-white p-12 text-center"><h3 class="font-bold text-slate-800">No questions match these filters</h3><p class="mt-1 text-sm text-slate-400">Clear a filter or choose another exam section.</p></div>
+          <% } %>
+
+          <div class="space-y-3">
+            <% questions.forEach((q,index) => { const answer=answerForDisplay(q); %>
+            <article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition hover:border-slate-300 hover:shadow-card-md">
+              <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                <span class="grid h-7 w-7 place-items-center rounded-lg bg-navy-950 text-[10px] font-bold text-white"><%= ((page-1)*30)+index+1 %></span>
+                <span class="rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-bold text-indigo-700"><%= q.pyq.variant %></span>
+                <span class="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800"><%= q.pyq.year %></span>
+                <span class="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700"><%= q.subject %></span>
+                <span class="rounded-md bg-violet-50 px-2 py-1 text-[10px] text-violet-700"><%= q.topic %></span>
+                <% if(q.subtopic){ %><span class="rounded-md bg-orange-50 px-2 py-1 text-[10px] text-orange-700"><%= q.subtopic %></span><% } %>
+                <span class="ml-auto rounded-md px-2 py-1 text-[10px] font-bold <%= q.difficulty==='Easy'?'bg-emerald-50 text-emerald-700':q.difficulty==='Hard'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700' %>"><%= q.difficulty %></span>
+              </div>
+              <div class="p-4 lg:p-5">
+                <p class="math-content whitespace-pre-wrap text-sm font-semibold leading-7 text-slate-900"><%= q.question %></p>
+                <% if(q.questionType!=='NUMERICAL'){ %>
+                <div class="mt-4 grid gap-2 md:grid-cols-2">
+                  <% [['A',q.optionA],['B',q.optionB],['C',q.optionC],['D',q.optionD]].filter(([,value])=>value).forEach(([key,value])=>{ %>
+                  <div class="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-600"><span class="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-white font-bold text-slate-500 shadow-sm"><%= key %></span><span class="math-content min-w-0"><%= value %></span></div>
+                  <% }) %>
+                </div>
+                <% } %>
+                <details class="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <summary class="cursor-pointer text-xs font-bold text-emerald-800">View verified answer &amp; explanation</summary>
+                  <p class="math-content mt-3 text-sm font-bold text-emerald-700">Answer: <%= answer || '—' %></p>
+                  <p class="math-content mt-2 whitespace-pre-wrap text-xs leading-6 text-slate-600"><%= q.explanation || 'No explanation supplied by the source dataset.' %></p>
+                </details>
+              </div>
+              <footer class="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3 text-[10px] text-slate-400 lg:px-5">
+                <span><%= q.pyq.paper %></span><span>·</span><a href="<%= q.pyq.sourceUrl %>" target="_blank" rel="noopener noreferrer" class="font-semibold hover:text-indigo-600"><%= q.pyq.sourceDataset %> ↗</a><span>·</span><a href="<%= q.pyq.sourceLicenseUrl %>" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-600"><%= q.pyq.sourceLicense %></a>
+                <a href="/admin/question-papers/create?questionId=<%= q.id %>" class="ml-auto rounded-lg bg-slate-900 px-3 py-2 text-[10px] font-bold text-white">Use in a paper</a>
+              </footer>
+            </article>
+            <% }) %>
+          </div>
+
+          <% if(totalPages>1){ const start=Math.max(1,page-2), end=Math.min(totalPages,page+2); %>
+          <nav class="mt-6 flex items-center justify-center gap-1" aria-label="PYQ pages">
+            <% if(page>1){ %><a href="<%= pageUrl({page:page-1}) %>" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">← Previous</a><% } %>
+            <% if(start>1){ %><a href="<%= pageUrl({page:1}) %>" class="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-xs">1</a><span class="px-1 text-slate-400">…</span><% } %>
+            <% for(let number=start;number<=end;number+=1){ %><a href="<%= pageUrl({page:number}) %>" class="grid h-9 w-9 place-items-center rounded-lg text-xs font-bold <%= number===page?'bg-navy-950 text-white':'border border-slate-200 bg-white text-slate-600' %>"><%= number %></a><% } %>
+            <% if(end<totalPages){ %><span class="px-1 text-slate-400">…</span><a href="<%= pageUrl({page:totalPages}) %>" class="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-xs"><%= totalPages %></a><% } %>
+            <% if(page<totalPages){ %><a href="<%= pageUrl({page:page+1}) %>" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">Next →</a><% } %>
+          </nav>
+          <% } %>
+        </section>
+      </div>
+
+      <footer class="mt-7 rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500">
+        <strong class="text-slate-700">Dataset attribution:</strong> imported questions are quality-filtered from <a href="<%= dataset.url %>" target="_blank" rel="noopener noreferrer" class="font-semibold text-indigo-600"><%= dataset.name %></a>, version <code class="text-[10px]"><%= dataset.version.slice(0,12) %></code>, licensed under <a href="<%= dataset.licenseUrl %>" target="_blank" rel="noopener noreferrer" class="font-semibold text-indigo-600"><%= dataset.license %></a>. Difficulty is a portal-relative content-complexity band, not an official exam rating.
+      </footer>
+    </div>
+  </main>
+</div>
+</body></html>

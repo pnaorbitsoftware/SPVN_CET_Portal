@@ -20,6 +20,23 @@ const numericalAnswerSchema = new mongoose.Schema({
   tolerance: { type: Number, min: 0, default: 0 },
 }, { _id: false });
 
+const pyqMetadataSchema = new mongoose.Schema({
+  exam:              { type: String, enum: ['JEE', 'NEET', 'CET'], required: true },
+  variant:           { type: String, default: null },
+  year:              { type: Number, min: 1980, max: 2100, required: true },
+  session:           { type: String, default: null },
+  paper:             { type: String, default: null },
+  sourceKey:         { type: String, required: true },
+  sourceExternalId:  { type: String, default: null },
+  sourceDataset:     { type: String, required: true },
+  sourceVersion:     { type: String, default: null },
+  sourceUrl:         { type: String, required: true },
+  sourceLicense:     { type: String, required: true },
+  sourceLicenseUrl:  { type: String, default: null },
+  sourceFingerprint: { type: String, required: true },
+  difficultyBasis:   { type: String, default: 'source' },
+}, { _id: false });
+
 const optionRequired = function optionRequired() {
   return this.questionType !== 'NUMERICAL';
 };
@@ -29,6 +46,8 @@ const fourOptionsRequired = function fourOptionsRequired() {
 
 const questionSchema = new mongoose.Schema({
   organization:     { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
+  sourceType:       { type: String, enum: ['CUSTOM', 'PYQ'], default: 'CUSTOM', index: true },
+  pyq:              { type: pyqMetadataSchema, default: null },
   course:           { type: [String], default: [] },
   question:         { type: String, required: true },
   questionImage:    { type: String, default: null },
@@ -65,6 +84,9 @@ const questionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 questionSchema.pre('validate', function normalizeAnswerModel() {
+  if (this.sourceType === 'PYQ' && !this.pyq) {
+    this.invalidate('pyq', 'Previous-year questions require source metadata.');
+  }
   this.tags = [...new Set((this.tags || []).map(tag => String(tag).trim()).filter(Boolean))];
   this.correctAnswers = [...new Set((this.correctAnswers || []).map(answer => String(answer).toUpperCase()))];
 
@@ -104,6 +126,11 @@ questionSchema.pre('validate', function normalizeAnswerModel() {
 questionSchema.index({ organization: 1, subject: 1, topic: 1, difficulty: 1 });
 questionSchema.index({ organization: 1, questionType: 1, questionSubType: 1 });
 questionSchema.index({ organization: 1, tags: 1 });
+questionSchema.index({ organization: 1, sourceType: 1, 'pyq.exam': 1, 'pyq.year': -1, subject: 1, topic: 1 });
+questionSchema.index(
+  { organization: 1, 'pyq.sourceKey': 1 },
+  { unique: true, partialFilterExpression: { sourceType: 'PYQ', 'pyq.sourceKey': { $type: 'string' } } }
+);
 
 questionSchema.statics.QUESTION_TYPES = QUESTION_TYPES;
 questionSchema.statics.QUESTION_SUB_TYPES = QUESTION_SUB_TYPES;

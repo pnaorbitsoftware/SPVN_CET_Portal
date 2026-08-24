@@ -9,6 +9,7 @@ const examConfig      = require('../controllers/examConfigurationController');
 const reports         = require('../controllers/reportController');
 const liveMonitor     = require('../controllers/liveMonitorController');
 const recalculation   = require('../controllers/recalculationController');
+const pyq             = require('../controllers/pyqController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -66,6 +67,7 @@ router.get('/ajax/topics',           ...guard, c.getTopicsForSubject);
 router.get('/ajax/subtopics',        ...guard, c.getSubtopicsForTopic);
 
 // Questions
+router.get('/pyq',                                  ...guard, pyq.list);
 router.get('/questions/smart-import',                    ...guard, questionImport.getSmartImport);
 router.post('/questions/smart-import/scan',              ...guard, questionImport.scanQuestionFiles);
 router.get('/questions/smart-import/:id/review',         ...guard, questionImport.getSmartImportReview);

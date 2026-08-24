@@ -8,6 +8,8 @@
     "dev": "nodemon app.js",
     "test": "node --test test/*.test.js",
     "verify": "node scripts/verify.js",
+    "import:pyq": "node scripts/import-pyq-dataset.js",
+    "verify:pyq": "node scripts/verify-pyq-import.js",
     "seed": "node seeders/seed.js",
     "seed:fresh": "node seeders/seed.js"
   },
@@ -25,6 +27,7 @@
     "express-fileupload": "^1.4.3",
     "express-session": "^1.17.3",
     "helmet": "^8.2.0",
+    "hyparquet": "^1.23.2",
     "jsonwebtoken": "^9.0.3",
     "katex": "^0.16.47",
     "method-override": "^3.0.0",
