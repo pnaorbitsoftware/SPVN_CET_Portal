@@ -26,6 +26,7 @@ const {
   validateAccessAttempt,
   verifyAccessGrant,
 } = require('../services/testAccessService');
+const { releaseConfiguration, resultAvailability, safeSubmission } = require('../services/resultReleaseService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -162,16 +163,23 @@ router.get('/results/:resultId', requireMobileUser, async (req, res) => {
     if (req.mobileUser.role === 'student' && result.studentId?._id.toString() !== req.mobileUser._id.toString()) {
       return res.status(403).json({ error: 'Access denied.' });
     }
+    const release = resultAvailability(result.testId);
+    if (req.mobileUser.role === 'student' && !release.available) {
+      return res.json({ released:false, submission:safeSubmission(result, result.testId), release });
+    }
     const [topperResult, totalAttempted, trend] = await Promise.all([
       Result.findOne({ testId: result.testId._id, rank: 1 }, 'score subjectScores'),
       Result.countDocuments({ testId: result.testId._id, status: completedStatuses }),
       Result.find({ studentId: result.studentId._id, status: completedStatuses })
-        .populate('testId', 'title')
+        .populate('testId', 'title endTime resultReleaseMode resultReleaseAt resultsReleased')
         .sort({ submittedAt: 1 })
         .limit(10),
     ]);
     const percentage = result.totalMarks > 0 ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0;
-    return res.json({ result, percentage, topperResult, totalAttempted, trend });
+    const visibleTrend = req.mobileUser.role === 'student'
+      ? trend.filter(item => item.testId && resultAvailability(item.testId).available).slice(-10)
+      : trend.slice(-10);
+    return res.json({ released:true, result, percentage, topperResult, totalAttempted, trend:visibleTrend });
   } catch (error) {
     console.error('Mobile result detail error:', error);
     return res.status(500).json({ error: 'Unable to load result.' });
@@ -190,13 +198,18 @@ router.get('/results/:resultId/pdf', requireMobileUser, async (req, res) => {
 
 router.get('/tests/:testId/leaderboard', requireMobileUser, async (req, res) => {
   const [test, results] = await Promise.all([
-    Test.findById(req.params.testId).select('title totalMarks duration subject course'),
+    Test.findById(req.params.testId).select('title totalMarks duration subject course endTime resultReleaseMode resultReleaseAt resultsReleased'),
     Result.find({ testId: req.params.testId, status: completedStatuses })
       .populate('studentId', 'name rollNo')
       .sort({ rank:1, score: -1, timeTaken: 1 })
       .limit(50),
   ]);
   if (!test) return res.status(404).json({ error: 'Test not found.' });
+  if (req.mobileUser.role === 'student') {
+    const ownSubmission = await Result.exists({ studentId:req.mobileUser._id, testId:test._id, status:completedStatuses });
+    if (!ownSubmission) return res.status(403).json({ error:'Access denied.' });
+    if (!resultAvailability(test).available) return res.status(403).json({ error:'The leaderboard is not available until results are released.', code:'RESULT_NOT_RELEASED' });
+  }
   return res.json({ test, results });
 });
 
@@ -206,7 +219,7 @@ router.get('/student/dashboard', requireMobileUser, requireRole('student'), asyn
     const [memberships, results, notifications, inProgressResults] = await Promise.all([
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.find({ studentId, status: { $in: ['submitted', 'auto_submitted'] } })
-        .populate('testId', 'title totalMarks subject course duration')
+        .populate('testId', 'title totalMarks subject course duration endTime resultReleaseMode resultReleaseAt resultsReleased')
         .sort({ submittedAt: -1 }),
       Notification.find({ userId: studentId, isRead: false }).sort({ createdAt: -1 }).limit(8),
       Result.find({ studentId, status: 'in_progress' }, 'testId'),
@@ -218,14 +231,18 @@ router.get('/student/dashboard', requireMobileUser, requireRole('student'), asyn
     const completedIds = new Set(results.map((result) => result.testId?._id?.toString()));
     const inProgressIds = new Set(inProgressResults.map((result) => result.testId?.toString()));
     const pendingTests = tests.filter((test) => !completedIds.has(test._id.toString()) && !inProgressIds.has(test._id.toString()));
-    const averageScore = results.length
-      ? Number((results.reduce((total, result) => total + (result.totalMarks ? (result.score / result.totalMarks) * 100 : 0), 0) / results.length).toFixed(1))
+    const releasedResults = results.filter(result => result.testId && resultAvailability(result.testId).available);
+    const pendingReleases = results
+      .filter(result => result.testId && !resultAvailability(result.testId).available)
+      .map(result => ({ submission:safeSubmission(result, result.testId), release:resultAvailability(result.testId) }));
+    const averageScore = releasedResults.length
+      ? Number((releasedResults.reduce((total, result) => total + (result.totalMarks ? (result.score / result.totalMarks) * 100 : 0), 0) / releasedResults.length).toFixed(1))
       : 0;
-    const totalCorrect = results.reduce((total, result) => total + (result.correctAnswers || 0), 0);
-    const totalAttempted = results.reduce((total, result) => total + (result.correctAnswers || 0) + (result.wrongAnswers || 0), 0);
+    const totalCorrect = releasedResults.reduce((total, result) => total + (result.correctAnswers || 0), 0);
+    const totalAttempted = releasedResults.reduce((total, result) => total + (result.correctAnswers || 0) + (result.wrongAnswers || 0), 0);
     const accuracy = totalAttempted ? Number(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0;
     const subjectMap = {};
-    results.forEach((result) => {
+    releasedResults.forEach((result) => {
       const subjects = Array.isArray(result.testId?.subject) && result.testId.subject.length ? result.testId.subject : ['General'];
       subjects.forEach((subject) => {
         subjectMap[subject] ||= { marks: 0, maxMarks: 0, count: 0 };
@@ -239,7 +256,7 @@ router.get('/student/dashboard', requireMobileUser, requireRole('student'), asyn
       ...values,
       percentage: values.maxMarks ? Number(((values.marks / values.maxMarks) * 100).toFixed(1)) : 0,
     })).sort((a, b) => b.percentage - a.percentage);
-    const chartData = [...results].reverse().slice(-10).map((result) => ({
+    const chartData = [...releasedResults].reverse().slice(-10).map((result) => ({
       label: result.testId?.title || 'Test',
       percentage: result.totalMarks ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0,
       score: result.score,
@@ -247,16 +264,17 @@ router.get('/student/dashboard', requireMobileUser, requireRole('student'), asyn
       date: result.submittedAt,
     }));
     let scoreTrend = 'neutral';
-    if (results.length >= 2) {
-      const latest = results[0].totalMarks ? results[0].score / results[0].totalMarks : 0;
-      const previous = results[1].totalMarks ? results[1].score / results[1].totalMarks : 0;
+    if (releasedResults.length >= 2) {
+      const latest = releasedResults[0].totalMarks ? releasedResults[0].score / releasedResults[0].totalMarks : 0;
+      const previous = releasedResults[1].totalMarks ? releasedResults[1].score / releasedResults[1].totalMarks : 0;
       scoreTrend = latest > previous ? 'up' : latest < previous ? 'down' : 'neutral';
     }
 
     return res.json({
-      stats: { pending: pendingTests.length, completed: results.length, averageScore, accuracy, totalCorrect, totalAttempted, scoreTrend },
+      stats: { pending: pendingTests.length, completed: results.length, released:releasedResults.length, averageScore, accuracy, totalCorrect, totalAttempted, scoreTrend },
       pendingTests: pendingTests.slice(0, 8),
-      recentResults: results.slice(0, 5),
+      recentResults: releasedResults.slice(0, 5),
+      pendingReleases,
       notifications,
       subjectStats,
       chartData,
@@ -279,7 +297,12 @@ router.get('/student/tests', requireMobileUser, requireRole('student'), async (r
       ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active', 'closed'] }, isActive: { $ne: false } }).sort({ createdAt: -1 })
       : [];
     const resultByTest = new Map(results.map((result) => [result.testId.toString(), result]));
-    return res.json({ tests: tests.map((test) => ({ ...test.toObject(), result: resultByTest.get(test._id.toString()) || null })) });
+    return res.json({ tests: tests.map((test) => {
+      const result = resultByTest.get(test._id.toString());
+      if (!result || result.status === 'in_progress' || resultAvailability(test).available) return { ...test.toObject(), result:result || null };
+      const submission = safeSubmission(result, test);
+      return { ...test.toObject(), result:{ _id:submission.id, status:submission.status, submittedAt:submission.submittedAt, released:false } };
+    }) });
   } catch (error) {
     console.error('Mobile tests error:', error);
     return res.status(500).json({ error: 'Unable to load tests.' });
@@ -288,9 +311,13 @@ router.get('/student/tests', requireMobileUser, requireRole('student'), async (r
 
 router.get('/student/results', requireMobileUser, requireRole('student'), async (req, res) => {
   const results = await Result.find({ studentId: req.mobileUser._id, status: { $in: ['submitted', 'auto_submitted'] } })
-    .populate('testId', 'title totalMarks duration subject')
+    .populate('testId', 'title totalMarks duration subject endTime resultReleaseMode resultReleaseAt resultsReleased')
     .sort({ submittedAt: -1 });
-  return res.json({ results });
+  const releasedResults = results.filter(result => result.testId && resultAvailability(result.testId).available);
+  const pendingResults = results
+    .filter(result => result.testId && !resultAvailability(result.testId).available)
+    .map(result => ({ submission:safeSubmission(result, result.testId), release:resultAvailability(result.testId) }));
+  return res.json({ results:releasedResults, pendingResults });
 });
 
 router.get('/student/notifications', requireMobileUser, requireRole('student'), async (req, res) => {
@@ -383,6 +410,8 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
       questionCount: test.questions.length,
       inProgress: Boolean(inProgress),
       submittedResultId: submitted?._id || null,
+      resultReleased:submitted ? resultAvailability(test).available : null,
+      release:submitted ? resultAvailability(test) : null,
       canStart: !submitted && (availability.canStart || availability.canResume),
       availability: submitted ? 'completed' : availability.state,
       timingMode:test.timingMode || 'PERSONAL_DURATION',
@@ -688,7 +717,9 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
     if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
 
     const submitted = await finalizeAttempt({ result, test, isAutoSubmit:Boolean(req.body?.auto) });
-    return res.json({ result: submitted });
+    const release = resultAvailability(test);
+    if (!release.available) return res.json({ released:false, resultId:String(submitted._id), submission:safeSubmission(submitted, test), release });
+    return res.json({ released:true, result: submitted, resultId:String(submitted._id) });
   } catch (error) {
     console.error('Mobile submit error:', error);
     return res.status(500).json({ error: 'Unable to submit test.' });
@@ -1207,6 +1238,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     const perQuestion = Math.max(0.25, Number(marksPerQuestion) || 1);
     const timing = timingInput({ timingMode, duration, startTime, endTime });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
+    const release = releaseConfiguration({ resultReleaseMode:req.body.resultReleaseMode, resultReleaseAt:req.body.resultReleaseAt, endTime:timing.endTime });
     const test = await Test.create({
       title: String(title).trim(), description: String(description || '').trim() || null,
       organization:organizationIdForWrite(req), duration:timing.duration, timingMode:timing.timingMode,
@@ -1220,11 +1252,12 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
       maxFocusLosses: Number(req.body.maxFocusLosses) || 5, blockCopyPaste: req.body.blockCopyPaste !== false,
       requireFullscreen: Boolean(req.body.requireFullscreen),
       ...access,
+      ...release,
     });
     return res.status(201).json({ test, pageCount });
   } catch (error) {
     console.error('Mobile PDF test upload error:', error);
-    return res.status(500).json({ error: 'Unable to create PDF test.' });
+    return res.status(400).json({ error:error.message || 'Unable to create PDF test.' });
   }
 });
 
@@ -1244,6 +1277,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questions, req.body, { negativeMarking:parsedNegativeMarking });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
+    const release = releaseConfiguration({ resultReleaseMode:req.body.resultReleaseMode, resultReleaseAt:req.body.resultReleaseAt, endTime:timing.endTime });
     const test = await Test.create({
       title: title.trim(), description: description?.trim() || null, duration:timing.duration, timingMode:timing.timingMode,
       organization:organizationIdForWrite(req), testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -1254,6 +1288,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
       instructions: instructions?.trim() || null, createdBy: req.mobileUser._id, status: 'draft', course: Array.isArray(course) ? course : [course], subject: Array.isArray(subject) ? subject : [subject], topic: topic || null, subtopic: subtopic || null,
       questions:selectedQuestionIds, questionConfigs, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
       ...access,
+      ...release,
     });
     return res.status(201).json({ test });
   } catch (error) {
@@ -1296,6 +1331,19 @@ router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), as
       return res.status(400).json({ error:error.message });
     }
   }
+  if (['resultReleaseMode','resultReleaseAt','endTime'].some(field => Object.hasOwn(req.body, field))) {
+    try {
+      const release = releaseConfiguration({
+        resultReleaseMode:req.body.resultReleaseMode ?? existingTest.resultReleaseMode,
+        resultReleaseAt:Object.hasOwn(req.body,'resultReleaseAt') ? req.body.resultReleaseAt : existingTest.resultReleaseAt,
+        endTime:Object.hasOwn(update,'endTime') ? update.endTime : existingTest.endTime,
+        existingTest,
+      });
+      Object.assign(update, release);
+    } catch (error) {
+      return res.status(400).json({ error:error.message });
+    }
+  }
   const test = await Test.findByIdAndUpdate(existingTest._id, update, { new: true });
   return res.json({ test });
 });
@@ -1308,6 +1356,19 @@ router.post('/admin/tests/:testId/publish', requireMobileUser, requireRole('admi
   const memberships = await GroupMember.find({ groupId: { $in: test.groups }, role: 'student' }, 'userId');
   if (memberships.length) await Notification.insertMany(memberships.map((member) => ({ userId: member.userId, title: 'New Exam Published', message: `"${test.title}" is now available. Timing: ${timingLabel(test)}.`, type: 'exam', link: '/student/tests' })));
   return res.json({ test, notifiedStudents: memberships.length });
+});
+
+router.post('/admin/tests/:testId/results/release', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const test = await Test.findOneAndUpdate(
+    { _id:req.params.testId, isActive:{ $ne:false }, ...organizationScope(req.organization) },
+    { resultsReleased:true },
+    { new:true }
+  );
+  if (!test) return res.status(404).json({ error:'Test not found.' });
+  const submitted = await Result.find({ testId:test._id, status:completedStatuses }, 'studentId');
+  const studentIds = [...new Set(submitted.map(result => String(result.studentId)))];
+  if (studentIds.length) await Notification.insertMany(studentIds.map(userId => ({ userId, title:'Exam Result Available', message:`Your result for "${test.title}" is now available.`, type:'success', link:'/student/results' })));
+  return res.json({ test, notifiedStudents:studentIds.length });
 });
 
 router.delete('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
@@ -1341,7 +1402,7 @@ router.get('/admin/results/:resultId', requireMobileUser, requireRole('admin'), 
     .populate({ path: 'testId', populate: { path: 'questions' } });
   if (!result) return res.status(404).json({ error: 'Result not found.' });
   const percentage = result.totalMarks > 0 ? Number(((result.score / result.totalMarks) * 100).toFixed(1)) : 0;
-  return res.json({ result, percentage });
+  return res.json({ released:true, result, percentage });
 });
 
 router.get('/admin/documents', requireMobileUser, requireRole('admin'), async (req, res) => {

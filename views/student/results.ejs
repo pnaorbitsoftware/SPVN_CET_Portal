@@ -3,7 +3,20 @@
   <%- include('../partials/sidebar-student') %>
   <main class="lg:ml-64 flex-1 overflow-y-auto">
     <header class="sticky top-0 z-20 bg-white border-b px-8 py-4"><h1 class="text-xl font-bold">My Results</h1></header>
-    <div class="p-8">
+    <div class="p-5 lg:p-8 space-y-6">
+      <% if (pendingResults.length) { %>
+      <section class="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-amber-200"><h2 class="font-bold text-amber-950">Submitted — Result Pending</h2><p class="text-xs text-amber-700 mt-1">No marks, answers or ranks are shown before release.</p></div>
+        <div class="divide-y divide-amber-200">
+          <% pendingResults.forEach(item => { %>
+          <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div class="flex-1"><p class="font-semibold text-slate-900"><%= item.submission.testTitle %></p><p class="text-xs text-amber-700 mt-1"><%= item.release.message %></p><p class="text-[11px] text-slate-500 mt-1">Submitted <%= item.submission.submittedAt ? new Date(item.submission.submittedAt).toLocaleString('en-IN',{timeZone:appTimeZone}) : '' %></p></div>
+            <a href="/results/<%= item.submission.id %>" class="text-center text-sm font-semibold text-amber-900 border border-amber-300 rounded-xl px-4 py-2.5 hover:bg-amber-100">View Submission</a>
+          </div>
+          <% }) %>
+        </div>
+      </section>
+      <% } %>
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-xs sm:text-sm">
@@ -27,7 +40,7 @@
                 </td>
               </tr>
               <% }) %>
-              <% if (!results.length) { %><tr><td colspan="9" class="px-6 py-12 text-center text-gray-400">No results yet.</td></tr><% } %>
+              <% if (!results.length) { %><tr><td colspan="9" class="px-6 py-12 text-center text-gray-400"><%= pendingResults.length?'Released results will appear here.':'No results yet.' %></td></tr><% } %>
             </tbody>
           </table>
         </div>

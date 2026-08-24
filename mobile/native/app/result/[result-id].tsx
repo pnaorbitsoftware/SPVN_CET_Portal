@@ -16,13 +16,21 @@ export default function ResultRoute() {
 
   useEffect(() => { mobileApi.getResult(resultId).then(setDetail).catch((error) => Alert.alert('Unable to load result', error instanceof Error ? error.message : 'Please try again.')); }, [resultId]);
   const questions = useMemo(() => {
-    if (!detail) return [];
+    if (!detail || !detail.released) return [];
     const rows = detail.result.testId?.questions || [];
     const map = new Map(rows.map((question) => [question._id, question]));
     return (detail.result.questionOrder?.length ? detail.result.questionOrder : rows.map((question) => question._id)).map((id) => map.get(String(id))).filter(Boolean);
   }, [detail]);
 
   if (!detail) return <Loading message="Building result report…" />;
+  if (!detail.released) return <Screen>
+    <Stack.Title>Submission Confirmed</Stack.Title>
+    <Title>Submission Confirmed</Title>
+    <Body>Your answers for {detail.submission.testTitle} were saved successfully.</Body>
+    <Card><Badge tone="warning">Result Pending</Badge><DataLine label="Status" value={detail.submission.status.replaceAll('_', ' ')} /><DataLine label="Submitted" value={detail.submission.submittedAt ? new Date(detail.submission.submittedAt).toLocaleString() : 'Saved'} /><Body muted>{detail.release.message}</Body></Card>
+    <Card><Body muted>Marks, answers, rank, PDF and leaderboard remain hidden until the result is released.</Body></Card>
+    <Button title="Back to Student Portal" onPress={() => router.replace('/student')} />
+  </Screen>;
   const { result, percentage } = detail;
   const download = async () => {
     try {

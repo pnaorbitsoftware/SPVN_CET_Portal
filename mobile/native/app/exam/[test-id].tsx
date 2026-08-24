@@ -30,7 +30,7 @@ export default function ExamRoute() {
       const current = latest.current;
       if (current.state) await mobileApi.saveStudentAnswer(testId, { questionId: current.state.question.id, answer: current.selectedAnswer, markForReview: current.markedForReview, timeSpent: Math.floor((Date.now() - questionOpenedAt.current) / 1000) });
       const response = await mobileApi.submitStudentTest(testId, true);
-      Alert.alert('Exam submitted', message, [{ text: 'View Result', onPress: () => router.replace({ pathname: '/result/[result-id]', params: { 'result-id': response.result._id } }) }]);
+      Alert.alert('Exam submitted', message, [{ text: response.released ? 'View Result' : 'View Submission', onPress: () => router.replace({ pathname: '/result/[result-id]', params: { 'result-id': response.resultId } }) }]);
     } catch (error) {
       submitting.current = false;
       Alert.alert('Submission pending', error instanceof Error ? error.message : 'Reconnect and submit immediately.');
@@ -111,7 +111,7 @@ export default function ExamRoute() {
       submitting.current = true; setBusy(true);
       await mobileApi.saveStudentAnswer(testId, { questionId: state.question.id, answer: selectedAnswer, markForReview: markedForReview, timeSpent: Math.floor((Date.now() - questionOpenedAt.current) / 1000) });
       const response = await mobileApi.submitStudentTest(testId);
-      router.replace({ pathname: '/result/[result-id]', params: { 'result-id': response.result._id } });
+      router.replace({ pathname: '/result/[result-id]', params: { 'result-id': response.resultId } });
     } catch (error) { submitting.current = false; Alert.alert('Submit failed', error instanceof Error ? error.message : 'Please try again.'); }
     finally { setBusy(false); }
   } }]);

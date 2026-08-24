@@ -26,6 +26,7 @@ const {
   sessionHasAccess,
   validateAccessAttempt,
 } = require('../services/testAccessService');
+const { resultAvailability, safeSubmission } = require('../services/resultReleaseService');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
@@ -474,17 +475,29 @@ exports.getResult = async (req, res) => {
     if (viewer.role === 'student' && result.studentId._id.toString() !== viewer.id)
       { req.flash('error','Access denied.'); return res.redirect('/student/dashboard'); }
 
+    const release = resultAvailability(result.testId);
+    if (viewer.role === 'student' && !release.available) {
+      return res.render('exam/submission-confirmation', {
+        title:'Submission Confirmed',
+        submission:safeSubmission(result, result.testId),
+        release,
+      });
+    }
+
     const [topperResult, totalAttempted, trend] = await Promise.all([
       Result.findOne({ testId: result.testId._id, rank: 1 }, 'score subjectScores'),
       Result.countDocuments({ testId: result.testId._id, status: { $in: ['submitted','auto_submitted'] } }),
       Result.find({ studentId: result.studentId._id, status: { $in: ['submitted','auto_submitted'] } })
-        .populate('testId','title').sort({ submittedAt: 1 }).limit(10),
+        .populate('testId','title endTime resultReleaseMode resultReleaseAt resultsReleased').sort({ submittedAt: 1 }).limit(20),
     ]);
 
     const percentage = result.totalMarks > 0
       ? parseFloat(((result.score / result.totalMarks) * 100).toFixed(1)) : 0;
 
-    res.render('exam/result', { title: 'Exam Result', result, percentage, topperResult, trend, totalAttempted });
+    const visibleTrend = viewer.role === 'student'
+      ? trend.filter(item => item.testId && resultAvailability(item.testId).available).slice(-10)
+      : trend.slice(-10);
+    res.render('exam/result', { title: 'Exam Result', result, percentage, topperResult, trend:visibleTrend, totalAttempted });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/dashboard'); }
 };
 
@@ -495,6 +508,10 @@ exports.downloadResultPDF = async (req, res) => {
       .populate('studentId', 'name rollNo email')
       .populate({ path: 'testId', populate: { path: 'questions' } });
     if (!result) return res.status(404).send('Not found');
+
+    const viewer = req.session.user;
+    if (viewer.role === 'student' && result.studentId?._id?.toString() !== viewer.id) return res.status(403).send('Access denied');
+    if (viewer.role === 'student' && !resultAvailability(result.testId).available) return res.status(403).send('This result has not been released yet.');
 
     const test = result.testId;
     const questionMap = {};
@@ -596,6 +613,14 @@ exports.getLeaderboard = async (req, res) => {
         .sort({ rank:1, score: -1, timeTaken: 1 }).limit(50),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/student/dashboard'); }
+    if (req.session.user.role === 'student') {
+      const ownSubmission = await Result.exists({ studentId:req.session.user.id, testId, status:{ $in:['submitted','auto_submitted'] } });
+      if (!ownSubmission) { req.flash('error','Access denied.'); return res.redirect('/student/dashboard'); }
+      if (!resultAvailability(test).available) {
+        req.flash('info','The leaderboard will be available when this result is released.');
+        return res.redirect('/student/results');
+      }
+    }
     res.render('exam/leaderboard', { title: `Leaderboard — ${test.title}`, test, results });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/student/dashboard'); }
 };

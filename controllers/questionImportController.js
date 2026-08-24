@@ -21,6 +21,7 @@ const { questionInputFromBody } = require('../services/questionService');
 const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/testConfigurationService');
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
 const { accessConfiguration } = require('../services/testAccessService');
+const { RESULT_RELEASE_MODES, releaseConfiguration } = require('../services/resultReleaseService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -78,6 +79,8 @@ function testDefaultsFrom(body) {
     negativeMarking: Math.max(0, Number(body.testNegativeMarking) || 0),
     startTime: parseLocalDateTime(body.testStartTime),
     endTime: parseLocalDateTime(body.testEndTime),
+    resultReleaseMode: RESULT_RELEASE_MODES.includes(body.testResultReleaseMode) ? body.testResultReleaseMode : 'IMMEDIATE',
+    resultReleaseAt: parseLocalDateTime(body.testResultReleaseAt),
     instructions: String(body.testInstructions || '').trim(),
     courses: selectedValues(body.testCourses).filter(course => COURSES.includes(course)),
     groupIds: selectedValues(body.testGroupIds),
@@ -166,6 +169,7 @@ exports.getSmartImportReview = async (req, res) => {
       SUBJECTS,
       formatDateTimeLocal,
       TIMING_MODES,
+      RESULT_RELEASE_MODES,
     });
   } catch (error) {
     req.flash('error', `Unable to open review: ${error.message}`);
@@ -247,6 +251,11 @@ exports.commitSmartImport = async (req, res) => {
       endTime:parseLocalDateTime(req.body.endTime),
     }) : null;
     const access = createTest ? await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword }) : null;
+    const release = createTest ? releaseConfiguration({
+      resultReleaseMode:req.body.resultReleaseMode,
+      resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
+      endTime:timing.endTime,
+    }) : null;
 
     let createdTest = null;
     const session = await mongoose.startSession();
@@ -310,6 +319,7 @@ exports.commitSmartImport = async (req, res) => {
             groups: validGroups.map(group => group._id),
             blockCopyPaste: true,
             ...access,
+            ...release,
           }], { session });
           createdTest = tests[0];
 

@@ -76,6 +76,16 @@
           </div>
         </div>
 
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 class="font-bold text-slate-900 mb-1">📊 Result Release</h3>
+          <p class="text-xs text-slate-500 mb-4">Marks, answers, rank, PDF and leaderboard are all protected by this setting.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-semibold mb-1.5">Release Mode *</label><select id="resultReleaseMode" name="resultReleaseMode" onchange="updateResultReleaseFields()" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><% RESULT_RELEASE_MODES.forEach(mode=>{ %><option value="<%= mode %>" <%= (test.resultReleaseMode||'IMMEDIATE')===mode?'selected':'' %>><%= mode.replaceAll('_',' ') %></option><% }) %></select></div>
+            <div id="resultReleaseAtField"><label class="block text-sm font-semibold mb-1.5">Scheduled Release</label><input id="resultReleaseAt" type="datetime-local" name="resultReleaseAt" value="<%= formatDateTimeLocal(test.resultReleaseAt) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
+            <p id="resultReleaseHint" class="md:col-span-2 text-xs text-indigo-700 bg-indigo-50 rounded-xl p-3"></p>
+          </div>
+        </div>
+
         <!-- Anti-Cheat & Proctoring Settings -->
         <div class="bg-white rounded-xl border border-slate-200 p-6">
           <h3 class="font-bold text-slate-900 mb-1 flex items-center gap-2">🔒 Anti-Cheat & Proctoring</h3>
@@ -430,6 +440,22 @@ function updateTimingFields() {
     ? 'Hard cutoff: every active attempt auto-submits at the end time.'
     : mode === 'UNTIMED' ? 'No countdown. Start/end only control when new attempts may begin.'
       : 'Each student receives the full personal duration after starting within the access window.';
+  updateResultReleaseFields();
+}
+function updateResultReleaseFields() {
+  const mode = document.getElementById('resultReleaseMode').value;
+  const releaseAt = document.getElementById('resultReleaseAt');
+  const end = document.getElementById('endTimeInput');
+  const scheduled = mode === 'SCHEDULED';
+  releaseAt.disabled = !scheduled;
+  releaseAt.required = scheduled;
+  document.getElementById('resultReleaseAtField').classList.toggle('opacity-50', !scheduled);
+  end.required = document.getElementById('timingMode').value === 'FIXED_WINDOW' || mode === 'AFTER_TEST_END';
+  document.getElementById('resultReleaseHint').textContent = mode === 'IMMEDIATE'
+    ? 'Students see their result immediately after submission.'
+    : mode === 'AFTER_TEST_END' ? 'Results stay hidden until the configured test end time.'
+      : mode === 'SCHEDULED' ? 'Results stay hidden until the scheduled release date and time.'
+        : 'Results stay hidden until an administrator explicitly releases them.';
 }
 function updateAccessField() {
   const enabled = document.getElementById('testAccessEnabled').checked;
@@ -724,6 +750,7 @@ document.querySelectorAll('.diff-chip').forEach(b => {
 updCount();
 updateTimingFields();
 updateAccessField();
+updateResultReleaseFields();
 </script>
 
 <script>

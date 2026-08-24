@@ -101,7 +101,8 @@
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           <% solvedTests.forEach(({ test, result }) => {
-            const pct = result && result.totalMarks > 0 ? ((result.score/result.totalMarks)*100).toFixed(1) : null;
+            const release = resultAvailability(test);
+            const pct = release.available && result && result.totalMarks > 0 ? ((result.score/result.totalMarks)*100).toFixed(1) : null;
             const clr = pct ? (pct>=60?'emerald':pct>=40?'amber':'rose') : 'slate';
           %>
           <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-5 flex flex-col gap-3">
@@ -124,12 +125,19 @@
                 <% if (result.rank) { %><p class="text-[11px] text-slate-400">Rank #<%= result.rank %></p><% } %>
               </div>
             </div>
+            <% } else { %>
+            <div class="bg-amber-50 border border-amber-100 rounded-xl px-3 py-3">
+              <p class="text-xs font-bold text-amber-800">Result pending</p>
+              <p class="text-[11px] text-amber-700 mt-1"><%= release.message %></p>
+            </div>
             <% } %>
             <div class="flex gap-2 mt-auto">
-              <a href="/results/<%= result.id %>" class="flex-1 text-center text-sm font-semibold bg-navy-950 text-white py-2.5 rounded-xl hover:bg-navy-900 transition-colors">View Result</a>
+              <a href="/results/<%= result.id %>" class="flex-1 text-center text-sm font-semibold bg-navy-950 text-white py-2.5 rounded-xl hover:bg-navy-900 transition-colors"><%= release.available?'View Result':'View Submission' %></a>
+              <% if (release.available) { %>
               <a href="/results/leaderboard/<%= test.id %>" class="w-11 flex items-center justify-center border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors" title="Leaderboard">
                 <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
               </a>
+              <% } %>
             </div>
           </div>
           <% }) %>

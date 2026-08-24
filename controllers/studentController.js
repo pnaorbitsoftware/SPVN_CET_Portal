@@ -3,6 +3,7 @@ const { User, Test, Question, Group, GroupMember, Result, Notification, StudentD
 const fs   = require('fs');
 const path = require('path');
 const { availabilityFor, timingLabel } = require('../services/timingService');
+const { resultAvailability, safeSubmission } = require('../services/resultReleaseService');
 const DOC_DIR = path.join(__dirname, '../public/uploads/documents');
 if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });
 
@@ -13,7 +14,7 @@ exports.getDashboard = async (req, res) => {
     const [memberships, allResults, notifications] = await Promise.all([
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.find({ studentId, status: { $in: ['submitted','auto_submitted'] } })
-        .populate('testId', 'title totalMarks subject course duration timingMode')
+        .populate('testId', 'title totalMarks subject course duration timingMode endTime resultReleaseMode resultReleaseAt resultsReleased')
         .sort({ submittedAt: -1 }),
       Notification.find({ userId: studentId, isRead: false }).sort({ createdAt: -1 }).limit(8),
     ]);
@@ -36,8 +37,13 @@ exports.getDashboard = async (req, res) => {
       return availabilityFor(test, { hasInProgressAttempt:inProgressIds.has(testId) }).state !== 'expired';
     });
 
-    // Chart data (last 10 chronological)
-    const chartResults = [...allResults].reverse().slice(-10);
+    const releasedResults = allResults.filter(result => result.testId && resultAvailability(result.testId).available);
+    const pendingReleases = allResults
+      .filter(result => result.testId && !resultAvailability(result.testId).available)
+      .map(result => ({ submission:safeSubmission(result, result.testId), release:resultAvailability(result.testId) }));
+
+    // Chart data (last 10 chronological). Hidden submissions never feed analytics.
+    const chartResults = [...releasedResults].reverse().slice(-10);
     const chartData = chartResults.map(r => ({
       label: r.testId?.title ? r.testId.title.substring(0, 18) + (r.testId.title.length > 18 ? '…' : '') : 'Test',
       pct:   r.totalMarks > 0 ? parseFloat(((r.score / r.totalMarks) * 100).toFixed(1)) : 0,
@@ -47,7 +53,7 @@ exports.getDashboard = async (req, res) => {
 
     // Subject breakdown
     const subjectMap = {};
-    allResults.forEach(r => {
+    releasedResults.forEach(r => {
       const subj = r.testId?.subject || 'General';
       if (!subjectMap[subj]) subjectMap[subj] = { marks: 0, maxMarks: 0, count: 0 };
       subjectMap[subj].marks    += r.score;
@@ -58,16 +64,16 @@ exports.getDashboard = async (req, res) => {
       .map(([name, d]) => ({ name, pct: d.maxMarks > 0 ? parseFloat(((d.marks / d.maxMarks) * 100).toFixed(1)) : 0, count: d.count, marks: d.marks, maxMarks: d.maxMarks }))
       .sort((a, b) => b.pct - a.pct);
 
-    const avgScore = allResults.length
-      ? parseFloat((allResults.reduce((s, r) => s + (r.totalMarks > 0 ? (r.score / r.totalMarks) * 100 : 0), 0) / allResults.length).toFixed(1)) : 0;
+    const avgScore = releasedResults.length
+      ? parseFloat((releasedResults.reduce((s, r) => s + (r.totalMarks > 0 ? (r.score / r.totalMarks) * 100 : 0), 0) / releasedResults.length).toFixed(1)) : 0;
     let scoreTrend = 'neutral';
-    if (allResults.length >= 2) {
-      const last = allResults[0].totalMarks > 0 ? (allResults[0].score / allResults[0].totalMarks) * 100 : 0;
-      const prev = allResults[1].totalMarks > 0 ? (allResults[1].score / allResults[1].totalMarks) * 100 : 0;
+    if (releasedResults.length >= 2) {
+      const last = releasedResults[0].totalMarks > 0 ? (releasedResults[0].score / releasedResults[0].totalMarks) * 100 : 0;
+      const prev = releasedResults[1].totalMarks > 0 ? (releasedResults[1].score / releasedResults[1].totalMarks) * 100 : 0;
       scoreTrend = last > prev ? 'up' : last < prev ? 'down' : 'neutral';
     }
-    const totalCorrect   = allResults.reduce((s, r) => s + (r.correctAnswers || 0), 0);
-    const totalAttempted = allResults.reduce((s, r) => s + (r.correctAnswers || 0) + (r.wrongAnswers || 0), 0);
+    const totalCorrect   = releasedResults.reduce((s, r) => s + (r.correctAnswers || 0), 0);
+    const totalAttempted = releasedResults.reduce((s, r) => s + (r.correctAnswers || 0) + (r.wrongAnswers || 0), 0);
     const accuracy = totalAttempted > 0 ? parseFloat(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0;
 
     const now = new Date();
@@ -78,12 +84,13 @@ exports.getDashboard = async (req, res) => {
 
     res.render('student/dashboard', {
       title: 'My Dashboard', pendingTests,
-      completedResults: allResults.slice(0, 5),
-      allResultsCount: allResults.length,
+      completedResults: releasedResults.slice(0, 5),
+      allResultsCount: releasedResults.length,
+      pendingReleases,
       notifications, chartData: JSON.stringify(chartData),
       subjectStats, upcomingTest, bestResult: null,
       availabilityFor, timingLabel, inProgressIds,
-      stats: { pending: pendingTests.length, completed: allResults.length, avgScore, scoreTrend, accuracy, totalCorrect, totalAttempted },
+      stats: { pending: pendingTests.length, completed: allResults.length, released:releasedResults.length, avgScore, scoreTrend, accuracy, totalCorrect, totalAttempted },
     });
   } catch (err) { console.error(err); req.flash('error', 'Failed to load dashboard.'); res.redirect('/auth/login'); }
 };
@@ -131,7 +138,7 @@ exports.getTests = async (req, res) => {
       }
     });
 
-    res.render('student/tests', { title: 'My Tests', newTests, pendingTests, expiredTests, solvedTests, upcomingTests, resultMap, timingLabel });
+    res.render('student/tests', { title: 'My Tests', newTests, pendingTests, expiredTests, solvedTests, upcomingTests, resultMap, timingLabel, resultAvailability });
   } catch (err) { req.flash('error', 'Failed to load tests.'); res.redirect('/student/dashboard'); }
 };
 
@@ -148,9 +155,13 @@ exports.getNotifications = async (req, res) => {
 exports.getResults = async (req, res) => {
   try {
     const results = await Result.find({ studentId: req.session.user.id, status: { $in: ['submitted','auto_submitted'] } })
-      .populate('testId', 'title totalMarks duration timingMode subject')
+      .populate('testId', 'title totalMarks duration timingMode subject endTime resultReleaseMode resultReleaseAt resultsReleased')
       .sort({ submittedAt: -1 });
-    res.render('student/results', { title: 'My Results', results });
+    const releasedResults = results.filter(result => result.testId && resultAvailability(result.testId).available);
+    const pendingResults = results
+      .filter(result => result.testId && !resultAvailability(result.testId).available)
+      .map(result => ({ submission:safeSubmission(result, result.testId), release:resultAvailability(result.testId) }));
+    res.render('student/results', { title: 'My Results', results:releasedResults, pendingResults });
   } catch (err) { req.flash('error', 'Failed.'); res.redirect('/student/dashboard'); }
 };
 

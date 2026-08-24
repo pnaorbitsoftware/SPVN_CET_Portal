@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, Text, View } from 'react-native';
 
-import { assetUrl, mobileApi, type MobileDocument, type MobileNotification, type MobileResult, type MobileTest, type StudentDashboard, type TestInstructions } from '../src/api';
+import { assetUrl, mobileApi, type MobileDocument, type MobileNotification, type MobileResult, type MobileTest, type PendingReleaseItem, type StudentDashboard, type TestInstructions } from '../src/api';
 import { useAuth } from '../src/auth';
 import { Badge, Body, Button, Card, Chips, DataLine, Empty, Field, Loading, Row, Screen, SectionTitle, Stat, Title } from '../src/ui';
 import { colors } from '../src/theme';
@@ -17,6 +17,7 @@ export default function StudentRoute() {
   const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
   const [tests, setTests] = useState<MobileTest[]>([]);
   const [results, setResults] = useState<MobileResult[]>([]);
+  const [pendingResults, setPendingResults] = useState<PendingReleaseItem[]>([]);
   const [notifications, setNotifications] = useState<MobileNotification[]>([]);
   const [documents, setDocuments] = useState<MobileDocument[]>([]);
   const [instructions, setInstructions] = useState<TestInstructions | null>(null);
@@ -32,7 +33,7 @@ export default function StudentRoute() {
       const [dashboardData, testData, resultData, notificationData, documentData] = await Promise.all([
         mobileApi.getStudentDashboard(), mobileApi.getStudentTests(), mobileApi.getStudentResults(), mobileApi.getStudentNotifications(), mobileApi.getStudentDocuments(),
       ]);
-      setDashboard(dashboardData); setTests(testData.tests); setResults(resultData.results); setNotifications(notificationData.notifications); setDocuments(documentData.documents);
+      setDashboard(dashboardData); setTests(testData.tests); setResults(resultData.results); setPendingResults(resultData.pendingResults); setNotifications(notificationData.notifications); setDocuments(documentData.documents);
     } catch (error) {
       Alert.alert('Unable to load portal', error instanceof Error ? error.message : 'Please try again.');
     } finally { setLoading(false); setRefreshing(false); }
@@ -105,6 +106,7 @@ export default function StudentRoute() {
       {dashboard?.pendingTests.length ? dashboard.pendingTests.map((test) => <TestCard key={test._id} test={test} onOpen={() => openInstructions(test)} busy={busy} />) : <Empty message="No pending tests right now." />}
       <SectionTitle>Recent results</SectionTitle>
       {dashboard?.recentResults.length ? dashboard.recentResults.map((result) => <ResultCard key={result._id} result={result} />) : <Empty message="No submitted results yet." />}
+      {dashboard?.pendingReleases.length ? <><SectionTitle>Submitted — Result Pending</SectionTitle>{dashboard.pendingReleases.map((item) => <PendingResultCard key={item.submission.id} item={item} />)}</> : null}
       <SectionTitle>Subject performance</SectionTitle>
       {dashboard?.subjectStats.length ? dashboard.subjectStats.map((subject) => <Card key={subject.name}><Row><Text selectable style={{ flex: 1, color: colors.label, fontWeight: '900' }}>{subject.name}</Text><Badge>{subject.percentage}%</Badge></Row><Body muted>{subject.marks}/{subject.maxMarks} marks across {subject.count} test(s)</Body></Card>) : <Empty message="Subject performance appears after submitted tests." />}
     </> : null}
@@ -115,6 +117,7 @@ export default function StudentRoute() {
     </> : null}
 
     {section === 'Results' ? <>
+      {pendingResults.length ? <><SectionTitle>Submitted — Result Pending</SectionTitle>{pendingResults.map((item) => <PendingResultCard key={item.submission.id} item={item} />)}</> : null}
       <SectionTitle>My results</SectionTitle>
       {results.length ? results.map((result) => <ResultCard key={result._id} result={result} />) : <Empty message="No results available." />}
     </> : null}
@@ -148,7 +151,12 @@ export default function StudentRoute() {
 function TestCard({ test, onOpen, busy }: { test: MobileTest; onOpen: () => void; busy: boolean }) {
   const completed = Boolean(test.result && ['submitted', 'auto_submitted'].includes(test.result.status || ''));
   const timing = test.timingMode === 'UNTIMED' ? 'No time limit' : test.timingMode === 'FIXED_WINDOW' ? 'Fixed window' : `${test.duration} min personal`;
-  return <Card><Row><Badge tone={test.status === 'closed' ? 'warning' : 'primary'}>{test.status}</Badge><Body muted>{timing} · {test.totalMarks} marks</Body></Row><Text selectable style={{ color: colors.label, fontSize: 17, fontWeight: '900' }}>{test.title}</Text><Body muted>{test.subject?.join(', ') || 'General'}</Body><Button title={completed ? 'View Result' : test.result?.status === 'in_progress' ? 'Resume Test' : 'Instructions'} onPress={onOpen} busy={busy} /></Card>;
+  const pendingRelease = completed && test.result?.released === false;
+  return <Card><Row><Badge tone={test.status === 'closed' ? 'warning' : pendingRelease ? 'warning' : 'primary'}>{pendingRelease ? 'result pending' : test.status}</Badge><Body muted>{timing} · {test.totalMarks} marks</Body></Row><Text selectable style={{ color: colors.label, fontSize: 17, fontWeight: '900' }}>{test.title}</Text><Body muted>{test.subject?.join(', ') || 'General'}</Body><Button title={completed ? pendingRelease ? 'View Submission' : 'View Result' : test.result?.status === 'in_progress' ? 'Resume Test' : 'Instructions'} onPress={onOpen} busy={busy} /></Card>;
+}
+
+function PendingResultCard({ item }: { item: PendingReleaseItem }) {
+  return <Card><Row><Badge tone="warning">Result Pending</Badge><Body muted>{item.submission.submittedAt ? new Date(item.submission.submittedAt).toLocaleDateString() : ''}</Body></Row><Text selectable style={{ color: colors.label, fontSize: 17, fontWeight: '900' }}>{item.submission.testTitle}</Text><Body muted>{item.release.message}</Body><Button title="View Submission" variant="secondary" compact onPress={() => router.push({ pathname:'/result/[result-id]', params:{ 'result-id':item.submission.id } })} /></Card>;
 }
 
 function ResultCard({ result }: { result: MobileResult }) {

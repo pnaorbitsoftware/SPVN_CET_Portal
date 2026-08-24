@@ -27,6 +27,11 @@ const {
 const { updateRanks } = require('../services/rankingService');
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
 const { accessConfiguration } = require('../services/testAccessService');
+const {
+  RESULT_RELEASE_MODES,
+  releaseConfiguration,
+  releaseLabel,
+} = require('../services/resultReleaseService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -626,7 +631,7 @@ exports.getCreateTest = async (req, res) => {
       title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics,
       filterSubject:subject||'', filterCourse:course||'', sourcePaper, selectedQuestionIds,
       TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
-      TIMING_MODES,
+      TIMING_MODES, RESULT_RELEASE_MODES,
       patternOptions:examConfigurations.patterns.map(pattern => ({
         id:String(pattern._id), code:pattern.code,
         defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
@@ -672,6 +677,11 @@ exports.createTest = async (req, res) => {
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
+    const release = releaseConfiguration({
+      resultReleaseMode:req.body.resultReleaseMode,
+      resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
+      endTime:timing.endTime,
+    });
     const test = await Test.create({
       title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -695,6 +705,7 @@ exports.createTest = async (req, res) => {
       blockCopyPaste:req.body.blockCopyPaste==='on',
       requireFullscreen:req.body.requireFullscreen==='on',
       ...access,
+      ...release,
     });
     req.flash('success','Test created!');
     res.redirect(`/admin/tests/${test._id}`);
@@ -709,7 +720,7 @@ exports.getTestDetail = async (req, res) => {
         .populate('studentId','name rollNo').sort({ rank:1, score:-1, timeTaken:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
-    res.render('admin/test-detail', { title:test.title, test, results, timingLabel });
+    res.render('admin/test-detail', { title:test.title, test, results, timingLabel, releaseLabel });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -968,7 +979,7 @@ exports.getEditTest = async (req, res) => {
       formatDateTimeLocal,
       questionConfigMap:configsByQuestionId(test),
       TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
-      TIMING_MODES, testAccessConfigured,
+      TIMING_MODES, RESULT_RELEASE_MODES, testAccessConfigured,
       patternOptions:examConfigurations.patterns.map(pattern => ({
         id:String(pattern._id), code:pattern.code,
         defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
@@ -1003,6 +1014,12 @@ exports.updateTest = async (req, res) => {
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword, existingHash:existingTest.testAccessHash, existingUpdatedAt:existingTest.testAccessUpdatedAt });
+    const release = releaseConfiguration({
+      resultReleaseMode:req.body.resultReleaseMode,
+      resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
+      endTime:timing.endTime,
+      existingTest,
+    });
     await Test.findByIdAndUpdate(req.params.id, {
       title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -1023,6 +1040,7 @@ exports.updateTest = async (req, res) => {
       questions:effectiveQuestionIds,
       questionConfigs,
       ...access,
+      ...release,
     });
     await updateRanks(req.params.id);
     req.flash('success','Test updated!');
@@ -1041,6 +1059,33 @@ exports.deleteTest = async (req, res) => {
     req.flash('success','Test deleted.');
     res.redirect('/admin/tests');
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
+};
+
+exports.releaseTestResults = async (req, res) => {
+  try {
+    const test = await Test.findOneAndUpdate(
+      { _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) },
+      { resultsReleased:true },
+      { new:true }
+    );
+    if (!test) throw new Error('Test not found.');
+    const submitted = await Result.find({ testId:test._id, status:{ $in:['submitted','auto_submitted'] } }, 'studentId');
+    const studentIds = [...new Set(submitted.map(result => String(result.studentId)))];
+    if (studentIds.length) {
+      await Notification.insertMany(studentIds.map(userId => ({
+        userId,
+        title:'Exam Result Available',
+        message:`Your result for "${test.title}" is now available.`,
+        type:'success',
+        link:'/student/results',
+      })));
+    }
+    req.flash('success',`Results released. ${studentIds.length} submitted student(s) notified.`);
+    res.redirect(`/admin/tests/${test._id}`);
+  } catch (error) {
+    req.flash('error',`Unable to release results: ${error.message}`);
+    res.redirect(`/admin/tests/${req.params.id}`);
+  }
 };
 
 // ── QUESTION TEMPLATE DOWNLOAD ────────────────────────────────────────────
@@ -1064,7 +1109,7 @@ exports.downloadQuestionTemplate = (req, res) => {
 exports.getUploadTest = async (req, res) => {
   try {
     const groups = await Group.find({ isActive: true });
-    res.render('admin/upload-test', { title: 'Upload Test via PDF', groups, COURSES, SUBJECTS: ALL_SUBJECTS, TIMING_MODES });
+    res.render('admin/upload-test', { title: 'Upload Test via PDF', groups, COURSES, SUBJECTS: ALL_SUBJECTS, TIMING_MODES, RESULT_RELEASE_MODES });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -1097,6 +1142,11 @@ exports.uploadPdfTest = async (req, res) => {
       startTime:parseLocalDateTime(startTime),
       endTime:parseLocalDateTime(endTime),
     });
+    const release = releaseConfiguration({
+      resultReleaseMode:req.body.resultReleaseMode,
+      resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
+      endTime:timing.endTime,
+    });
     const test = await Test.create({
       title:title.trim(), description:description||null, duration:timing.duration, timingMode:timing.timingMode,
       negativeMarking:parseFloat(negativeMarking)||0.25, startTime:timing.startTime, endTime:timing.endTime,
@@ -1108,6 +1158,7 @@ exports.uploadPdfTest = async (req, res) => {
       maxFocusLosses:parseInt(req.body.maxFocusLosses)||5,
       blockCopyPaste:req.body.blockCopyPaste!=='off',
       requireFullscreen:req.body.requireFullscreen==='on',
+      ...release,
     });
     const pageInfo=pdfPageCount>0?` Detected ${pdfPageCount} page(s) — ${totalMarks} total marks.`:'';
     req.flash('success',`PDF test "${test.title}" created!${pageInfo}${solutionPdfPath?' Model answers attached.':''}`);

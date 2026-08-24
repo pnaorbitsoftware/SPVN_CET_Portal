@@ -103,6 +103,7 @@ router.get('/tests/:id/edit',             ...guard, c.getEditTest);
 router.post('/tests/:id/edit',            ...guard, c.updateTest);
 router.post('/tests/:id/delete',          ...guard, c.deleteTest);
 router.post('/tests/:id/publish',         ...guard, c.publishTest);
+router.post('/tests/:id/results/release', ...guard, c.releaseTestResults);
 
 // Results
 router.get('/results',        ...guard, c.getAllResults);

@@ -57,6 +57,9 @@ const testSchema = new mongoose.Schema({
   testAccessEnabled:     { type: Boolean, default: false },
   testAccessHash:        { type: String, default: null, select: false },
   testAccessUpdatedAt:   { type: Date, default: null },
+  resultReleaseMode:     { type: String, enum: ['IMMEDIATE','AFTER_TEST_END','SCHEDULED','MANUAL'], default: 'IMMEDIATE', index:true },
+  resultReleaseAt:       { type: Date, default: null },
+  resultsReleased:       { type: Boolean, default: true },
   isActive:              { type: Boolean, default: true },
 }, { timestamps: true });
 
