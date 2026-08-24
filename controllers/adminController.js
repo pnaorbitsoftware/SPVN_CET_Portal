@@ -13,6 +13,11 @@ const {
   answerForDisplay,
   questionInputFromBody,
 } = require('../services/questionService');
+const {
+  buildQuestionConfigs,
+  configsByQuestionId,
+  totalMarksFromConfigs,
+} = require('../services/testConfigurationService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -446,7 +451,7 @@ exports.getTopicsForSubject = async (req, res) => {
 exports.getSubtopicsForTopic = async (req, res) => {
   try {
     const { course, subject, topic } = req.query;
-    const q = { isActive:true };
+    const q = { isActive:true, ...organizationScope(req.organization) };
     if (course)  q.course  = course;
     if (subject) q.subject = subject;
     if (topic)   q.name    = topic;
@@ -610,8 +615,13 @@ exports.createTest = async (req, res) => {
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
     if (!selectedQIds.length) { req.flash('error','Select at least one question.'); return res.redirect('/admin/tests/create'); }
     const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion } = req.body;
-    const questionsData = await Question.find({ _id:{ $in:selectedQIds } });
-    const totalMarks = questionsData.reduce((s,q)=>s+q.marks, 0);
+    const questionRows = await Question.find({ _id:{ $in:selectedQIds }, ...organizationScope(req.organization) });
+    const questionMap = new Map(questionRows.map(question => [question._id.toString(), question]));
+    const questionsData = selectedQIds.map(id => questionMap.get(String(id))).filter(Boolean);
+    if (questionsData.length !== selectedQIds.length) throw new Error('One or more selected questions are unavailable.');
+    const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
+    const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking });
+    const totalMarks = totalMarksFromConfigs(questionConfigs);
     let questionPdfPath=null, solutionPdfPath=null;
     if (req.files?.questionPdf) { const fn=`q_${Date.now()}.pdf`; questionPdfPath='/uploads/pdfs/'+fn; fs.writeFileSync(path.join(PDF_DIR,fn),req.files.questionPdf.data); }
     if (req.files?.solutionPdf) { const fn=`s_${Date.now()}.pdf`; solutionPdfPath='/uploads/pdfs/'+fn; fs.writeFileSync(path.join(PDF_DIR,fn),req.files.solutionPdf.data); }
@@ -623,14 +633,15 @@ exports.createTest = async (req, res) => {
     if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     const test = await Test.create({
       title, description, duration:parseInt(duration)||180,
-      negativeMarking:parseFloat(negativeMarking)||0.25, passingMarks:parseFloat(passingMarks)||null,
+      organization:organizationIdForWrite(req),
+      negativeMarking:parsedNegativeMarking, passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
       startTime:parsedStartTime, endTime:parsedEndTime, instructions,
       totalMarks, createdBy:req.session.user.id, status:'draft',
       course: courseArr, subject: subjectArr, topic:topic||null, subtopic:subtopic||null,
       marksPerQuestion:parseFloat(marksPerQuestion)||1,
       questionPdfPath, solutionPdfPath,
-      questions:selectedQIds, groups,
+      questions:selectedQIds, questionConfigs, groups,
       autoSubmitOnViolation:req.body.autoSubmitOnViolation==='on',
       maxTabSwitches:parseInt(req.body.maxTabSwitches)||3,
       maxFocusLosses:parseInt(req.body.maxFocusLosses)||5,
@@ -898,10 +909,14 @@ exports.getEditTest = async (req, res) => {
     const [test, groups, questions] = await Promise.all([
       Test.findById(req.params.id).populate('questions').populate('groups','name'),
       Group.find({ isActive:true }),
-      Question.find({ isActive:true }).sort({ subject:1, difficulty:1 }),
+      Question.find({ isActive:true, ...organizationScope(req.organization) }).sort({ subject:1, difficulty:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
-    res.render('admin/edit-test', { title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, formatDateTimeLocal });
+    res.render('admin/edit-test', {
+      title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS,
+      formatDateTimeLocal,
+      questionConfigMap:configsByQuestionId(test),
+    });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -910,8 +925,16 @@ exports.updateTest = async (req, res) => {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
     const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects } = req.body;
-    const questionsData = selectedQIds.length ? await Question.find({ _id:{ $in:selectedQIds } }) : [];
-    const totalMarks = questionsData.reduce((s,q)=>s+q.marks, 0);
+    const existingTest = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) });
+    if (!existingTest) throw new Error('Test not found.');
+    const effectiveQuestionIds = selectedQIds.length ? selectedQIds : existingTest.questions.map(id => String(id));
+    const questionRows = await Question.find({ _id:{ $in:effectiveQuestionIds }, ...organizationScope(req.organization) });
+    const questionMap = new Map(questionRows.map(question => [question._id.toString(), question]));
+    const questionsData = effectiveQuestionIds.map(id => questionMap.get(String(id))).filter(Boolean);
+    if (questionsData.length !== effectiveQuestionIds.length) throw new Error('One or more selected questions are unavailable.');
+    const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
+    const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking }, existingTest);
+    const totalMarks = totalMarksFromConfigs(questionConfigs);
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
@@ -920,7 +943,7 @@ exports.updateTest = async (req, res) => {
     if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     await Test.findByIdAndUpdate(req.params.id, {
       title, description, duration:parseInt(duration)||180,
-      negativeMarking:parseFloat(negativeMarking)||0.25,
+      negativeMarking:parsedNegativeMarking,
       passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
       startTime:parsedStartTime, endTime:parsedEndTime, instructions,
@@ -930,7 +953,8 @@ exports.updateTest = async (req, res) => {
       maxFocusLosses:parseInt(req.body.maxFocusLosses)||5,
       blockCopyPaste:req.body.blockCopyPaste==='on',
       requireFullscreen:req.body.requireFullscreen==='on',
-      ...(selectedQIds.length ? { questions: selectedQIds } : {}),
+      questions:effectiveQuestionIds,
+      questionConfigs,
     });
     req.flash('success','Test updated!');
     res.redirect(`/admin/tests/${req.params.id}`);

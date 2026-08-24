@@ -59,7 +59,7 @@
           <% if (cetSectionFlow && currentSection) { %>
           <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full"><%= currentSection.name %> <%= sectionQuestionNumber %>/<%= currentSection.questionIds.length %></span>
           <% } %>
-          <span class="text-xs text-slate-400 hidden sm:block"><%= question.subject %><% if(question.topic){%> &rsaquo; <%= question.topic %><% } %> &middot; <%= question.difficulty %> &middot; <%= question.marks %> mark(s)</span>
+          <span class="text-xs text-slate-400 hidden sm:block"><%= question.subject %><% if(question.topic){%> &rsaquo; <%= question.topic %><% } %> &middot; <%= question.difficulty %> &middot; <%= questionConfig.positiveMarks %> mark(s)<% if(questionConfig.negativeMarks){ %> · −<%= questionConfig.negativeMarks %><% } %><% if(questionConfig.bonus){ %> · Bonus<% } %></span>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs text-slate-400 hidden sm:block">This Q: <span id="qTimer" class="font-mono font-semibold text-slate-600">0s</span></span>
@@ -79,11 +79,20 @@
         <% } %>
 
         <div class="space-y-3" id="optionsContainer">
-          <% options.forEach(opt => { %>
-          <div class="opt-box <%= selectedAnswer===opt.key?'selected':'' %>" onclick="selectOption('<%= opt.key %>', this)">
+          <% if (question.questionType === 'NUMERICAL') { %>
+          <label class="block max-w-md">
+            <span class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Enter numerical answer</span>
+            <input id="numericalAnswer" type="number" step="any" value="<%= selectedAnswer ?? '' %>"
+              oninput="setNumericalAnswer(this.value)" onblur="saveToServer(currentAnswer)"
+              class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-lg font-semibold focus:outline-none focus:border-navy-950" autocomplete="off"/>
+            <span class="block text-xs text-slate-400 mt-2">Decimals and negative values are accepted where applicable.</span>
+          </label>
+          <% } else { const selectedValues = Array.isArray(selectedAnswer) ? selectedAnswer : [selectedAnswer]; %>
+          <% options.filter(opt => opt.value !== null && opt.value !== undefined && opt.value !== '').forEach(opt => { %>
+          <div class="opt-box <%= selectedValues.includes(opt.key)?'selected':'' %>" data-option-key="<%= opt.key %>" onclick="selectOption('<%= opt.key %>', this)">
             <div class="flex items-start gap-3">
               <span class="opt-key w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5
-                <%= selectedAnswer===opt.key?'bg-navy-950 border-navy-950 text-white':'border-slate-300 text-slate-500' %>">
+                <%= selectedValues.includes(opt.key)?'bg-navy-950 border-navy-950 text-white':'border-slate-300 text-slate-500' %>">
                 <%= opt.key %>
               </span>
               <span class="math-content text-sm text-slate-800 leading-relaxed pt-0.5"><%= opt.value %></span>
@@ -93,6 +102,10 @@
             <% } %>
           </div>
           <% }) %>
+          <% if (question.questionType === 'MULTIPLE_CORRECT') { %>
+          <p class="text-xs text-indigo-600 font-semibold">Select all options that apply.</p>
+          <% } %>
+          <% } %>
         </div>
       </div>
 
@@ -278,7 +291,8 @@
 // ── Core vars ──────────────────────────────────────────────────────────────
 const TEST_ID     = '<%= test.id %>';
 const QUESTION_ID = '<%= question.id %>';
-let currentAnswer = '<%= selectedAnswer || "" %>';
+const QUESTION_TYPE = '<%= question.questionType || "SINGLE_CORRECT" %>';
+let currentAnswer = <%- JSON.stringify(selectedAnswer ?? (question.questionType === 'MULTIPLE_CORRECT' ? [] : '')) %>;
 let markedForReview = <%- isMarked ? 'true' : 'false' %>;
 let qElapsed = 0;
 let navInProgress = false;
@@ -320,17 +334,14 @@ setInterval(() => {
 
 // ── Select option (click on box) ───────────────────────────────────────────
 function selectOption(key, boxEl) {
-  // Clear all boxes
-  document.querySelectorAll('.opt-box').forEach(b => {
-    b.classList.remove('selected');
-    const keySpan = b.querySelector('.opt-key');
-    if (keySpan) { keySpan.className = keySpan.className.replace('bg-navy-950 border-navy-950 text-white','').trim() + ' border-slate-300 text-slate-500'; }
-  });
-  // Select clicked
-  boxEl.classList.add('selected');
-  const keySpan = boxEl.querySelector('.opt-key');
-  if (keySpan) { keySpan.className = keySpan.className.replace('border-slate-300 text-slate-500','').trim() + ' bg-navy-950 border-navy-950 text-white'; }
-  currentAnswer = key;
+  if (QUESTION_TYPE === 'MULTIPLE_CORRECT') {
+    const selected = new Set(Array.isArray(currentAnswer) ? currentAnswer : []);
+    if (selected.has(key)) selected.delete(key); else selected.add(key);
+    currentAnswer = [...selected].sort();
+  } else {
+    currentAnswer = key;
+  }
+  renderOptionSelection();
 
   // Auto-clear "Mark for Review" when student answers — answered takes priority
   if (markedForReview) {
@@ -340,7 +351,29 @@ function selectOption(key, boxEl) {
     btn.textContent = 'Mark for Review';
   }
 
-  saveToServer(key);
+  saveToServer(currentAnswer);
+}
+
+function renderOptionSelection() {
+  const selected = new Set(Array.isArray(currentAnswer) ? currentAnswer : [currentAnswer]);
+  document.querySelectorAll('.opt-box').forEach(box => {
+    const isSelected = selected.has(box.dataset.optionKey);
+    box.classList.toggle('selected', isSelected);
+    const keySpan = box.querySelector('.opt-key');
+    if (!keySpan) return;
+    keySpan.classList.toggle('bg-navy-950', isSelected);
+    keySpan.classList.toggle('border-navy-950', isSelected);
+    keySpan.classList.toggle('text-white', isSelected);
+    keySpan.classList.toggle('border-slate-300', !isSelected);
+    keySpan.classList.toggle('text-slate-500', !isSelected);
+  });
+}
+
+let numericalSaveTimer;
+function setNumericalAnswer(value) {
+  currentAnswer = value.trim();
+  clearTimeout(numericalSaveTimer);
+  numericalSaveTimer = setTimeout(() => saveToServer(currentAnswer), 500);
 }
 
 // ── Clear answer ───────────────────────────────────────────────────────────
@@ -350,7 +383,9 @@ function clearAnswer() {
     const ks = b.querySelector('.opt-key');
     if (ks) { ks.className = ks.className.replace('bg-navy-950 border-navy-950 text-white','').trim() + ' border-slate-300 text-slate-500'; }
   });
-  currentAnswer = '';
+  currentAnswer = QUESTION_TYPE === 'MULTIPLE_CORRECT' ? [] : '';
+  const numericalInput = document.getElementById('numericalAnswer');
+  if (numericalInput) numericalInput.value = '';
   saveToServer('');
 }
 

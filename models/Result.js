@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const resultSchema = new mongoose.Schema({
+  organization:    { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   studentId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User',  required: true },
   testId:          { type: mongoose.Schema.Types.ObjectId, ref: 'Test',  required: true },
   score:           { type: Number, default: 0 },
@@ -9,6 +10,8 @@ const resultSchema = new mongoose.Schema({
   correctAnswers:  { type: Number, default: 0 },
   wrongAnswers:    { type: Number, default: 0 },
   skippedAnswers:  { type: Number, default: 0 },
+  partialAnswers:  { type: Number, default: 0 },
+  bonusAnswers:    { type: Number, default: 0 },
   rank:            { type: Number, default: null },
   percentile:      { type: Number, default: null },
   timeTaken:       { type: Number, default: null },  // seconds
@@ -18,6 +21,9 @@ const resultSchema = new mongoose.Schema({
   attemptedSubjects:{ type: [String], default: [] },
   absentSubjects:  { type: [String], default: [] },
   topicScores:     { type: mongoose.Schema.Types.Mixed, default: {} },
+  perQuestionScore:{ type: mongoose.Schema.Types.Mixed, default: {} },
+  scoringVersion:  { type: String, default: 'legacy' },
+  recalculatedAt:  { type: Date, default: null },
   cheatingFlags:   { type: mongoose.Schema.Types.Mixed, default: { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0 } },
   violationCount:  { type: Number, default: 0 },
   status:          { type: String, enum: ['in_progress','submitted','auto_submitted','terminated'], default: 'in_progress' },
@@ -25,6 +31,8 @@ const resultSchema = new mongoose.Schema({
   visitedQuestionIds:{ type: [mongoose.Schema.Types.Mixed], default: [] },
   markedForReview: { type: [mongoose.Schema.Types.Mixed], default: [] },
   startedAt:       { type: Date, default: null },
+  lastActivityAt:  { type: Date, default: null },
+  deadlineAt:      { type: Date, default: null },
   submittedAt:     { type: Date, default: null },
 }, { timestamps: true });
 

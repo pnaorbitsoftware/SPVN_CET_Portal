@@ -1,6 +1,21 @@
 const mongoose = require('mongoose');
 
+const testQuestionConfigSchema = new mongoose.Schema({
+  questionId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Question', required: true },
+  positiveMarks:   { type: Number, min: 0, default: null },
+  negativeMarks:   { type: Number, min: 0, default: null },
+  partialMarks:    { type: Number, min: 0, default: 0 },
+  bonus:           { type: Boolean, default: false },
+  bonusMarks:      { type: Number, min: 0, default: null },
+  bonusReason:     { type: String, default: null, maxlength: 500 },
+  markingMode:     { type: String, enum: ['FULL_OR_ZERO','PARTIAL_SUBSET','PER_CORRECT_OPTION'], default: 'FULL_OR_ZERO' },
+  incorrectSelectionPolicy: { type: String, enum: ['ZERO','NEGATIVE'], default: 'NEGATIVE' },
+  displayOrder:    { type: Number, min: 0, default: 0 },
+  section:         { type: String, default: null },
+}, { _id: false });
+
 const testSchema = new mongoose.Schema({
+  organization:    { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   title:           { type: String, required: true },
   description:     { type: String, default: null },
   duration:        { type: Number, default: 180 },   // minutes
@@ -23,6 +38,7 @@ const testSchema = new mongoose.Schema({
   solutionPdfPath: { type: String, default: null },
   // Embedded question list (replaces TestQuestion join table)
   questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
+  questionConfigs: { type: [testQuestionConfigSchema], default: [] },
   // Groups assigned (replaces TestGroup join table)
   groups:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
   // Anti-cheat
@@ -34,6 +50,19 @@ const testSchema = new mongoose.Schema({
   isActive:              { type: Boolean, default: true },
 }, { timestamps: true });
 
-testSchema.index({ status: 1, createdBy: 1 });
+testSchema.pre('validate', function normalizeQuestionConfigurations() {
+  if (!this.questionConfigs?.length) return;
+  const seen = new Set();
+  this.questionConfigs = this.questionConfigs.filter((config, index) => {
+    const key = String(config.questionId || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    config.displayOrder = index;
+    return true;
+  });
+  if (!this.questions?.length) this.questions = this.questionConfigs.map(config => config.questionId);
+});
+
+testSchema.index({ organization: 1, status: 1, createdBy: 1 });
 
 module.exports = mongoose.models.Test || mongoose.model('Test', testSchema);

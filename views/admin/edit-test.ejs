@@ -214,6 +214,17 @@
           </div>
 
           <!-- Questions list -->
+          <div class="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+            <div class="flex flex-wrap items-end gap-2">
+              <label class="text-[11px] font-semibold text-indigo-900">Apply to<select id="bulkScope" class="mt-1 block rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-xs"><option value="selected">Selected questions</option><option value="all">All questions</option><option value="section">Current subject filter</option><option value="type">Question type</option></select></label>
+              <label class="text-[11px] font-semibold text-indigo-900">Type<select id="bulkType" class="mt-1 block rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-xs"><option value="SINGLE_CORRECT">Single</option><option value="MULTIPLE_CORRECT">Multiple</option><option value="NUMERICAL">Numerical</option><option value="TRUE_FALSE">True/False</option></select></label>
+              <label class="text-[11px] font-semibold text-indigo-900">Positive<input id="bulkPositive" type="number" min="0" step="0.25" value="1" class="mt-1 block w-20 rounded-lg border border-indigo-200 px-2 py-1.5 text-xs"/></label>
+              <label class="text-[11px] font-semibold text-indigo-900">Negative<input id="bulkNegative" type="number" min="0" step="0.25" value="<%= test.negativeMarking %>" class="mt-1 block w-20 rounded-lg border border-indigo-200 px-2 py-1.5 text-xs"/></label>
+              <label class="text-[11px] font-semibold text-indigo-900">Partial<input id="bulkPartial" type="number" min="0" step="0.25" value="0" class="mt-1 block w-20 rounded-lg border border-indigo-200 px-2 py-1.5 text-xs"/></label>
+              <button type="button" onclick="applyBulkMarking()" class="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white">Preview &amp; apply</button>
+            </div>
+            <p class="mt-2 text-[11px] text-indigo-700">Bulk changes show the affected count and require confirmation before overwriting per-question values.</p>
+          </div>
           <div class="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto" id="ctQuestionList">
             <% if (!questions.length) { %>
             <p class="p-6 text-sm text-slate-400 text-center">No questions in bank. <a href="/admin/questions" class="text-navy-600 hover:underline">Add questions first →</a></p>
@@ -233,11 +244,13 @@
               <% if (q.subtopic) { %><span class="text-purple-400 mx-1">›</span><span class="text-xs text-purple-500"><%= q.subtopic %></span><% } %>
             </div>
             <% } %>
+            <% const cfg = questionConfigMap.get(String(q.id)) || {}; %>
             <label class="q-item flex items-start gap-3 p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
               data-subj="<%= q.subject %>"
               data-topic="<%= q.topic || '' %>"
               data-subtopic="<%= q.subtopic || '' %>"
               data-diff="<%= q.difficulty %>"
+              data-type="<%= q.questionType || 'SINGLE_CORRECT' %>"
               data-text="<%= q.question.toLowerCase() %>" data-idx="<%= i %>">
               <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0" <%= (test.questions||[]).map(x=>x.id||x.toString()).includes(q.id)?'checked':'' %>/>
               <div class="flex-1 min-w-0">
@@ -249,6 +262,20 @@
                   <span class="text-xs <%= q.difficulty==='Easy'?'bg-green-100 text-green-700':q.difficulty==='Hard'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700' %> px-2 py-0.5 rounded"><%= q.difficulty %></span>
                   <span class="text-xs text-slate-400 ml-auto"><%= q.marks %> mk</span>
                 </div>
+                <details class="mt-2 rounded-lg border border-slate-200 bg-white p-2" onclick="event.stopPropagation()">
+                  <summary class="cursor-pointer text-[11px] font-bold text-indigo-700">Per-question marking<% if(cfg.bonus){ %> · Bonus<% } %></summary>
+                  <div class="marking-grid mt-2 grid grid-cols-2 gap-2 md:grid-cols-4" data-question-id="<%= q.id %>">
+                    <label class="text-[10px] font-semibold text-slate-500">Positive<input name="questionConfigs[<%= q.id %>][positiveMarks]" value="<%= cfg.positiveMarks ?? q.marks %>" type="number" min="0" step="0.25" class="mark-positive mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Negative<input name="questionConfigs[<%= q.id %>][negativeMarks]" value="<%= cfg.negativeMarks ?? test.negativeMarking %>" type="number" min="0" step="0.25" class="mark-negative mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Partial<input name="questionConfigs[<%= q.id %>][partialMarks]" value="<%= cfg.partialMarks ?? 0 %>" type="number" min="0" step="0.25" class="mark-partial mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Mode<select name="questionConfigs[<%= q.id %>][markingMode]" class="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"><option value="FULL_OR_ZERO" <%= cfg.markingMode==='FULL_OR_ZERO'?'selected':'' %>>Full or zero</option><option value="PARTIAL_SUBSET" <%= cfg.markingMode==='PARTIAL_SUBSET'?'selected':'' %>>Partial subset</option><option value="PER_CORRECT_OPTION" <%= cfg.markingMode==='PER_CORRECT_OPTION'?'selected':'' %>>Per correct option</option></select></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Wrong selection<select name="questionConfigs[<%= q.id %>][incorrectSelectionPolicy]" class="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"><option value="NEGATIVE" <%= cfg.incorrectSelectionPolicy!=='ZERO'?'selected':'' %>>Negative marks</option><option value="ZERO" <%= cfg.incorrectSelectionPolicy==='ZERO'?'selected':'' %>>Zero marks</option></select></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Bonus<select name="questionConfigs[<%= q.id %>][bonus]" class="mark-bonus mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"><option value="false" <%= !cfg.bonus?'selected':'' %>>No</option><option value="true" <%= cfg.bonus?'selected':'' %>>Yes</option></select></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Bonus marks<input name="questionConfigs[<%= q.id %>][bonusMarks]" value="<%= cfg.bonusMarks ?? cfg.positiveMarks ?? q.marks %>" type="number" min="0" step="0.25" class="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                    <label class="text-[10px] font-semibold text-slate-500">Section<input name="questionConfigs[<%= q.id %>][section]" value="<%= cfg.section || q.subject %>" class="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                    <label class="col-span-full text-[10px] font-semibold text-slate-500">Bonus reason<input name="questionConfigs[<%= q.id %>][bonusReason]" value="<%= cfg.bonusReason || '' %>" maxlength="500" class="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-xs"/></label>
+                  </div>
+                </details>
               </div>
             </label>
             <% }) %>
@@ -359,8 +386,34 @@
 <script>
 // ── Counter ───────────────────────────────────────────────────────────────
 function updCount() {
-  const n = document.querySelectorAll('input[name="questionIds"]:checked').length;
-  document.getElementById('selCount').textContent = n + ' selected';
+  const selected = [...document.querySelectorAll('input[name="questionIds"]:checked')];
+  const total = selected.reduce((sum, checkbox) => sum + Number(checkbox.closest('.q-item').querySelector('.mark-positive')?.value || 0), 0);
+  document.getElementById('selCount').textContent = `${selected.length} selected · ${total.toFixed(2)} marks`;
+}
+
+function applyBulkMarking() {
+  const scope = document.getElementById('bulkScope').value;
+  const type = document.getElementById('bulkType').value;
+  const subject = document.getElementById('ctSubject').value;
+  const rows = [...document.querySelectorAll('.q-item')].filter(row => {
+    if (scope === 'selected') return row.querySelector('input[name="questionIds"]').checked;
+    if (scope === 'section') return subject && row.dataset.subj === subject;
+    if (scope === 'type') return row.dataset.type === type;
+    return true;
+  });
+  if (!rows.length) return alert(scope === 'section' ? 'Choose a subject filter first.' : 'No questions match this scope.');
+  const positive = Number(document.getElementById('bulkPositive').value);
+  const negative = Number(document.getElementById('bulkNegative').value);
+  const partial = Number(document.getElementById('bulkPartial').value);
+  if (![positive, negative, partial].every(value => Number.isFinite(value) && value >= 0)) return alert('Enter valid non-negative marking values.');
+  const preview = `${rows.length} question(s) will be overwritten: +${positive}, -${negative}, partial ${partial}.`;
+  if (!confirm(`${preview}\n\nContinue?`)) return;
+  rows.forEach(row => {
+    row.querySelector('.mark-positive').value = positive;
+    row.querySelector('.mark-negative').value = negative;
+    row.querySelector('.mark-partial').value = partial;
+  });
+  updCount();
 }
 
 // ── Current filter state ──────────────────────────────────────────────────

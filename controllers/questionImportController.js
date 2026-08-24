@@ -18,6 +18,7 @@ const {
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
 const { organizationIdForWrite } = require('../services/organizationService');
 const { questionInputFromBody } = require('../services/questionService');
+const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/testConfigurationService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -271,18 +272,21 @@ exports.commitSmartImport = async (req, res) => {
         const createdQuestions = await Question.insertMany(questionDocuments, { session });
 
         if (createTest) {
-          const totalMarks = createdQuestions.reduce((sum, question) => sum + question.marks, 0);
+          const negativeMarking = Math.max(0, Number(req.body.negativeMarking) || 0);
+          const questionConfigs = buildQuestionConfigs(createdQuestions, req.body, { negativeMarking });
+          const totalMarks = totalMarksFromConfigs(questionConfigs);
           const subjectList = [...new Set(createdQuestions.map(question => question.subject))];
           const courses = selectedValues(req.body.courses).filter(course => COURSES.includes(course));
           const validGroups = await Group.find({ _id: { $in: groupIds }, isActive: true }, '_id').session(session);
           if (validGroups.length !== groupIds.length) throw new Error('One or more selected batches are invalid.');
 
           const tests = await Test.create([{
+            organization:organizationIdForWrite(req),
             title: String(req.body.testTitle).trim(),
             description: String(req.body.testDescription || '').trim() || null,
             duration: Math.max(5, Number.parseInt(req.body.duration, 10) || 180),
             totalMarks,
-            negativeMarking: Math.max(0, Number(req.body.negativeMarking) || 0),
+            negativeMarking,
             passingMarks: req.body.passingMarks ? Math.max(0, Number(req.body.passingMarks)) : null,
             shuffleQuestions: req.body.shuffleQuestions === 'on',
             shuffleOptions: req.body.shuffleOptions === 'on',
@@ -295,6 +299,7 @@ exports.commitSmartImport = async (req, res) => {
             subject: subjectList,
             marksPerQuestion: preparedQuestions[0]?.marks || 1,
             questions: createdQuestions.map(question => question._id),
+            questionConfigs,
             groups: validGroups.map(group => group._id),
             blockCopyPaste: true,
           }], { session });

@@ -7,6 +7,9 @@ const {
   isCetSectionTest,
   orderedSectionNames,
 } = require('../utils/cetExam');
+const { finalizeAttempt } = require('../services/examSubmissionService');
+const { hasSubmittedAnswer, normalizeSubmittedAnswer } = require('../services/questionService');
+const { effectiveQuestionConfig } = require('../services/testConfigurationService');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
@@ -28,7 +31,7 @@ exports.getInstructions = async (req, res) => {
           return {
             subject,
             questionCount: questions.length,
-            totalMarks: questions.reduce((sum, question) => sum + question.marks, 0),
+            totalMarks: questions.reduce((sum, question) => sum + effectiveQuestionConfig(test, question).positiveMarks, 0),
           };
         })
       : [];
@@ -58,10 +61,11 @@ exports.startExam = async (req, res) => {
     if (!result) {
       const questionIds = buildQuestionOrder(test, test.questions);
       result = await Result.create({
+        organization:test.organization || null,
         studentId, testId, score: 0, totalMarks: test.totalMarks, fullTotalMarks: test.totalMarks,
         answers: {}, questionTimings: {},
         cheatingFlags: { tabSwitches:0, fullscreenExits:0, focusLosses:0 },
-        violationCount: 0, status: 'in_progress', startedAt: new Date(),
+        violationCount: 0, status: 'in_progress', startedAt: new Date(), lastActivityAt:new Date(),
         questionOrder: questionIds, markedForReview: [],
       });
     }
@@ -139,7 +143,7 @@ exports.getQuestion = async (req, res) => {
 
     const paletteStatus = questionIds.map((questionId, questionIndex) => {
       const id = String(questionId);
-      const answered = !!(answers[id]?.answer);
+      const answered = hasSubmittedAnswer(answers[id]?.answer);
       const marked   = markedForReview.includes(id);
       const subject = sectionState?.subjectById.get(id) || question.subject;
       const sectionIndex = sectionState?.sections.findIndex(section => section.name === subject) ?? 0;
@@ -168,11 +172,12 @@ exports.getQuestion = async (req, res) => {
       title: `Q${questionNumber} — ${test.title}`,
       test, question, options, questionNumber, totalQuestions,
       remaining, paletteStatus,
-      selectedAnswer: answers[String(currentQuestionId)]?.answer || null,
+      selectedAnswer: answers[String(currentQuestionId)]?.answer ?? null,
       isMarked: markedForReview.includes(String(currentQuestionId)),
       resultId: result._id,
       violations: result.violationCount || 0,
       result,
+      questionConfig:effectiveQuestionConfig(test, question),
       cetSectionFlow,
       sectionState,
       currentSection,
@@ -190,10 +195,16 @@ exports.saveAnswer = async (req, res) => {
     const result = await Result.findOne({ studentId, testId, status: 'in_progress' });
     if (!result) return res.json({ success: false, message: 'Session expired' });
 
+    if (!result.questionOrder.map(String).includes(String(questionId))) {
+      return res.status(400).json({ success:false, message:'Question does not belong to this test.' });
+    }
+
     const [test, questionRows] = await Promise.all([
       Test.findById(testId).select('course'),
-      Question.find({ _id: { $in: result.questionOrder } }, '_id subject'),
+      Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
+    const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
+    if (!test || !currentQuestion) return res.status(404).json({ success:false, message:'Question not found.' });
     const cetSectionFlow = isCetSectionTest(test, questionRows);
     const sectionState = cetSectionFlow
       ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])
@@ -208,7 +219,13 @@ exports.saveAnswer = async (req, res) => {
     const questionTimings = { ...(result.questionTimings || {}) };
     const markedForReview = [...(result.markedForReview || [])];
 
-    answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+    let normalizedAnswer;
+    try {
+      normalizedAnswer = normalizeSubmittedAnswer(answer, currentQuestion.questionType);
+    } catch (error) {
+      return res.status(400).json({ success:false, message:error.message });
+    }
+    answers[questionId] = { answer: normalizedAnswer, savedAt: new Date() };
     if (timeSpent && !isNaN(timeSpent))
       questionTimings[questionId] = (questionTimings[questionId] || 0) + parseInt(timeSpent);
 
@@ -220,8 +237,8 @@ exports.saveAnswer = async (req, res) => {
       ...(result.visitedQuestionIds || []).map(value => String(value)),
       String(questionId),
     ])];
-    await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds });
-    return res.json({ success: true, answeredCount: Object.values(answers).filter(a => a.answer).length });
+    await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds, lastActivityAt:new Date() });
+    return res.json({ success: true, answeredCount: Object.values(answers).filter(entry => hasSubmittedAnswer(entry?.answer)).length });
   } catch (e) { console.error(e); return res.json({ success: false, message: e.message }); }
 };
 
@@ -283,64 +300,8 @@ exports.submitExam = async (req, res) => {
     }
 
     const test = await Test.findById(testId).populate('questions');
-    const answers = result.answers || {};
-    let score = 0, correct = 0, wrong = 0, skipped = 0;
-    const subjectScores = {}, topicScores = {};
-    const negativeMarking = parseFloat(test.negativeMarking) || 0;
-
-    for (const question of test.questions) {
-      const subj  = question.subject || 'General';
-      const topic = question.topic   || 'General';
-      if (!subjectScores[subj])  subjectScores[subj]  = { correct:0, wrong:0, skipped:0, marks:0, total:0, attempted:false, status:'NOT_ATTEMPTED' };
-      if (!topicScores[topic])   topicScores[topic]   = { correct:0, wrong:0, skipped:0 };
-      subjectScores[subj].total += question.marks;
-
-      const given = answers[String(question._id)]?.answer;
-      if (!given) {
-        skipped++; subjectScores[subj].skipped++; topicScores[topic].skipped++;
-      } else if (given === question.correctAnswer) {
-        subjectScores[subj].attempted = true;
-        subjectScores[subj].status = 'ATTEMPTED';
-        score += question.marks; correct++;
-        subjectScores[subj].correct++; subjectScores[subj].marks += question.marks;
-        topicScores[topic].correct++;
-      } else {
-        subjectScores[subj].attempted = true;
-        subjectScores[subj].status = 'ATTEMPTED';
-        score -= negativeMarking; wrong++;
-        subjectScores[subj].marks -= negativeMarking;
-        subjectScores[subj].wrong++; topicScores[topic].wrong++;
-      }
-    }
-
-    const cetSectionFlow = isCetSectionTest(test, test.questions);
-    const attemptedSubjects = [];
-    const absentSubjects = [];
-    let attemptedTotalMarks = 0;
-    Object.entries(subjectScores).forEach(([subject, data]) => {
-      data.marks = parseFloat(data.marks.toFixed(2));
-      if (cetSectionFlow && !data.attempted) {
-        data.status = 'ABSENT';
-        absentSubjects.push(subject);
-        return;
-      }
-      if (data.attempted) attemptedSubjects.push(subject);
-      attemptedTotalMarks += data.total;
-    });
-
-    score = Math.max(0, parseFloat(score.toFixed(2)));
-    const resultTotalMarks = cetSectionFlow ? attemptedTotalMarks : test.totalMarks;
-    const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
-
-    await Result.findByIdAndUpdate(result._id, {
-      score, totalMarks: resultTotalMarks, fullTotalMarks: test.totalMarks,
-      correctAnswers: correct, wrongAnswers: wrong, skippedAnswers: skipped,
-      timeTaken, subjectScores, topicScores, attemptedSubjects, absentSubjects,
-      status: isAutoSubmit ? 'auto_submitted' : 'submitted',
-      submittedAt: new Date(),
-    });
-
-    await updateRanks(testId);
+    if (!test) { req.flash('error','Test not found.'); return res.redirect('/student/tests'); }
+    await finalizeAttempt({ result, test, isAutoSubmit });
     return res.redirect(`/results/${result._id}`);
   } catch (e) { console.error(e); req.flash('error','Submit failed.'); res.redirect('/student/tests'); }
 };
@@ -366,7 +327,12 @@ exports.leaveExam = async (req, res) => {
       const questionTimings = { ...(result.questionTimings || {}) };
       const markedForReview = [...(result.markedForReview || [])];
 
-      answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+      if (!result.questionOrder.map(String).includes(String(questionId))) return res.sendStatus(204);
+      const question = await Question.findById(questionId).select('questionType');
+      if (!question) return res.sendStatus(204);
+      let normalizedAnswer = null;
+      try { normalizedAnswer = normalizeSubmittedAnswer(answer, question.questionType); } catch { normalizedAnswer = null; }
+      answers[questionId] = { answer: normalizedAnswer, savedAt: new Date() };
       if (timeSpent && !isNaN(timeSpent))
         questionTimings[questionId] = (questionTimings[questionId] || 0) + parseInt(timeSpent);
 
@@ -378,7 +344,7 @@ exports.leaveExam = async (req, res) => {
         ...(result.visitedQuestionIds || []).map(value => String(value)),
         String(questionId),
       ])];
-      await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds });
+      await Result.findByIdAndUpdate(result._id, { answers, questionTimings, markedForReview, visitedQuestionIds, lastActivityAt:new Date() });
     }
 
     // Note: do NOT auto-submit here. This fires on any page unload —
@@ -393,15 +359,6 @@ exports.leaveExam = async (req, res) => {
     return res.sendStatus(204);
   }
 };
-
-async function updateRanks(testId) {
-  const results = await Result.find({ testId, status: { $in: ['submitted','auto_submitted'] } })
-    .sort({ score: -1, timeTaken: 1 });
-  const n = results.length;
-  await Promise.all(results.map((r, i) =>
-    Result.findByIdAndUpdate(r._id, { rank: i+1, percentile: parseFloat((((n-i)/n)*100).toFixed(2)) })
-  ));
-}
 
 exports.getResult = async (req, res) => {
   try {

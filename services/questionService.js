@@ -118,7 +118,10 @@ function normalizeSubmittedAnswer(value, questionType = 'SINGLE_CORRECT') {
     return number;
   }
   const answer = String(value || '').trim().toUpperCase();
-  return answer || null;
+  if (!answer) return null;
+  const allowed = questionType === 'TRUE_FALSE' ? ['A', 'B'] : OPTION_KEYS;
+  if (!allowed.includes(answer)) throw new Error('Select a valid answer.');
+  return answer;
 }
 
 function hasSubmittedAnswer(value) {

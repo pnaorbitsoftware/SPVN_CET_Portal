@@ -13,7 +13,9 @@ const { SUPPORTED_EXTENSIONS, extensionOf, extractQuestionFiles, normalizeQuesti
 const { extractSyllabusFromPdf } = require('../utils/syllabusImporter');
 const { organizationIdForWrite, organizationScope, resolveUserOrganization } = require('../services/organizationService');
 const { parseDateOnly, validateDateRange } = require('../utils/validation');
-const { questionInputFromBody } = require('../services/questionService');
+const { hasSubmittedAnswer, normalizeSubmittedAnswer, questionInputFromBody } = require('../services/questionService');
+const { finalizeAttempt } = require('../services/examSubmissionService');
+const { effectiveQuestionConfig } = require('../services/testConfigurationService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -363,9 +365,18 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
       const subject = question.subject || 'General';
       summary[subject] ||= { subject, questionCount: 0, totalMarks: 0 };
       summary[subject].questionCount += 1;
-      summary[subject].totalMarks += Number(question.marks) || 0;
+      summary[subject].totalMarks += effectiveQuestionConfig(test, question).positiveMarks;
       return summary;
     }, {}));
+    const questionPayload = questionForMobile(question, options);
+    const marking = effectiveQuestionConfig(test, question);
+    questionPayload.marks = marking.positiveMarks;
+    questionPayload.marking = {
+      positiveMarks:marking.positiveMarks,
+      negativeMarks:marking.negativeMarks,
+      partialMarks:marking.partialMarks,
+      markingMode:marking.markingMode,
+    };
     return res.json({
       test,
       questionCount: test.questions.length,
@@ -406,6 +417,7 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
     if (!result && test.endTime && new Date(test.endTime).getTime() < now) return res.status(409).json({ error: 'This test has expired.' });
     if (!result) {
       result = await Result.create({
+        organization: test.organization || req.organization?._id || null,
         studentId,
         testId,
         score: 0,
@@ -416,6 +428,7 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
         cheatingFlags: { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0 },
         status: 'in_progress',
         startedAt: new Date(),
+        lastActivityAt: new Date(),
         questionOrder: buildQuestionOrder(test, test.questions),
         markedForReview: [],
         visitedQuestionIds: [],
@@ -474,13 +487,13 @@ router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser
       questionNumber,
       totalQuestions: result.questionOrder.length,
       remainingSeconds,
-      question: questionForMobile(question, options),
-      selectedAnswer: answers[questionId]?.answer || null,
+      question: questionPayload,
+      selectedAnswer: answers[questionId]?.answer ?? null,
       markedForReview: marked.has(questionId),
       sections: sectionState?.sections.map((item) => ({ name: item.name, locked: item.locked, questionNumbers: item.questionNumbers })) || [],
       palette: result.questionOrder.map((id, index) => {
         const key = id.toString();
-        return { number: index + 1, answered: Boolean(answers[key]?.answer), visited: visited.has(key), marked: marked.has(key) };
+        return { number: index + 1, answered: hasSubmittedAnswer(answers[key]?.answer), visited: visited.has(key), marked: marked.has(key) };
       }),
     });
   } catch (error) {
@@ -497,9 +510,11 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
     const [test, questionRows] = await Promise.all([
       Test.findById(req.params.testId).select('course'),
-      Question.find({ _id: { $in: result.questionOrder } }, '_id subject'),
+      Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     if (!test) return res.status(404).json({ error: 'Test not found.' });
+    const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
+    if (!currentQuestion) return res.status(404).json({ error:'Question not found.' });
     const sectionState = isCetSectionTest(test, questionRows)
       ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])
       : null;
@@ -509,11 +524,17 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     const answers = { ...(result.answers || {}) };
     const timings = { ...(result.questionTimings || {}) };
     const marked = new Set((result.markedForReview || []).map(String));
-    answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+    let normalizedAnswer;
+    try {
+      normalizedAnswer = normalizeSubmittedAnswer(answer, currentQuestion.questionType);
+    } catch (error) {
+      return res.status(400).json({ error:error.message });
+    }
+    answers[questionId] = { answer: normalizedAnswer, savedAt: new Date() };
     if (Number.isFinite(Number(timeSpent)) && Number(timeSpent) > 0) timings[questionId] = (timings[questionId] || 0) + Number(timeSpent);
     if (markForReview) marked.add(String(questionId)); else marked.delete(String(questionId));
-    await Result.updateOne({ _id: result._id }, { answers, questionTimings: timings, markedForReview: [...marked], $addToSet: { visitedQuestionIds: String(questionId) } });
-    return res.json({ saved: true, answeredCount: Object.values(answers).filter((entry) => entry.answer).length });
+    await Result.updateOne({ _id: result._id }, { answers, questionTimings: timings, markedForReview: [...marked], lastActivityAt:new Date(), $addToSet: { visitedQuestionIds: String(questionId) } });
+    return res.json({ saved: true, answeredCount: Object.values(answers).filter((entry) => hasSubmittedAnswer(entry?.answer)).length });
   } catch (error) {
     console.error('Mobile save answer error:', error);
     return res.status(500).json({ error: 'Unable to save answer.' });
@@ -552,16 +573,26 @@ router.post('/student/tests/:testId/leave', requireMobileUser, requireRole('stud
     const { questionId, answer, markForReview = false, timeSpent = 0 } = req.body;
     const result = await Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' });
     if (!result || !questionId) return res.json({ saved: false });
+    if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error:'Question does not belong to this test.' });
+    const question = await Question.findById(questionId).select('questionType');
+    if (!question) return res.status(404).json({ error:'Question not found.' });
     const answers = { ...(result.answers || {}) };
     const timings = { ...(result.questionTimings || {}) };
     const marked = new Set((result.markedForReview || []).map(String));
-    answers[questionId] = { answer: answer?.trim() || null, savedAt: new Date() };
+    let normalizedAnswer;
+    try {
+      normalizedAnswer = normalizeSubmittedAnswer(answer, question.questionType);
+    } catch (error) {
+      return res.status(400).json({ error:error.message });
+    }
+    answers[questionId] = { answer: normalizedAnswer, savedAt: new Date() };
     if (Number(timeSpent) > 0) timings[questionId] = (timings[questionId] || 0) + Number(timeSpent);
     if (markForReview) marked.add(String(questionId)); else marked.delete(String(questionId));
     await Result.updateOne({ _id: result._id }, {
       answers,
       questionTimings: timings,
       markedForReview: [...marked],
+      lastActivityAt:new Date(),
       $addToSet: { visitedQuestionIds: String(questionId) },
     });
     return res.json({ saved: true });
@@ -579,78 +610,7 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
     const test = await Test.findById(testId).populate('questions');
     if (!test) return res.status(404).json({ error: 'Test not found.' });
 
-    const answers = result.answers || {};
-    const subjectScores = {};
-    const topicScores = {};
-    let score = 0;
-    let correctAnswers = 0;
-    let wrongAnswers = 0;
-    let skippedAnswers = 0;
-    for (const question of test.questions) {
-      const subject = question.subject || 'General';
-      const topic = question.topic || 'General';
-      if (!subjectScores[subject]) subjectScores[subject] = { correct: 0, wrong: 0, skipped: 0, marks: 0, total: 0, attempted: false, status: 'NOT_ATTEMPTED' };
-      if (!topicScores[topic]) topicScores[topic] = { correct: 0, wrong: 0, skipped: 0 };
-      subjectScores[subject].total += question.marks;
-      const answer = answers[question._id.toString()]?.answer;
-      if (!answer) {
-        skippedAnswers += 1;
-        subjectScores[subject].skipped += 1;
-        topicScores[topic].skipped += 1;
-      } else if (answer === question.correctAnswer) {
-        correctAnswers += 1;
-        score += question.marks;
-        subjectScores[subject].correct += 1;
-        subjectScores[subject].marks += question.marks;
-        subjectScores[subject].attempted = true;
-        subjectScores[subject].status = 'ATTEMPTED';
-        topicScores[topic].correct += 1;
-      } else {
-        wrongAnswers += 1;
-        const deduction = Number(test.negativeMarking) || 0;
-        score -= deduction;
-        subjectScores[subject].wrong += 1;
-        subjectScores[subject].marks -= deduction;
-        subjectScores[subject].attempted = true;
-        subjectScores[subject].status = 'ATTEMPTED';
-        topicScores[topic].wrong += 1;
-      }
-    }
-    const cetFlow = isCetSectionTest(test, test.questions);
-    const attemptedSubjects = [];
-    const absentSubjects = [];
-    let totalMarks = test.totalMarks;
-    if (cetFlow) totalMarks = 0;
-    Object.entries(subjectScores).forEach(([subject, values]) => {
-      values.marks = Number(values.marks.toFixed(2));
-      if (values.attempted) {
-        attemptedSubjects.push(subject);
-        if (cetFlow) totalMarks += values.total;
-      } else if (cetFlow) {
-        absentSubjects.push(subject);
-        values.status = 'ABSENT';
-      }
-    });
-    score = Math.max(0, Number(score.toFixed(2)));
-    const timeTaken = Math.floor((Date.now() - new Date(result.startedAt).getTime()) / 1000);
-    await Result.updateOne({ _id: result._id }, {
-      score,
-      totalMarks,
-      fullTotalMarks: test.totalMarks,
-      correctAnswers,
-      wrongAnswers,
-      skippedAnswers,
-      subjectScores,
-      topicScores,
-      attemptedSubjects,
-      absentSubjects,
-      timeTaken,
-      status: req.body?.auto ? 'auto_submitted' : 'submitted',
-      submittedAt: new Date(),
-    });
-    const rankings = await Result.find({ testId, status: { $in: ['submitted', 'auto_submitted'] } }).sort({ score: -1, timeTaken: 1 });
-    await Promise.all(rankings.map((item, index) => Result.updateOne({ _id: item._id }, { rank: index + 1, percentile: Number((((rankings.length - index) / rankings.length) * 100).toFixed(2)) })));
-    const submitted = await Result.findById(result._id);
+    const submitted = await finalizeAttempt({ result, test, isAutoSubmit:Boolean(req.body?.auto) });
     return res.json({ result: submitted });
   } catch (error) {
     console.error('Mobile submit error:', error);
