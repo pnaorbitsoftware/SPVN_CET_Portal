@@ -36,7 +36,19 @@ function effectiveQuestionConfig(test, question, suppliedConfig = null) {
 
 function bodyConfig(body, questionId) {
   const configs = body?.questionConfigs || {};
-  return configs[questionId] || configs[String(questionId)] || {};
+  const nested = configs[questionId] || configs[String(questionId)];
+  if (nested && typeof nested === 'object') return nested;
+
+  // Test forms are multipart because they optionally contain PDFs. The
+  // file-upload middleware preserves bracketed field names instead of
+  // building nested objects, so support that representation as well as the
+  // JSON/urlencoded shape used by the mobile API and unit tests.
+  const prefix = `questionConfigs[${String(questionId)}][`;
+  return Object.fromEntries(Object.entries(body || {}).flatMap(([key, value]) => {
+    if (!key.startsWith(prefix) || !key.endsWith(']')) return [];
+    const field = key.slice(prefix.length, -1);
+    return field ? [[field, value]] : [];
+  }));
 }
 
 function buildQuestionConfigs(questions, body = {}, testDefaults = {}, existingTest = null) {

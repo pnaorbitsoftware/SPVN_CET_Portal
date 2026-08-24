@@ -9,7 +9,7 @@ const questionPaperSchema = new mongoose.Schema({
   subjects: { type:[String], default:[] },
   topics: { type:[String], default:[] },
   subtopics: { type:[String], default:[] },
-  tags: { type:[String], default:[], index:true },
+  tags: { type:[String], default:[] },
   questionIds: [{ type:mongoose.Schema.Types.ObjectId, ref:'Question' }],
   totalQuestions: { type:Number, min:0, default:0 },
   totalMarks: { type:Number, min:0, default:0 },
@@ -46,6 +46,20 @@ questionPaperSchema.index(
   { unique:true, partialFilterExpression:{ isActive:true } }
 );
 questionPaperSchema.index({ organization:1, status:1, createdAt:-1 });
-questionPaperSchema.index({ organization:1, course:1, subjects:1, tags:1 });
+questionPaperSchema.index({ organization:1, course:1, subjects:1 });
+questionPaperSchema.index({ organization:1, tags:1 });
+
+questionPaperSchema.statics.ensureCompatibleIndexes = async function ensureCompatibleIndexes() {
+  let indexes = [];
+  try {
+    indexes = await this.collection.indexes();
+  } catch (error) {
+    if (error.code !== 26 && error.codeName !== 'NamespaceNotFound') throw error;
+  }
+  const incompatibleIndexes = indexes.filter(index => index.key?.subjects && index.key?.tags);
+  for (const index of incompatibleIndexes) await this.collection.dropIndex(index.name);
+  await this.createIndexes();
+  return incompatibleIndexes.map(index => index.name);
+};
 
 module.exports = mongoose.models.QuestionPaper || mongoose.model('QuestionPaper', questionPaperSchema);

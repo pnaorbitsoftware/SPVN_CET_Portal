@@ -121,6 +121,11 @@ function boot() {
   bootPromise = (async () => {
     await connect();
 
+    // Replace the early question-paper index that attempted to combine two
+    // array fields. MongoDB cannot index parallel arrays in one compound index.
+    const { QuestionPaper } = require('./models');
+    await QuestionPaper.ensureCompatibleIndexes();
+
     // Backward-compatible default organization + auto-seed admin.
     try {
       const { User } = require('./models');

@@ -133,3 +133,22 @@ test('question configuration builder preserves order, accepts explicit bonus cle
   assert.equal(configs[1].displayOrder, 1);
   assert.equal(totalMarksFromConfigs(configs), 9);
 });
+
+test('question configuration builder accepts flat multipart field names from web forms', () => {
+  const configs = buildQuestionConfigs([question('multi', {
+    questionType:'MULTIPLE_CORRECT',
+    correctAnswers:['A','B'],
+    marks:4,
+  })], {
+    'questionConfigs[multi][positiveMarks]':'4',
+    'questionConfigs[multi][negativeMarks]':'1',
+    'questionConfigs[multi][partialMarks]':'2',
+    'questionConfigs[multi][markingMode]':'PARTIAL_SUBSET',
+    'questionConfigs[multi][incorrectSelectionPolicy]':'ZERO',
+  });
+  assert.equal(configs[0].positiveMarks, 4);
+  assert.equal(configs[0].negativeMarks, 1);
+  assert.equal(configs[0].partialMarks, 2);
+  assert.equal(configs[0].markingMode, 'PARTIAL_SUBSET');
+  assert.equal(configs[0].incorrectSelectionPolicy, 'ZERO');
+});

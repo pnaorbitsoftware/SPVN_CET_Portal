@@ -219,13 +219,23 @@ exports.getStudents = async (req, res) => {
 
 exports.createStudent = async (req, res) => {
   try {
-    const { name, rollNo, parentContact, groupId } = req.body;
+    const { name, rollNo, email, phone, parentContact, groupId } = req.body;
     if (!rollNo || !name) { req.flash('error','Name and Roll No required.'); return res.redirect('/admin/students'); }
     if (groupId) await validateScopedGroupIds(req, groupId);
     const exists = await User.findOne({ rollNo });
     if (exists) { req.flash('error',`Roll No ${rollNo} already exists.`); return res.redirect(req.get('Referer')||'/admin/students'); }
     const pwd = generatePassword(rollNo);
-    const student = await User.create({ name, rollNo, parentContact:parentContact||null, role:'student', password:pwd, isFirstLogin:true, organization:organizationIdForWrite(req) });
+    const student = await User.create({
+      name:String(name).trim(),
+      rollNo:String(rollNo).trim(),
+      email:String(email || '').trim().toLowerCase() || null,
+      phone:String(phone || '').trim() || null,
+      parentContact:String(parentContact || '').trim() || null,
+      role:'student',
+      password:pwd,
+      isFirstLogin:true,
+      organization:organizationIdForWrite(req),
+    });
     if (groupId) await GroupMember.create({ groupId, userId:student._id, role:'student' });
     await Notification.create({ userId:student._id, title:'Account Created', message:`Welcome ${name}! Roll: ${rollNo}, Password: ${pwd}`, type:'info' });
     req.flash('success',`Student created. Password: ${pwd}`);

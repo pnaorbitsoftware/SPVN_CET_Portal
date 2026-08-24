@@ -22,6 +22,7 @@ const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/tes
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
 const { accessConfiguration } = require('../services/testAccessService');
 const { RESULT_RELEASE_MODES, releaseConfiguration } = require('../services/resultReleaseService');
+const { withTransactionFallback } = require('../services/mongoTransactionService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -258,9 +259,10 @@ exports.commitSmartImport = async (req, res) => {
     }) : null;
 
     let createdTest = null;
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
+    const performImport = async session => {
+      const createdQuestionIds = [];
+      const createdNotificationIds = [];
+      try {
         const questionDocuments = preparedQuestions.map(question => ({
           organization: organizationIdForWrite(req),
           question: question.question,
@@ -284,7 +286,8 @@ exports.commitSmartImport = async (req, res) => {
           createdBy: req.session.user.id,
           isActive: true,
         }));
-        const createdQuestions = await Question.insertMany(questionDocuments, { session });
+        const createdQuestions = await Question.insertMany(questionDocuments, session ? { session } : {});
+        createdQuestionIds.push(...createdQuestions.map(question => question._id));
 
         if (createTest) {
           const negativeMarking = Math.max(0, Number(req.body.negativeMarking) || 0);
@@ -292,7 +295,9 @@ exports.commitSmartImport = async (req, res) => {
           const totalMarks = totalMarksFromConfigs(questionConfigs);
           const subjectList = [...new Set(createdQuestions.map(question => question.subject))];
           const courses = selectedValues(req.body.courses).filter(course => COURSES.includes(course));
-          const validGroups = await Group.find({ _id:{ $in:groupIds }, isActive:true, ...organizationScope(req.organization) }, '_id').session(session);
+          const validGroupsQuery = Group.find({ _id:{ $in:groupIds }, isActive:true, ...organizationScope(req.organization) }, '_id');
+          if (session) validGroupsQuery.session(session);
+          const validGroups = await validGroupsQuery;
           if (validGroups.length !== groupIds.length) throw new Error('One or more selected batches are invalid.');
 
           const tests = await Test.create([{
@@ -320,23 +325,26 @@ exports.commitSmartImport = async (req, res) => {
             blockCopyPaste: true,
             ...access,
             ...release,
-          }], { session });
+          }], session ? { session } : {});
           createdTest = tests[0];
 
           if (publishNow) {
-            const memberships = await GroupMember.find({
+            const membershipsQuery = GroupMember.find({
               groupId: { $in: validGroups.map(group => group._id) },
               role: 'student',
-            }, 'userId').session(session);
+            }, 'userId');
+            if (session) membershipsQuery.session(session);
+            const memberships = await membershipsQuery;
             const userIds = [...new Set(memberships.map(member => member.userId.toString()))];
             if (userIds.length) {
-              await Notification.insertMany(userIds.map(userId => ({
+              const notifications = await Notification.insertMany(userIds.map(userId => ({
                 userId,
                 title: 'New Exam Published',
                 message: `"${createdTest.title}" is now available. Timing: ${timingLabel(createdTest)}.`,
                 type: 'exam',
                 link: '/student/tests',
-              })), { session });
+              })), session ? { session } : {});
+              createdNotificationIds.push(...notifications.map(notification => notification._id));
             }
           }
         }
@@ -344,11 +352,24 @@ exports.commitSmartImport = async (req, res) => {
         importDraft.status = 'imported';
         importDraft.importedQuestionIds = createdQuestions.map(question => question._id);
         importDraft.testId = createdTest?._id || null;
-        await importDraft.save({ session });
-      });
-    } finally {
-      await session.endSession();
-    }
+        await importDraft.save(session ? { session } : {});
+      } catch (error) {
+        if (!session) {
+          await Promise.allSettled([
+            createdNotificationIds.length ? Notification.deleteMany({ _id:{ $in:createdNotificationIds } }) : null,
+            createdTest?._id ? Test.deleteOne({ _id:createdTest._id }) : null,
+            createdQuestionIds.length ? Question.deleteMany({ _id:{ $in:createdQuestionIds } }) : null,
+          ].filter(Boolean));
+          createdTest = null;
+        }
+        throw error;
+      }
+    };
+
+    await withTransactionFallback(mongoose, async session => {
+      if (!session) createdTest = null;
+      await performImport(session);
+    });
 
     const message = createdTest
       ? `${selectedQuestions.length} questions saved and test published to students.`

@@ -35,6 +35,13 @@ test('question paper schema normalizes tags and question IDs without losing orde
   assert.equal(paper.status, 'draft');
 });
 
+test('question paper indexes never combine parallel subject and tag arrays', () => {
+  const indexes = QuestionPaper.schema.indexes().map(([fields]) => fields);
+  assert.equal(indexes.some(fields => fields.subjects && fields.tags), false);
+  assert.equal(indexes.some(fields => fields.organization && fields.subjects), true);
+  assert.equal(indexes.some(fields => fields.organization && fields.tags), true);
+});
+
 test('question paper summary derives real marks, hierarchy and distributions', () => {
   const summary = questionPaperSummary([
     question({ marks:2, difficulty:'Easy' }),
