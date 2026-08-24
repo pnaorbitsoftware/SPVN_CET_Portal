@@ -16,7 +16,7 @@ const {
   removeQuestionImportAssets,
 } = require('../utils/questionImporter');
 const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime');
-const { organizationIdForWrite } = require('../services/organizationService');
+const { organizationIdForWrite, organizationScope } = require('../services/organizationService');
 const { questionInputFromBody } = require('../services/questionService');
 const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/testConfigurationService');
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
@@ -155,7 +155,7 @@ exports.getSmartImportReview = async (req, res) => {
   try {
     const [importDraft, groups] = await Promise.all([
       QuestionImport.findOne(ownImportQuery(req, req.params.id)),
-      Group.find({ isActive: true }).sort({ name: 1 }),
+      Group.find({ isActive:true, ...organizationScope(req.organization) }).sort({ name:1 }),
     ]);
     if (!importDraft || importDraft.status !== 'review') {
       req.flash('error', 'This import draft is not available for review.');
@@ -292,7 +292,7 @@ exports.commitSmartImport = async (req, res) => {
           const totalMarks = totalMarksFromConfigs(questionConfigs);
           const subjectList = [...new Set(createdQuestions.map(question => question.subject))];
           const courses = selectedValues(req.body.courses).filter(course => COURSES.includes(course));
-          const validGroups = await Group.find({ _id: { $in: groupIds }, isActive: true }, '_id').session(session);
+          const validGroups = await Group.find({ _id:{ $in:groupIds }, isActive:true, ...organizationScope(req.organization) }, '_id').session(session);
           if (validGroups.length !== groupIds.length) throw new Error('One or more selected batches are invalid.');
 
           const tests = await Test.create([{

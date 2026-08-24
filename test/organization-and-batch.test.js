@@ -1,8 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Group, Organization } = require('../models');
+const mongoose = require('mongoose');
+const { Group, Organization, StudentDocument, Topic } = require('../models');
 const { settingsUpdateFrom } = require('../controllers/organizationController')._private;
+const { organizationScope } = require('../services/organizationService');
 const { dateInputValue, parseDateOnly, validateDateRange } = require('../utils/validation');
 
 test('legacy batch documents remain valid without organization or dates', async () => {
@@ -63,4 +65,23 @@ test('organization settings input is bounded and allow-listed', () => {
   assert.equal(update['settings.resultDefaults.releaseMode'], 'MANUAL');
   assert.equal(update['settings.branding.primaryColor'], '#131330');
   assert.equal(update['settings.branding.accentColor'], '#123abc');
+});
+
+test('organization scope keeps legacy records visible only to the default organization', () => {
+  const organizationId = new mongoose.Types.ObjectId();
+  assert.deepEqual(organizationScope({ _id:organizationId, isDefault:false }), { organization:organizationId });
+  const defaultScope = organizationScope({ _id:organizationId, isDefault:true });
+  assert.equal(Array.isArray(defaultScope.$or), true);
+  assert.deepEqual(defaultScope.$or[0], { organization:organizationId });
+  assert.deepEqual(defaultScope.$or[1], { organization:null });
+});
+
+test('syllabus units and student documents carry backward-compatible organization ownership', async () => {
+  const topic = new Topic({ course:'CET', subject:'Physics', name:'Motion' });
+  const document = new StudentDocument({
+    studentId:new mongoose.Types.ObjectId(), fileName:'x.pdf', originalName:'x.pdf', filePath:'/uploads/x.pdf',
+  });
+  await Promise.all([topic.validate(), document.validate()]);
+  assert.equal(topic.organization, null);
+  assert.equal(document.organization, null);
 });

@@ -47,6 +47,13 @@ const completedStatuses = { $in: ['submitted', 'auto_submitted'] };
 const asArray = (value) => (Array.isArray(value) ? value : value ? [value] : []);
 const cleanList = (value) => asArray(value).map((item) => String(item).trim()).filter(Boolean);
 const fileNameSafe = (value) => String(value || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+const cleanupIncompleteFiles = (files) => files.forEach(file => {
+  try {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch (cleanupError) {
+    console.error('Unable to clean up incomplete mobile PDF upload:', cleanupError.message);
+  }
+});
 const controllerSession = (req) => {
   req.session.user = {
     id: req.mobileUser._id.toString(),
@@ -57,6 +64,26 @@ const controllerSession = (req) => {
     isFirstLogin: req.mobileUser.isFirstLogin,
   };
 };
+
+async function validateOrganizationGroupIds(req, values) {
+  const ids = [...new Set(cleanList(values))];
+  if (!ids.length) return [];
+  const count = await Group.countDocuments({
+    _id:{ $in:ids },
+    isActive:{ $ne:false },
+    ...organizationScope(req.organization),
+  });
+  if (count !== ids.length) throw new Error('One or more selected batches are unavailable.');
+  return ids;
+}
+
+async function organizationStudent(req, studentId) {
+  return User.findOne({
+    _id:studentId,
+    role:'student',
+    ...organizationScope(req.organization),
+  });
+}
 
 router.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -150,13 +177,13 @@ router.post('/auth/change-password', requireMobileUser, async (req, res) => {
 });
 
 router.get('/meta', requireMobileUser, async (req, res) => {
-  const topics = await Topic.find({ isActive: true }).sort({ course: 1, subject: 1, name: 1 });
+  const topics = await Topic.find({ isActive:true, ...organizationScope(req.organization) }).sort({ course: 1, subject: 1, name: 1 });
   return res.json({ courses: COURSES, subjectsByCourse: SUBJECTS_BY_COURSE, allSubjects: ALL_SUBJECTS, topics });
 });
 
 router.get('/results/:resultId', requireMobileUser, async (req, res) => {
   try {
-    const result = await Result.findById(req.params.resultId)
+    const result = await Result.findOne({ _id:req.params.resultId, ...organizationScope(req.organization) })
       .populate('studentId', 'name rollNo email')
       .populate({ path: 'testId', populate: { path: 'questions' } });
     if (!result) return res.status(404).json({ error: 'Result not found.' });
@@ -170,7 +197,7 @@ router.get('/results/:resultId', requireMobileUser, async (req, res) => {
     const [topperResult, totalAttempted, trend] = await Promise.all([
       Result.findOne({ testId: result.testId._id, rank: 1 }, 'score subjectScores'),
       Result.countDocuments({ testId: result.testId._id, status: completedStatuses }),
-      Result.find({ studentId: result.studentId._id, status: completedStatuses })
+      Result.find({ studentId:result.studentId._id, status:completedStatuses, ...organizationScope(req.organization) })
         .populate('testId', 'title endTime resultReleaseMode resultReleaseAt resultsReleased')
         .sort({ submittedAt: 1 })
         .limit(10),
@@ -187,7 +214,7 @@ router.get('/results/:resultId', requireMobileUser, async (req, res) => {
 });
 
 router.get('/results/:resultId/pdf', requireMobileUser, async (req, res) => {
-  const result = await Result.findById(req.params.resultId).select('studentId');
+  const result = await Result.findOne({ _id:req.params.resultId, ...organizationScope(req.organization) }).select('studentId');
   if (!result) return res.status(404).json({ error: 'Result not found.' });
   if (req.mobileUser.role === 'student' && result.studentId.toString() !== req.mobileUser._id.toString()) {
     return res.status(403).json({ error: 'Access denied.' });
@@ -198,7 +225,7 @@ router.get('/results/:resultId/pdf', requireMobileUser, async (req, res) => {
 
 router.get('/tests/:testId/leaderboard', requireMobileUser, async (req, res) => {
   const [test, results] = await Promise.all([
-    Test.findById(req.params.testId).select('title totalMarks duration subject course endTime resultReleaseMode resultReleaseAt resultsReleased'),
+    Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).select('title totalMarks duration subject course endTime resultReleaseMode resultReleaseAt resultsReleased'),
     Result.find({ testId: req.params.testId, status: completedStatuses })
       .populate('studentId', 'name rollNo')
       .sort({ rank:1, score: -1, timeTaken: 1 })
@@ -226,7 +253,7 @@ router.get('/student/dashboard', requireMobileUser, requireRole('student'), asyn
     ]);
     const groupIds = memberships.map((membership) => membership.groupId);
     const tests = groupIds.length
-      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }, 'title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
+      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active'] }, isActive: { $ne: false }, ...organizationScope(req.organization) }, 'title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
       : [];
     const completedIds = new Set(results.map((result) => result.testId?._id?.toString()));
     const inProgressIds = new Set(inProgressResults.map((result) => result.testId?.toString()));
@@ -294,7 +321,7 @@ router.get('/student/tests', requireMobileUser, requireRole('student'), async (r
     ]);
     const groupIds = memberships.map((membership) => membership.groupId);
     const tests = groupIds.length
-      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active', 'closed'] }, isActive: { $ne: false } }).sort({ createdAt: -1 })
+      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published', 'active', 'closed'] }, isActive: { $ne: false }, ...organizationScope(req.organization) }).sort({ createdAt: -1 })
       : [];
     const resultByTest = new Map(results.map((result) => [result.testId.toString(), result]));
     return res.json({ tests: tests.map((test) => {
@@ -347,6 +374,7 @@ router.post('/student/documents', requireMobileUser, requireRole('student'), asy
     const fileName = `doc_${req.mobileUser._id}_${Date.now()}_${safeName}`;
     fs.writeFileSync(path.join(documentDirectory, fileName), file.data);
     const document = await StudentDocument.create({
+      organization:req.organization?._id || null,
       studentId: req.mobileUser._id,
       fileName,
       originalName: file.name,
@@ -385,7 +413,7 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
   try {
     const studentId = req.mobileUser._id;
     const [test, memberships, submitted, inProgress] = await Promise.all([
-      Test.findOne({ _id: req.params.testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions'),
+      Test.findOne({ _id: req.params.testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false }, ...organizationScope(req.organization) }).populate('questions'),
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.findOne({ studentId, testId: req.params.testId, status: completedStatuses }),
       Result.findOne({ studentId, testId: req.params.testId, status: 'in_progress' }),
@@ -461,7 +489,7 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
     const { testId } = req.params;
     const studentId = req.mobileUser._id;
     const [test, submitted, memberships, inProgress] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions'),
+      Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false }, ...organizationScope(req.organization) }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted', 'auto_submitted'] } }),
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.findOne({ studentId, testId, status:'in_progress' }),
@@ -528,14 +556,14 @@ router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser
     const questionNumber = Number(req.params.questionNumber);
     const [result, test] = await Promise.all([
       Result.findOne({ studentId, testId, status: 'in_progress' }),
-      Test.findById(testId),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }),
     ]);
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!test) return res.status(404).json({ error: 'Test not found.' });
     if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Verify the current test password or PIN to resume.', code:'TEST_ACCESS_REQUIRED' });
     const remaining = remainingSeconds(test, result);
     if (remaining !== null && remaining <= 0) {
-      const scoringTest = await Test.findById(testId).populate('questions');
+      const scoringTest = await Test.findOne({ _id:testId, ...organizationScope(req.organization) }).populate('questions');
       const submitted = await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
       return res.status(408).json({ error:'Test time is over. Your attempt was submitted automatically.', autoSubmitted:true, resultId:submitted._id });
     }
@@ -603,13 +631,13 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
     const [test, questionRows] = await Promise.all([
-      Test.findById(req.params.testId).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     if (!test) return res.status(404).json({ error: 'Test not found.' });
     if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
     if (remainingSeconds(test, result) === 0) {
-      const scoringTest = await Test.findById(req.params.testId).populate('questions');
+      const scoringTest = await Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).populate('questions');
       const submitted = await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
       return res.status(409).json({ error:'Test time is over. Your attempt was submitted automatically.', autoSubmitted:true, resultId:submitted._id });
     }
@@ -647,7 +675,7 @@ router.post('/student/tests/:testId/violations', requireMobileUser, requireRole(
     if (!['tabSwitch', 'fullscreenExit', 'focusLoss'].includes(type)) return res.status(400).json({ error: 'Invalid violation type.' });
     const [result, test] = await Promise.all([
       Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' }),
-      Test.findById(req.params.testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result || !test) return res.status(409).json({ error: 'No active test session.' });
     if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
@@ -674,7 +702,7 @@ router.post('/student/tests/:testId/leave', requireMobileUser, requireRole('stud
     const { questionId, answer, markForReview = false, timeSpent = 0 } = req.body;
     const [result, test] = await Promise.all([
       Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' }),
-      Test.findById(req.params.testId).select('testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).select('testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result || !questionId) return res.json({ saved: false });
     if (!test || !resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
@@ -712,7 +740,7 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
     const { testId } = req.params;
     const result = await Result.findOne({ studentId: req.mobileUser._id, testId, status: 'in_progress' });
     if (!result) return res.status(409).json({ error: 'No active test session.' });
-    const test = await Test.findById(testId).populate('questions');
+    const test = await Test.findOne({ _id:testId, ...organizationScope(req.organization) }).populate('questions');
     if (!test) return res.status(404).json({ error: 'Test not found.' });
     if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
 
@@ -727,27 +755,28 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
 });
 
 router.get('/admin/dashboard', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const scope = organizationScope(req.organization);
   const [students, tests, groups, questions, submittedResults, recentResults, recentUsers] = await Promise.all([
-    User.countDocuments({ role: 'student', isActive: true }),
-    Test.countDocuments(),
-    Group.countDocuments({ isActive: { $ne: false } }),
-    Question.countDocuments({ isActive: true }),
-    Result.countDocuments({ status: { $in: ['submitted', 'auto_submitted'] } }),
-    Result.find({ status: completedStatuses }).sort({ submittedAt: -1 }).limit(8).populate('studentId', 'name rollNo').populate('testId', 'title'),
-    User.find({ role: 'student' }).sort({ createdAt: -1 }).limit(5).select('-password'),
+    User.countDocuments({ role:'student', isActive:true, ...scope }),
+    Test.countDocuments({ ...scope }),
+    Group.countDocuments({ isActive:{ $ne:false }, ...scope }),
+    Question.countDocuments({ isActive:true, ...scope }),
+    Result.countDocuments({ status:completedStatuses, ...scope }),
+    Result.find({ status:completedStatuses, ...scope }).sort({ submittedAt:-1 }).limit(8).populate('studentId','name rollNo').populate('testId','title'),
+    User.find({ role:'student', ...scope }).sort({ createdAt:-1 }).limit(5).select('-password'),
   ]);
   return res.json({ stats: { students, tests, groups, questions, submittedResults }, recentResults, recentUsers });
 });
 
 router.get('/admin/students', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const query = { role: 'student' };
+  const query = { role:'student', ...organizationScope(req.organization) };
   if (req.query.search) {
     const escaped = String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    query.$or = [{ name: new RegExp(escaped, 'i') }, { rollNo: new RegExp(escaped, 'i') }];
+    query.$and = [{ $or:[{ name:new RegExp(escaped, 'i') }, { rollNo:new RegExp(escaped, 'i') }] }];
   }
   const [students, groups] = await Promise.all([
     User.find(query).sort({ rollNo: 1 }).select('-password'),
-    Group.find({ isActive: { $ne: false } }).sort({ name: 1 }),
+    Group.find({ isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ name:1 }),
   ]);
   return res.json({ students, groups });
 });
@@ -758,12 +787,12 @@ router.get('/admin/students/template', requireMobileUser, requireRole('admin'), 
 });
 
 router.get('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const student = await User.findOne({ _id: req.params.studentId, role: 'student' }).select('-password');
+  const student = await User.findOne({ _id:req.params.studentId, role:'student', ...organizationScope(req.organization) }).select('-password');
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   const [memberships, results, documents] = await Promise.all([
-    GroupMember.find({ userId: student._id, role: 'student' }).populate('groupId', 'name course academicYear'),
-    Result.find({ studentId: student._id, status: completedStatuses }).populate('testId', 'title subject course').sort({ submittedAt: -1 }),
-    StudentDocument.find({ studentId: student._id }).sort({ createdAt: -1 }),
+    GroupMember.find({ userId:student._id, role:'student' }).populate({ path:'groupId', match:{ ...organizationScope(req.organization) }, select:'name course academicYear' }),
+    Result.find({ studentId:student._id, status:completedStatuses, ...organizationScope(req.organization) }).populate('testId','title subject course').sort({ submittedAt:-1 }),
+    StudentDocument.find({ studentId:student._id, ...organizationScope(req.organization) }).sort({ createdAt:-1 }),
   ]);
   const averageScore = results.length
     ? Number((results.reduce((total, result) => total + (result.totalMarks ? (result.score / result.totalMarks) * 100 : 0), 0) / results.length).toFixed(1))
@@ -777,7 +806,8 @@ router.post('/admin/students', requireMobileUser, requireRole('admin'), async (r
     if (!name?.trim() || !rollNo?.trim()) return res.status(400).json({ error: 'Name and roll number are required.' });
     if (await User.exists({ rollNo: rollNo.trim() })) return res.status(409).json({ error: 'Roll number already exists.' });
     const initialPassword = `CET@${rollNo.trim().slice(-4).padStart(4, '0')}`;
-    const student = await User.create({ name: name.trim(), rollNo: rollNo.trim(), parentContact: parentContact?.trim() || null, phone: phone?.trim() || null, email: email?.trim().toLowerCase() || null, role: 'student', password: initialPassword, isFirstLogin: true });
+    if (groupId) await validateOrganizationGroupIds(req, groupId);
+    const student = await User.create({ name: name.trim(), rollNo: rollNo.trim(), parentContact: parentContact?.trim() || null, phone: phone?.trim() || null, email: email?.trim().toLowerCase() || null, role: 'student', password: initialPassword, isFirstLogin: true, organization:organizationIdForWrite(req) });
     if (groupId) await GroupMember.findOneAndUpdate({ groupId, userId: student._id }, { role: 'student' }, { upsert: true });
     await Notification.create({ userId: student._id, title: 'Account Created', message: `Welcome ${student.name}!`, type: 'info' });
     return res.status(201).json({ student: serializeUser(student), initialPassword });
@@ -792,6 +822,7 @@ router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin
     const file = req.files?.csvFile;
     const { groupId } = req.body;
     if (!file) return res.status(400).json({ error: 'Select an Excel or CSV file first.' });
+    if (groupId) await validateOrganizationGroupIds(req, groupId);
     const workbook = xlsx.read(file.data, { type: 'buffer' });
     const rows = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
     let created = 0;
@@ -803,12 +834,12 @@ router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin
       const rollNo = String(row['Roll No'] || row.rollNo || '').trim();
       const name = String(row.Name || row.name || '').trim();
       if (!rollNo || !name) { skipped += 1; continue; }
-      let student = await User.findOne({ rollNo });
+      let student = await User.findOne({ rollNo, ...organizationScope(req.organization) });
       if (student) {
         duplicates.push(rollNo);
         existing += 1;
       } else {
-        student = await User.create({ name, rollNo, email: String(row.Email || row.email || '').trim().toLowerCase() || null, phone: String(row.Phone || row.phone || '').trim() || null, parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null, role: 'student', password: `CET@${rollNo.slice(-4).padStart(4, '0')}`, isFirstLogin: true });
+        student = await User.create({ name, rollNo, email: String(row.Email || row.email || '').trim().toLowerCase() || null, phone: String(row.Phone || row.phone || '').trim() || null, parentContact: String(row['Parent Contact No'] || row.parentContact || '').trim() || null, role: 'student', password: `CET@${rollNo.slice(-4).padStart(4, '0')}`, isFirstLogin: true, organization:organizationIdForWrite(req) });
         created += 1;
       }
       if (groupId) {
@@ -824,19 +855,24 @@ router.post('/admin/students/bulk-import', requireMobileUser, requireRole('admin
 });
 
 router.delete('/admin/students/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  await GroupMember.deleteMany({ userId: req.params.studentId });
-  const student = await User.findOneAndUpdate({ _id: req.params.studentId, role: 'student' }, { isActive: false }, { new: true });
+  const student = await User.findOneAndUpdate(
+    { _id:req.params.studentId, role:'student', ...organizationScope(req.organization) },
+    { isActive:false },
+    { new:true }
+  );
   if (!student) return res.status(404).json({ error: 'Student not found.' });
+  await GroupMember.deleteMany({ userId: student._id });
   return res.sendStatus(204);
 });
 
 router.get('/admin/groups', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const [groups, members] = await Promise.all([
-    Group.find({ isActive: { $ne: false } }).sort({ createdAt: -1 }),
-    GroupMember.find({ role: 'student' }).populate('userId', 'name rollNo').lean(),
-  ]);
+  const groups = await Group.find({ isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ createdAt:-1 });
+  const groupIds = groups.map(group => group._id);
+  const members = await GroupMember.find({ role:'student', groupId:{ $in:groupIds } })
+    .populate({ path:'userId', match:{ ...organizationScope(req.organization) }, select:'name rollNo' }).lean();
   const memberMap = new Map();
   members.forEach((member) => {
+    if (!member.userId) return;
     const key = member.groupId.toString();
     memberMap.set(key, [...(memberMap.get(key) || []), member.userId]);
   });
@@ -862,17 +898,22 @@ router.post('/admin/groups', requireMobileUser, requireRole('admin'), async (req
 router.post('/admin/groups/:groupId/members', requireMobileUser, requireRole('admin'), async (req, res) => {
   const { studentId } = req.body;
   if (!studentId) return res.status(400).json({ error: 'Student is required.' });
+  const [group, student] = await Promise.all([
+    Group.exists({ _id:req.params.groupId, isActive:{ $ne:false }, ...organizationScope(req.organization) }),
+    organizationStudent(req, studentId),
+  ]);
+  if (!group || !student) return res.status(404).json({ error:'Batch or student not found.' });
   await GroupMember.findOneAndUpdate({ groupId: req.params.groupId, userId: studentId }, { role: 'student' }, { upsert: true });
   return res.status(201).json({ assigned: true });
 });
 
 router.get('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const group = await Group.findOne({ _id: req.params.groupId, isActive: { $ne: false } });
+  const group = await Group.findOne({ _id:req.params.groupId, isActive:{ $ne:false }, ...organizationScope(req.organization) });
   if (!group) return res.status(404).json({ error: 'Batch not found.' });
   const [memberships, students, otherGroups] = await Promise.all([
-    GroupMember.find({ groupId: group._id, role: 'student' }).populate('userId', '-password').sort({ createdAt: 1 }),
-    User.find({ role: 'student', isActive: true }).sort({ rollNo: 1 }).select('-password'),
-    Group.find({ _id: { $ne: group._id }, isActive: { $ne: false } }).sort({ name: 1 }),
+    GroupMember.find({ groupId:group._id, role:'student' }).populate({ path:'userId', match:{ role:'student', ...organizationScope(req.organization) }, select:'-password' }).sort({ createdAt:1 }),
+    User.find({ role:'student', isActive:true, ...organizationScope(req.organization) }).sort({ rollNo:1 }).select('-password'),
+    Group.find({ _id:{ $ne:group._id }, isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ name:1 }),
   ]);
   const memberIds = new Set(memberships.map((item) => item.userId?._id.toString()).filter(Boolean));
   return res.json({
@@ -893,10 +934,10 @@ router.patch('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), 
     if (update.course === '') update.course = null;
     if (Object.prototype.hasOwnProperty.call(update, 'startDate')) update.startDate = parseDateOnly(update.startDate, 'Batch start date');
     if (Object.prototype.hasOwnProperty.call(update, 'endDate')) update.endDate = parseDateOnly(update.endDate, 'Batch end date');
-    const current = await Group.findById(req.params.groupId).select('startDate endDate');
+    const current = await Group.findOne({ _id:req.params.groupId, ...organizationScope(req.organization) }).select('startDate endDate');
     if (!current) return res.status(404).json({ error: 'Batch not found.' });
     validateDateRange(update.startDate ?? current.startDate, update.endDate ?? current.endDate, { start:'Batch start date', end:'Batch end date' });
-    const group = await Group.findOneAndUpdate({ _id: req.params.groupId, isActive: { $ne: false } }, update, { new: true, runValidators: true });
+    const group = await Group.findOneAndUpdate({ _id:req.params.groupId, isActive:{ $ne:false }, ...organizationScope(req.organization) }, update, { new:true, runValidators:true });
     if (!group) return res.status(404).json({ error: 'Batch not found.' });
     return res.json({ group });
   } catch (error) {
@@ -905,7 +946,7 @@ router.patch('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), 
 });
 
 router.delete('/admin/groups/:groupId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const group = await Group.findOneAndUpdate({ _id: req.params.groupId, isActive: { $ne: false } }, { isActive: false }, { new: true });
+  const group = await Group.findOneAndUpdate({ _id:req.params.groupId, isActive:{ $ne:false }, ...organizationScope(req.organization) }, { isActive:false }, { new:true });
   if (!group) return res.status(404).json({ error: 'Batch not found.' });
   await Promise.all([
     GroupMember.deleteMany({ groupId: group._id }),
@@ -915,6 +956,11 @@ router.delete('/admin/groups/:groupId', requireMobileUser, requireRole('admin'),
 });
 
 router.delete('/admin/groups/:groupId/members/:studentId', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const [group, student] = await Promise.all([
+    Group.exists({ _id:req.params.groupId, ...organizationScope(req.organization) }),
+    organizationStudent(req, req.params.studentId),
+  ]);
+  if (!group || !student) return res.status(404).json({ error:'Batch or student not found.' });
   await GroupMember.deleteOne({ groupId: req.params.groupId, userId: req.params.studentId, role: 'student' });
   return res.sendStatus(204);
 });
@@ -922,8 +968,12 @@ router.delete('/admin/groups/:groupId/members/:studentId', requireMobileUser, re
 router.post('/admin/groups/:groupId/members/:studentId/move', requireMobileUser, requireRole('admin'), async (req, res) => {
   const { targetGroupId } = req.body;
   if (!targetGroupId) return res.status(400).json({ error: 'Target batch is required.' });
-  const target = await Group.findOne({ _id: targetGroupId, isActive: { $ne: false } });
-  if (!target) return res.status(404).json({ error: 'Target batch not found.' });
+  const [source, target, student] = await Promise.all([
+    Group.exists({ _id:req.params.groupId, ...organizationScope(req.organization) }),
+    Group.findOne({ _id:targetGroupId, isActive:{ $ne:false }, ...organizationScope(req.organization) }),
+    organizationStudent(req, req.params.studentId),
+  ]);
+  if (!source || !target || !student) return res.status(404).json({ error: 'Batch or student not found.' });
   await GroupMember.deleteOne({ groupId: req.params.groupId, userId: req.params.studentId });
   await GroupMember.findOneAndUpdate({ groupId: target._id, userId: req.params.studentId }, { role: 'student' }, { upsert: true });
   return res.json({ moved: true, targetGroup: target });
@@ -936,7 +986,7 @@ router.get('/admin/groups/:groupId/credentials', requireMobileUser, requireRole(
 });
 
 router.get('/admin/topics', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const query = { isActive: true };
+  const query = { isActive:true, ...organizationScope(req.organization) };
   if (req.query.course) query.course = req.query.course;
   if (req.query.subject) query.subject = req.query.subject;
   const topics = await Topic.find(query).sort({ course: 1, subject: 1, name: 1 });
@@ -953,8 +1003,8 @@ router.post('/admin/topics', requireMobileUser, requireRole('admin'), async (req
     if (!course || !subject || !name?.trim()) return res.status(400).json({ error: 'Course, subject and unit name are required.' });
     const normalizedSubtopics = (Array.isArray(subtopics) ? subtopics : String(subtopics).split(/\r?\n/)).map((item) => String(item).trim()).filter(Boolean);
     const topic = await Topic.findOneAndUpdate(
-      { course, subject, name: name.trim() },
-      { $set: { isActive: true }, $addToSet: { subtopics: { $each: normalizedSubtopics } } },
+      { course, subject, name:name.trim(), ...organizationScope(req.organization) },
+      { $set:{ isActive:true, organization:organizationIdForWrite(req) }, $addToSet:{ subtopics:{ $each:normalizedSubtopics } } },
       { new: true, upsert: true },
     );
     return res.status(201).json({ topic });
@@ -982,7 +1032,7 @@ router.post('/admin/topics/import-pdf', requireMobileUser, requireRole('admin'),
       const name = String(unit.unitName || '').replace(/\s+/g, ' ').trim();
       const unitSubject = String(unit.subject || subject || '').trim();
       if (!name || !(SUBJECTS_BY_COURSE[course] || []).includes(unitSubject)) continue;
-      const rows = await Topic.find({ course, subject: unitSubject });
+      const rows = await Topic.find({ course, subject:unitSubject, ...organizationScope(req.organization) });
       const existing = rows.find((row) => row.name.toLowerCase() === name.toLowerCase());
       const subtopics = [...new Set((unit.subtopics || []).map((item) => String(item).replace(/\s+/g, ' ').trim()).filter(Boolean))];
       if (existing) {
@@ -992,7 +1042,7 @@ router.post('/admin/topics/import-pdf', requireMobileUser, requireRole('admin'),
         await existing.save();
         updated += 1;
       } else {
-        await Topic.create({ course, subject: unitSubject, name, subtopics, isActive: true });
+        await Topic.create({ organization:organizationIdForWrite(req), course, subject:unitSubject, name, subtopics, isActive:true });
         created += 1;
       }
     }
@@ -1008,13 +1058,14 @@ router.patch('/admin/topics/:topicId', requireMobileUser, requireRole('admin'), 
   const update = {};
   if (name?.trim()) update.name = name.trim();
   if (subtopics) update.subtopics = (Array.isArray(subtopics) ? subtopics : String(subtopics).split(/\r?\n/)).map((item) => String(item).trim()).filter(Boolean);
-  const topic = await Topic.findByIdAndUpdate(req.params.topicId, update, { new: true });
+  const topic = await Topic.findOneAndUpdate({ _id:req.params.topicId, ...organizationScope(req.organization) }, update, { new:true });
   if (!topic) return res.status(404).json({ error: 'Syllabus unit not found.' });
   return res.json({ topic });
 });
 
 router.delete('/admin/topics/:topicId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  await Topic.findByIdAndUpdate(req.params.topicId, { isActive: false });
+  const topic = await Topic.findOneAndUpdate({ _id:req.params.topicId, ...organizationScope(req.organization) }, { isActive:false });
+  if (!topic) return res.status(404).json({ error:'Syllabus unit not found.' });
   return res.sendStatus(204);
 });
 
@@ -1037,7 +1088,7 @@ router.get('/admin/questions', requireMobileUser, requireRole('admin'), async (r
 });
 
 router.get('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const question = await Question.findOne({ _id: req.params.questionId, isActive: true });
+  const question = await Question.findOne({ _id:req.params.questionId, isActive:true, ...organizationScope(req.organization) });
   if (!question) return res.status(404).json({ error: 'Question not found.' });
   return res.json({ question });
 });
@@ -1182,7 +1233,7 @@ router.delete('/admin/smart-scanner/:draftId', requireMobileUser, requireRole('a
 });
 
 router.get('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const query = { isActive: { $ne: false } };
+  const query = { isActive:{ $ne:false }, ...organizationScope(req.organization) };
   if (req.query.course) query.course = req.query.course;
   if (req.query.subject) query.subject = req.query.subject;
   const tests = await Test.find(query).populate('groups', 'name').sort({ createdAt: -1 });
@@ -1205,7 +1256,7 @@ router.get('/admin/tests/template/answer-key', requireMobileUser, requireRole('a
 });
 
 router.get('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const test = await Test.findOne({ _id: req.params.testId, isActive: { $ne: false } })
+  const test = await Test.findOne({ _id:req.params.testId, isActive:{ $ne:false }, ...organizationScope(req.organization) })
     .populate('questions')
     .populate('groups', 'name course academicYear');
   if (!test) return res.status(404).json({ error: 'Test not found.' });
@@ -1214,22 +1265,26 @@ router.get('/admin/tests/:testId', requireMobileUser, requireRole('admin'), asyn
 });
 
 router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const persistedPdfFiles = [];
   try {
     const questionPdf = req.files?.questionPdf;
     if (!questionPdf || Array.isArray(questionPdf)) return res.status(400).json({ error: 'Question PDF is required.' });
-    if (path.extname(questionPdf.name || '').toLowerCase() !== '.pdf') return res.status(400).json({ error: 'Question paper must be a PDF.' });
+    if (path.extname(questionPdf.name || '').toLowerCase() !== '.pdf'
+        || !['application/pdf','application/octet-stream'].includes(questionPdf.mimetype)) {
+      return res.status(400).json({ error: 'Question paper must be a PDF.' });
+    }
     const { title, description, timingMode, duration = 180, negativeMarking = 0.25, startTime, endTime, instructions, marksPerQuestion = 1 } = req.body;
     if (!String(title || '').trim()) return res.status(400).json({ error: 'Test title is required.' });
     const maxSize = Number(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024;
     if (questionPdf.size > maxSize) return res.status(413).json({ error: 'Question PDF is too large.' });
-    const qName = `q_${Date.now()}_${fileNameSafe(questionPdf.name)}`;
-    fs.writeFileSync(path.join(pdfDirectory, qName), questionPdf.data);
-    let solutionPdfPath = null;
     const solutionPdf = req.files?.solutionPdf;
+    if (Array.isArray(solutionPdf)) return res.status(400).json({ error:'Upload one solution PDF.' });
     if (solutionPdf && !Array.isArray(solutionPdf)) {
-      const sName = `s_${Date.now()}_${fileNameSafe(solutionPdf.name)}`;
-      fs.writeFileSync(path.join(pdfDirectory, sName), solutionPdf.data);
-      solutionPdfPath = `/uploads/pdfs/${sName}`;
+      if (path.extname(solutionPdf.name || '').toLowerCase() !== '.pdf'
+          || !['application/pdf','application/octet-stream'].includes(solutionPdf.mimetype)) {
+        return res.status(400).json({ error:'Solution paper must be a PDF.' });
+      }
+      if (solutionPdf.size > maxSize) return res.status(413).json({ error:'Solution PDF is too large.' });
     }
     const source = questionPdf.data.toString('latin1');
     const pageMatches = source.match(/\/Type\s*\/Page[^s]/g);
@@ -1239,6 +1294,19 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     const timing = timingInput({ timingMode, duration, startTime, endTime });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
     const release = releaseConfiguration({ resultReleaseMode:req.body.resultReleaseMode, resultReleaseAt:req.body.resultReleaseAt, endTime:timing.endTime });
+    const groups = await validateOrganizationGroupIds(req, req.body.groupIds);
+    const qName = `q_${Date.now()}_${fileNameSafe(questionPdf.name)}`;
+    const questionDestination=path.join(pdfDirectory,qName);
+    fs.writeFileSync(questionDestination,questionPdf.data);
+    persistedPdfFiles.push(questionDestination);
+    let solutionPdfPath = null;
+    if (solutionPdf) {
+      const sName = `s_${Date.now()}_${fileNameSafe(solutionPdf.name)}`;
+      const solutionDestination=path.join(pdfDirectory,sName);
+      fs.writeFileSync(solutionDestination,solutionPdf.data);
+      persistedPdfFiles.push(solutionDestination);
+      solutionPdfPath = `/uploads/pdfs/${sName}`;
+    }
     const test = await Test.create({
       title: String(title).trim(), description: String(description || '').trim() || null,
       organization:organizationIdForWrite(req), duration:timing.duration, timingMode:timing.timingMode,
@@ -1246,7 +1314,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
       startTime: timing.startTime, endTime: timing.endTime, instructions: String(instructions || '').trim() || null,
       totalMarks: Math.max(1, pageCount) * perQuestion, marksPerQuestion: perQuestion,
       createdBy: req.mobileUser._id, status: 'draft', course: cleanList(req.body.course || req.body.courses),
-      subject: cleanList(req.body.subject || req.body.subjects), groups: cleanList(req.body.groupIds),
+      subject: cleanList(req.body.subject || req.body.subjects), groups,
       questionPdfPath: `/uploads/pdfs/${qName}`, solutionPdfPath,
       autoSubmitOnViolation: Boolean(req.body.autoSubmitOnViolation), maxTabSwitches: Number(req.body.maxTabSwitches) || 3,
       maxFocusLosses: Number(req.body.maxFocusLosses) || 5, blockCopyPaste: req.body.blockCopyPaste !== false,
@@ -1256,6 +1324,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     });
     return res.status(201).json({ test, pageCount });
   } catch (error) {
+    cleanupIncompleteFiles(persistedPdfFiles);
     console.error('Mobile PDF test upload error:', error);
     return res.status(400).json({ error:error.message || 'Unable to create PDF test.' });
   }
@@ -1273,7 +1342,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
     const examConfiguration = await resolveExamConfiguration(req.organization?._id, testPattern, rankingSchema);
     validateQuestionsForPattern(questions, examConfiguration.pattern);
     const timing = timingInput({ timingMode, duration, startTime, endTime });
-    const groups = Array.isArray(groupIds) ? groupIds : [groupIds];
+    const groups = await validateOrganizationGroupIds(req, groupIds);
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questions, req.body, { negativeMarking:parsedNegativeMarking });
     const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
@@ -1303,6 +1372,7 @@ router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), as
   const allowed = ['title', 'description', 'timingMode', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'groupIds', 'questions', 'questionIds', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
   const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
   if (update.groupIds !== undefined) { update.groups = cleanList(update.groupIds); delete update.groupIds; }
+  if (update.groups !== undefined) update.groups = await validateOrganizationGroupIds(req, update.groups);
   if (update.questionIds !== undefined) { update.questions = cleanList(update.questionIds); delete update.questionIds; }
   if (update.questions !== undefined) {
     update.questions = cleanList(update.questions);
@@ -1349,7 +1419,7 @@ router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), as
 });
 
 router.post('/admin/tests/:testId/publish', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const test = await Test.findOne({ _id: req.params.testId, isActive: { $ne: false } });
+  const test = await Test.findOne({ _id:req.params.testId, isActive:{ $ne:false }, ...organizationScope(req.organization) });
   if (!test) return res.status(404).json({ error: 'Test not found.' });
   test.status = 'published';
   await test.save();
@@ -1372,12 +1442,16 @@ router.post('/admin/tests/:testId/results/release', requireMobileUser, requireRo
 });
 
 router.delete('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  await Test.findByIdAndUpdate(req.params.testId, { isActive: false, status: 'closed' });
+  const test = await Test.findOneAndUpdate(
+    { _id:req.params.testId, ...organizationScope(req.organization) },
+    { isActive:false, status:'closed' }
+  );
+  if (!test) return res.status(404).json({ error:'Test not found.' });
   return res.sendStatus(204);
 });
 
 router.get('/admin/results', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const query = { status: { $in: ['submitted', 'auto_submitted'] } };
+  const query = { status:completedStatuses, ...organizationScope(req.organization) };
   if (req.query.testId) query.testId = req.query.testId;
   if (req.query.groupId) {
     const members = await GroupMember.find({ groupId: req.query.groupId, role: 'student' }, 'userId');
@@ -1385,8 +1459,8 @@ router.get('/admin/results', requireMobileUser, requireRole('admin'), async (req
   }
   const results = await Result.find(query).sort({ submittedAt: -1 }).populate('studentId', 'name rollNo').populate('testId', 'title course subject');
   const [groups, tests] = await Promise.all([
-    Group.find({ isActive: { $ne: false } }).sort({ name: 1 }),
-    Test.find({ isActive: { $ne: false } }).sort({ createdAt: -1 }).select('title groups course subject').populate('groups', 'name'),
+    Group.find({ isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ name:1 }),
+    Test.find({ isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ createdAt:-1 }).select('title groups course subject').populate('groups','name'),
   ]);
   return res.json({ results, groups, tests });
 });
@@ -1397,7 +1471,7 @@ router.get('/admin/results/export', requireMobileUser, requireRole('admin'), (re
 });
 
 router.get('/admin/results/:resultId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const result = await Result.findById(req.params.resultId)
+  const result = await Result.findOne({ _id:req.params.resultId, ...organizationScope(req.organization) })
     .populate('studentId', 'name rollNo email')
     .populate({ path: 'testId', populate: { path: 'questions' } });
   if (!result) return res.status(404).json({ error: 'Result not found.' });
@@ -1406,12 +1480,12 @@ router.get('/admin/results/:resultId', requireMobileUser, requireRole('admin'), 
 });
 
 router.get('/admin/documents', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const documents = await StudentDocument.find().sort({ createdAt: -1 }).populate('studentId', 'name rollNo');
+  const documents = await StudentDocument.find({ ...organizationScope(req.organization) }).sort({ createdAt:-1 }).populate('studentId','name rollNo');
   return res.json({ documents });
 });
 
 router.delete('/admin/documents/:documentId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const document = await StudentDocument.findByIdAndDelete(req.params.documentId);
+  const document = await StudentDocument.findOneAndDelete({ _id:req.params.documentId, ...organizationScope(req.organization) });
   if (!document) return res.status(404).json({ error: 'Document not found.' });
   const fullPath = path.join(__dirname, '../public', document.filePath);
   if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
@@ -1419,7 +1493,8 @@ router.delete('/admin/documents/:documentId', requireMobileUser, requireRole('ad
 });
 
 router.delete('/admin/questions/:questionId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  await Question.findByIdAndUpdate(req.params.questionId, { isActive: false });
+  const question = await Question.findOneAndUpdate({ _id:req.params.questionId, ...organizationScope(req.organization) }, { isActive:false });
+  if (!question) return res.status(404).json({ error:'Question not found.' });
   return res.sendStatus(204);
 });
 

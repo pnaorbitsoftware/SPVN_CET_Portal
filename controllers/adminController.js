@@ -45,8 +45,8 @@ const PDF_DIR = path.join(UPLOAD_DIR,'pdfs');
 const DOC_DIR = path.join(UPLOAD_DIR,'documents');
 [UPLOAD_DIR,PDF_DIR,DOC_DIR].forEach(d => { if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); });
 
-const loadTopics = (course, subject) => {
-  const q = { isActive: true };
+const loadTopics = (organization, course, subject) => {
+  const q = { isActive: true, ...organizationScope(organization) };
   if (course)  q.course  = course;
   if (subject) q.subject = subject;
   return Topic.find(q).sort({ name: 1 });
@@ -103,12 +103,12 @@ const mergeHierarchyText = (existing, incoming) => {
 const isValidCourseSubject = (course, subject) => COURSES.includes(course)
   && (SUBJECTS_BY_COURSE[course] || []).includes(subject);
 
-async function upsertSyllabusUnit({ course, subject, name, subtopics }) {
+async function upsertSyllabusUnit({ organization, course, subject, name, subtopics }) {
   const unitName = cleanHierarchyText(name);
-  const existingRows = await Topic.find({ course, subject });
+  const existingRows = await Topic.find({ course, subject, ...organizationScope(organization) });
   const existing = existingRows.find(row => row.name.toLocaleLowerCase() === unitName.toLocaleLowerCase());
   if (!existing) {
-    await Topic.create({ course, subject, name: unitName, subtopics, isActive: true });
+    await Topic.create({ organization:organization?._id || null, course, subject, name: unitName, subtopics, isActive: true });
     return 'created';
   }
   existing.name = unitName;
@@ -120,8 +120,30 @@ async function upsertSyllabusUnit({ course, subject, name, subtopics }) {
 
 const completedResultStatus = { $in: ['submitted', 'auto_submitted'] };
 
-async function resultQueryFrom(filters = {}) {
-  const query = { status: completedResultStatus };
+function validatePdfFile(file, label = 'PDF') {
+  if (!file) return null;
+  if (Array.isArray(file)) throw new Error(`Upload one ${label} file.`);
+  const extension = path.extname(file.name || '').toLowerCase();
+  if (extension !== '.pdf' || !['application/pdf','application/octet-stream'].includes(file.mimetype)) {
+    throw new Error(`${label} must be a PDF file.`);
+  }
+  const maxSize = parseInt(process.env.MAX_FILE_SIZE, 10) || 20 * 1024 * 1024;
+  if (file.size > maxSize) throw new Error(`${label} must be below ${Math.floor(maxSize / 1024 / 1024)} MB.`);
+  return file;
+}
+
+function cleanupIncompleteFiles(files) {
+  files.forEach(file => {
+    try {
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    } catch (cleanupError) {
+      console.error('Unable to clean up incomplete PDF upload:', cleanupError.message);
+    }
+  });
+}
+
+async function resultQueryFrom(filters = {}, organization = null) {
+  const query = { status: completedResultStatus, ...organizationScope(organization) };
   if (filters.testId) query.testId = filters.testId;
   if (filters.groupId) {
     const memberships = await GroupMember.find(
@@ -131,6 +153,14 @@ async function resultQueryFrom(filters = {}) {
     query.studentId = { $in: memberships.map(membership => membership.userId) };
   }
   return query;
+}
+
+async function validateScopedGroupIds(req, values) {
+  const ids = [...new Set((Array.isArray(values) ? values : values ? [values] : []).map(String).filter(Boolean))];
+  if (!ids.length) return [];
+  const groups = await Group.find({ _id:{ $in:ids }, isActive:{ $ne:false }, ...organizationScope(req.organization) }, '_id');
+  if (groups.length !== ids.length) throw new Error('One or more selected batches are unavailable.');
+  return ids;
 }
 
 function subjectResultValue(result, subject) {
@@ -191,6 +221,7 @@ exports.createStudent = async (req, res) => {
   try {
     const { name, rollNo, parentContact, groupId } = req.body;
     if (!rollNo || !name) { req.flash('error','Name and Roll No required.'); return res.redirect('/admin/students'); }
+    if (groupId) await validateScopedGroupIds(req, groupId);
     const exists = await User.findOne({ rollNo });
     if (exists) { req.flash('error',`Roll No ${rollNo} already exists.`); return res.redirect(req.get('Referer')||'/admin/students'); }
     const pwd = generatePassword(rollNo);
@@ -209,7 +240,7 @@ exports.bulkImportStudents = async (req, res) => {
   try {
     const groupId = req.params?.id || req.body.groupId;
     if (!req.files?.csvFile) { req.flash('error','No file uploaded.'); return res.redirect(req.get('Referer')||'/admin/groups'); }
-    const group = groupId ? await Group.findOne({ _id: groupId, isActive: { $ne: false } }) : null;
+    const group = groupId ? await Group.findOne({ _id: groupId, isActive: { $ne: false }, ...organizationScope(req.organization) }) : null;
     if (groupId && !group) {
       req.flash('error', 'Selected batch is not available.');
       return res.redirect(req.get('Referer') || '/admin/groups');
@@ -222,7 +253,7 @@ exports.bulkImportStudents = async (req, res) => {
       const name   = String(row['Name']||row.name||'').trim();
       if (!rollNo||!name) { skipped++; continue; }
       try {
-        let student = await User.findOne({ rollNo });
+        let student = await User.findOne({ rollNo, ...organizationScope(req.organization) });
         if (student) {
           existing++;
         } else {
@@ -292,7 +323,7 @@ exports.createGroup = async (req, res) => {
           const sName  = String(row['Name']||row.name||'').trim();
           if (!rollNo||!sName) { skipped++; continue; }
           const pw = generatePassword(rollNo);
-          let student = await User.findOne({ rollNo });
+          let student = await User.findOne({ rollNo, ...organizationScope(req.organization) });
           const isNew = !student;
           if (!student) student = await User.create({ name:sName, rollNo, email:String(row['Email']||row.email||'').trim()||null, phone:String(row['Phone']||row.phone||'').trim()||null, parentContact:String(row['Parent Contact No']||row.parentContact||'').trim()||null, role:'student', password:pw, isFirstLogin:true, organization:organizationIdForWrite(req) });
           await GroupMember.findOneAndUpdate({ groupId:group._id, userId:student._id }, { role:'student' }, { upsert:true });
@@ -310,6 +341,11 @@ exports.createGroup = async (req, res) => {
 exports.assignMember = async (req, res) => {
   try {
     const { groupId, userId } = req.body;
+    const [group, student] = await Promise.all([
+      Group.findOne({ _id:groupId, isActive:{ $ne:false }, ...organizationScope(req.organization) }),
+      User.findOne({ _id:userId, role:'student', isActive:true, ...organizationScope(req.organization) }),
+    ]);
+    if (!group || !student) throw new Error('Batch or student is unavailable.');
     await GroupMember.findOneAndUpdate({ groupId, userId }, { role:'student' }, { upsert:true });
     req.flash('success','Member assigned.');
     res.redirect('/admin/groups');
@@ -334,9 +370,10 @@ exports.downloadStudentTemplate = (req, res) => {
 
 exports.exportGroupCredentials = async (req, res) => {
   try {
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id:req.params.id, ...organizationScope(req.organization) });
     if (!group) { req.flash('error','Batch not found.'); return res.redirect('/admin/groups'); }
-    const memberships = await GroupMember.find({ groupId:group._id, role:'student' }).populate('userId','name rollNo parentContact');
+    const memberships = await GroupMember.find({ groupId:group._id, role:'student' })
+      .populate({ path:'userId', match:{ role:'student', ...organizationScope(req.organization) }, select:'name rollNo parentContact' });
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ margin:40, size:'A4' });
     res.setHeader('Content-Type','application/pdf');
@@ -371,8 +408,8 @@ exports.getTopics = async (req, res) => {
   try {
     const { course, subject } = req.query;
     const [topics, allTopics] = await Promise.all([
-      loadTopics(course, subject),
-      Topic.find({ isActive:true }, 'course subtopics'),
+      loadTopics(req.organization, course, subject),
+      Topic.find({ isActive:true, ...organizationScope(req.organization) }, 'course subtopics'),
     ]);
     const SUBJECTS = course ? (SUBJECTS_BY_COURSE[course]||ALL_SUBJECTS) : ALL_SUBJECTS;
     const courseStats = Object.fromEntries(COURSES.map(courseName => {
@@ -395,7 +432,7 @@ exports.createTopic = async (req, res) => {
     const { name, course, subject, subtopics } = req.body;
     if (!isValidCourseSubject(course, subject)) throw new Error('Select a valid course and subject.');
     if (!cleanHierarchyText(name)) throw new Error('Unit name is required.');
-    const result = await upsertSyllabusUnit({ course, subject, name, subtopics: parseSubtopics(subtopics) });
+    const result = await upsertSyllabusUnit({ organization:req.organization, course, subject, name, subtopics: parseSubtopics(subtopics) });
     req.flash('success', result === 'created' ? 'Syllabus unit added.' : 'Existing unit updated with the new subtopics.');
     res.redirect(`/admin/topics?course=${course}&subject=${encodeURIComponent(subject)}`);
   } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/topics'); }
@@ -429,6 +466,7 @@ exports.importSyllabusPdf = async (req, res) => {
     let updated = 0;
     for (const unit of extraction.units) {
       const result = await upsertSyllabusUnit({
+        organization:req.organization,
         course,
         subject:unit.subject,
         name:unit.unitName,
@@ -453,7 +491,11 @@ exports.updateTopic = async (req, res) => {
   try {
     const { name, subtopics } = req.body;
     if (!cleanHierarchyText(name)) throw new Error('Unit name is required.');
-    await Topic.findByIdAndUpdate(req.params.id, { name:cleanHierarchyText(name), subtopics:parseSubtopics(subtopics) });
+    const topic = await Topic.findOneAndUpdate(
+      { _id:req.params.id, ...organizationScope(req.organization) },
+      { name:cleanHierarchyText(name), subtopics:parseSubtopics(subtopics) }
+    );
+    if (!topic) throw new Error('Syllabus unit not found.');
     req.flash('success','Syllabus unit updated.');
     res.redirect('/admin/topics');
   } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/topics'); }
@@ -461,7 +503,7 @@ exports.updateTopic = async (req, res) => {
 
 exports.deleteTopic = async (req, res) => {
   try {
-    await Topic.findByIdAndUpdate(req.params.id, { isActive:false });
+    await Topic.findOneAndUpdate({ _id:req.params.id, ...organizationScope(req.organization) }, { isActive:false });
     req.flash('success','Syllabus unit deleted.');
     res.redirect('/admin/topics');
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/topics'); }
@@ -470,7 +512,7 @@ exports.deleteTopic = async (req, res) => {
 exports.getSubjectsForCourse = (req, res) => res.json(SUBJECTS_BY_COURSE[req.params.course]||ALL_SUBJECTS);
 
 exports.getTopicsForSubject = async (req, res) => {
-  try { res.json(await loadTopics(req.query.course, req.query.subject)); }
+  try { res.json(await loadTopics(req.organization, req.query.course, req.query.subject)); }
   catch { res.json([]); }
 };
 
@@ -504,11 +546,11 @@ exports.getQuestions = async (req, res) => {
     if (questionId && /^[a-f\d]{24}$/i.test(questionId)) q._id = questionId;
     if (search) {
       const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      q.$or = [
+      q.$and = [{ $or:[
         { question:new RegExp(escaped, 'i') },
         { explanation:new RegExp(escaped, 'i') },
         { tags:new RegExp(escaped, 'i') },
-      ];
+      ] }];
     }
     const sortMap = {
       difficulty: { difficulty:1, subject:1 },
@@ -516,7 +558,7 @@ exports.getQuestions = async (req, res) => {
       oldest:     { createdAt:1 },
       subject:    { subject:1, topic:1, subtopic:1, difficulty:1, createdAt:-1 },
     };
-    const topicRows = subject ? await loadTopics(course, subject) : [];
+    const topicRows = subject ? await loadTopics(req.organization, course, subject) : [];
     const selectedTopic = topicRows.find(row => stripUnitPrefix(row.name).toLocaleLowerCase() === stripUnitPrefix(topic).toLocaleLowerCase());
     let questions, total;
     if (selectedTopic) {
@@ -603,7 +645,7 @@ exports.bulkImportQuestions = async (req, res) => {
 
 exports.deleteQuestion = async (req, res) => {
   try {
-    await Question.findByIdAndUpdate(req.params.id, { isActive:false });
+    await Question.findOneAndUpdate({ _id:req.params.id, ...organizationScope(req.organization) }, { isActive:false });
     req.flash('success','Question removed.');
     res.redirect('/admin/questions');
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/questions'); }
@@ -613,7 +655,7 @@ exports.deleteQuestion = async (req, res) => {
 exports.getTests = async (req, res) => {
   try {
     const { subject, course } = req.query;
-    const q = { isActive:{ $ne:false } };
+    const q = { isActive:{ $ne:false }, ...organizationScope(req.organization) };
     if (subject) q.subject = subject;
     if (course)  q.course  = course;
     const tests = await Test.find(q).populate('groups','name').sort({ createdAt:-1 });
@@ -630,7 +672,7 @@ exports.getCreateTest = async (req, res) => {
     const [groups, questions, topics, sourcePaper] = await Promise.all([
       Group.find({ isActive:true, ...organizationScope(req.organization) }),
       Question.find(q).sort({ subject:1, difficulty:1 }),
-      loadTopics(course, subject),
+      loadTopics(req.organization, course, subject),
       paperId ? QuestionPaper.findOne({ _id:paperId, isActive:{ $ne:false }, ...organizationScope(req.organization) }) : null,
     ]);
     const selectedQuestionIds = sourcePaper ? sourcePaper.questionIds.map(id => String(id)) : [];
@@ -658,6 +700,7 @@ exports.getCreateTest = async (req, res) => {
 };
 
 exports.createTest = async (req, res) => {
+  const persistedPdfFiles = [];
   try {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
@@ -682,9 +725,9 @@ exports.createTest = async (req, res) => {
     const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking });
     const totalMarks = totalMarksFromConfigs(questionConfigs);
     let questionPdfPath=null, solutionPdfPath=null;
-    if (req.files?.questionPdf) { const fn=`q_${Date.now()}.pdf`; questionPdfPath='/uploads/pdfs/'+fn; fs.writeFileSync(path.join(PDF_DIR,fn),req.files.questionPdf.data); }
-    if (req.files?.solutionPdf) { const fn=`s_${Date.now()}.pdf`; solutionPdfPath='/uploads/pdfs/'+fn; fs.writeFileSync(path.join(PDF_DIR,fn),req.files.solutionPdf.data); }
-    const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
+    validatePdfFile(req.files?.questionPdf, 'Question paper');
+    validatePdfFile(req.files?.solutionPdf, 'Solution paper');
+    const groups = await validateScopedGroupIds(req, groupIds);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
@@ -694,6 +737,20 @@ exports.createTest = async (req, res) => {
       resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
       endTime:timing.endTime,
     });
+    if (req.files?.questionPdf) {
+      const fn=`q_${Date.now()}.pdf`;
+      const destination=path.join(PDF_DIR,fn);
+      fs.writeFileSync(destination,req.files.questionPdf.data);
+      persistedPdfFiles.push(destination);
+      questionPdfPath='/uploads/pdfs/'+fn;
+    }
+    if (req.files?.solutionPdf) {
+      const fn=`s_${Date.now()}.pdf`;
+      const destination=path.join(PDF_DIR,fn);
+      fs.writeFileSync(destination,req.files.solutionPdf.data);
+      persistedPdfFiles.push(destination);
+      solutionPdfPath='/uploads/pdfs/'+fn;
+    }
     const test = await Test.create({
       title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -721,7 +778,11 @@ exports.createTest = async (req, res) => {
     });
     req.flash('success','Test created!');
     res.redirect(`/admin/tests/${test._id}`);
-  } catch (e) { req.flash('error','Failed: '+e.message); res.redirect('/admin/tests/create'); }
+  } catch (e) {
+    cleanupIncompleteFiles(persistedPdfFiles);
+    req.flash('error','Failed: '+e.message);
+    res.redirect('/admin/tests/create');
+  }
 };
 
 exports.getTestDetail = async (req, res) => {
@@ -732,7 +793,7 @@ exports.getTestDetail = async (req, res) => {
     }).populate('questions').populate('groups','name');
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
     const [results, recalculations] = await Promise.all([
-      Result.find({ testId:req.params.id, status:{ $in:['submitted','auto_submitted'] } })
+      Result.find({ testId:req.params.id, status:{ $in:['submitted','auto_submitted'] }, ...organizationScope(req.organization) })
         .populate('studentId','name rollNo').sort({ rank:1, score:-1, timeTaken:1 }),
       ResultRecalculation.find({ testId:test._id, ...organizationScope(req.organization) })
         .populate('initiatedBy','name email').sort({ createdAt:-1 }).limit(10),
@@ -745,7 +806,7 @@ exports.getTestDetail = async (req, res) => {
 
 exports.publishTest = async (req, res) => {
   try {
-    const test = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false } });
+    const test = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) });
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
     await Test.findByIdAndUpdate(test._id, { status:'published' });
     // Notify all students in assigned groups
@@ -766,14 +827,14 @@ exports.getAllResults = async (req, res) => {
     const query = await resultQueryFrom({
       groupId: selectedGroupId,
       testId: selectedTestId,
-    });
+    }, req.organization);
     const [results, groups, tests] = await Promise.all([
       Result.find(query)
         .sort({ createdAt:-1 })
         .populate('studentId','name rollNo')
         .populate('testId','title course subject'),
-      Group.find({ isActive:true }).sort({ name:1 }),
-      Test.find().select('title groups status').sort({ createdAt:-1 }),
+      Group.find({ isActive:true, ...organizationScope(req.organization) }).sort({ name:1 }),
+      Test.find({ ...organizationScope(req.organization) }).select('title groups status').sort({ createdAt:-1 }),
     ]);
     res.render('admin/results', {
       title:'Batch-wise Results',
@@ -793,7 +854,7 @@ exports.exportResultsExcel = async (req, res) => {
     const query = await resultQueryFrom({
       groupId: selectedGroupId,
       testId: selectedTestId,
-    });
+    }, req.organization);
     const results = await Result.find(query)
       .sort({ createdAt:-1 })
       .populate('studentId','name rollNo')
@@ -804,7 +865,7 @@ exports.exportResultsExcel = async (req, res) => {
       .filter(Boolean);
     const memberships = studentIds.length
       ? await GroupMember.find({ userId: { $in: studentIds }, role:'student' })
-          .populate('groupId','name')
+          .populate({ path:'groupId', match:{ ...organizationScope(req.organization) }, select:'name' })
       : [];
     const batchesByStudent = new Map();
     memberships.forEach(membership => {
@@ -842,8 +903,8 @@ exports.exportResultsExcel = async (req, res) => {
     xlsx.utils.book_append_sheet(wb, ws, 'Results');
     const buf = xlsx.write(wb, { type:'buffer', bookType:'xlsx' });
     const [selectedGroup, selectedTest] = await Promise.all([
-      selectedGroupId ? Group.findById(selectedGroupId).select('name') : null,
-      selectedTestId ? Test.findById(selectedTestId).select('title') : null,
+      selectedGroupId ? Group.findOne({ _id:selectedGroupId, ...organizationScope(req.organization) }).select('name') : null,
+      selectedTestId ? Test.findOne({ _id:selectedTestId, ...organizationScope(req.organization) }).select('title') : null,
     ]);
     const filename = [
       selectedGroup ? safeFilenamePart(selectedGroup.name, 'batch') : null,
@@ -859,14 +920,14 @@ exports.exportResultsExcel = async (req, res) => {
 // ── DOCUMENTS ─────────────────────────────────────────────────────────────────
 exports.getDocuments = async (req, res) => {
   try {
-    const docs = await StudentDocument.find().sort({ createdAt:-1 }).populate('studentId','name rollNo');
+    const docs = await StudentDocument.find({ ...organizationScope(req.organization) }).sort({ createdAt:-1 }).populate('studentId','name rollNo');
     res.render('admin/documents', { title:'Student Documents', docs });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
 exports.deleteDocument = async (req, res) => {
   try {
-    const doc = await StudentDocument.findById(req.params.id);
+    const doc = await StudentDocument.findOne({ _id:req.params.id, ...organizationScope(req.organization) });
     if (doc) {
       const fp = path.join(__dirname,'..','public',doc.filePath);
       if (fs.existsSync(fp)) fs.unlinkSync(fp);
@@ -883,7 +944,8 @@ exports.getGroupDetail = async (req, res) => {
     const scope = organizationScope(req.organization);
     const group = await Group.findOne({ _id:req.params.id, ...scope });
     if (!group) { req.flash('error','Batch not found.'); return res.redirect('/admin/groups'); }
-    const memberships = await GroupMember.find({ groupId: group._id, role: 'student' }).populate('userId');
+    const memberships = await GroupMember.find({ groupId:group._id, role:'student' })
+      .populate({ path:'userId', match:{ role:'student', ...organizationScope(req.organization) } });
     const members = memberships.map(m => m.userId).filter(Boolean);
     const allGroups = await Group.find({ isActive: true, ...scope });
     res.render('admin/group-detail', { title: group.name, group, members, allGroups });
@@ -909,8 +971,13 @@ exports.updateGroup = async (req, res) => {
 
 exports.deleteGroup = async (req, res) => {
   try {
-    await GroupMember.deleteMany({ groupId: req.params.id });
-    await Group.findByIdAndUpdate(req.params.id, { isActive: false });
+    const group = await Group.findOneAndUpdate(
+      { _id:req.params.id, ...organizationScope(req.organization) },
+      { isActive:false },
+      { new:true }
+    );
+    if (!group) throw new Error('Batch not found.');
+    await GroupMember.deleteMany({ groupId: group._id });
     req.flash('success', 'Batch deleted.');
     res.redirect('/admin/groups');
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/groups'); }
@@ -918,6 +985,11 @@ exports.deleteGroup = async (req, res) => {
 
 exports.removeStudentFromGroup = async (req, res) => {
   try {
+    const [group, student] = await Promise.all([
+      Group.exists({ _id:req.params.id, ...organizationScope(req.organization) }),
+      User.exists({ _id:req.params.studentId, role:'student', ...organizationScope(req.organization) }),
+    ]);
+    if (!group || !student) throw new Error('Batch or student not found.');
     await GroupMember.findOneAndDelete({ groupId: req.params.id, userId: req.params.studentId });
     req.flash('success', 'Student removed from batch.');
     res.redirect(`/admin/groups/${req.params.id}`);
@@ -927,6 +999,12 @@ exports.removeStudentFromGroup = async (req, res) => {
 exports.moveStudentToGroup = async (req, res) => {
   try {
     const { targetGroupId } = req.body;
+    const [source, target, student] = await Promise.all([
+      Group.exists({ _id:req.params.id, ...organizationScope(req.organization) }),
+      Group.exists({ _id:targetGroupId, ...organizationScope(req.organization) }),
+      User.exists({ _id:req.params.studentId, role:'student', ...organizationScope(req.organization) }),
+    ]);
+    if (!source || !target || !student) throw new Error('Batch or student not found.');
     await GroupMember.findOneAndDelete({ groupId: req.params.id, userId: req.params.studentId });
     await GroupMember.findOneAndUpdate({ groupId: targetGroupId, userId: req.params.studentId }, { role: 'student' }, { upsert: true });
     req.flash('success', 'Student moved to new batch.');
@@ -939,7 +1017,7 @@ exports.deleteStudent = async (req, res) => {
   try {
     const studentId = req.params.id;
 
-    const student = await User.findById(studentId);
+    const student = await User.findOne({ _id:studentId, role:'student', ...organizationScope(req.organization) });
 
     if (!student) {
       req.flash("error", "Student not found.");
@@ -970,12 +1048,12 @@ exports.deleteStudent = async (req, res) => {
 // ── VIEW STUDENT PROFILE ──────────────────────────────────────────────────
 exports.viewStudentProfile = async (req, res) => {
   try {
-    const student = await User.findById(req.params.id);
+    const student = await User.findOne({ _id:req.params.id, role:'student', ...organizationScope(req.organization) });
     if (!student || student.role !== 'student') { req.flash('error','Student not found.'); return res.redirect('/admin/students'); }
     const [memberships, documents, results] = await Promise.all([
-      GroupMember.find({ userId: student._id }).populate('groupId', 'name academicYear'),
-      StudentDocument.find({ studentId: student._id }).sort({ createdAt: -1 }),
-      require('../models/Result').find({ studentId: student._id, status: { $in: ['submitted','auto_submitted'] } }).populate('testId', 'title totalMarks').sort({ createdAt: -1 }).limit(10),
+      GroupMember.find({ userId:student._id }).populate({ path:'groupId', match:{ ...organizationScope(req.organization) }, select:'name academicYear' }),
+      StudentDocument.find({ studentId:student._id, ...organizationScope(req.organization) }).sort({ createdAt:-1 }),
+      Result.find({ studentId:student._id, status:{ $in:['submitted','auto_submitted'] }, ...organizationScope(req.organization) }).populate('testId','title totalMarks').sort({ createdAt:-1 }).limit(10),
     ]);
     res.render('admin/student-profile', { title: student.name, student, memberships, documents, results });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/admin/students'); }
@@ -1028,7 +1106,7 @@ exports.updateTest = async (req, res) => {
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking }, existingTest);
     const totalMarks = totalMarksFromConfigs(questionConfigs);
-    const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
+    const groups = await validateScopedGroupIds(req, groupIds);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
@@ -1070,7 +1148,7 @@ exports.updateTest = async (req, res) => {
 exports.deleteTest = async (req, res) => {
   try {
     const test = await Test.findOneAndUpdate(
-      { _id:req.params.id, isActive:{ $ne:false } },
+      { _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) },
       { isActive:false, status:'closed', groups:[] },
       { returnDocument:'after' }
     );
@@ -1127,22 +1205,20 @@ exports.downloadQuestionTemplate = (req, res) => {
 
 exports.getUploadTest = async (req, res) => {
   try {
-    const groups = await Group.find({ isActive: true });
+    const groups = await Group.find({ isActive:true, ...organizationScope(req.organization) });
     res.render('admin/upload-test', { title: 'Upload Test via PDF', groups, COURSES, SUBJECTS: ALL_SUBJECTS, TIMING_MODES, RESULT_RELEASE_MODES });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/tests'); }
 };
 
 exports.uploadPdfTest = async (req, res) => {
+  const persistedPdfFiles = [];
   try {
     if (!req.files?.questionPdf) { req.flash('error','Question PDF required.'); return res.redirect('/admin/tests/upload'); }
+    validatePdfFile(req.files.questionPdf, 'Question paper');
+    validatePdfFile(req.files?.solutionPdf, 'Solution paper');
     const { title, description, duration, negativeMarking, startTime, endTime, instructions, groupIds, courses, subjects, marksPerQuestion } = req.body;
     if (!title?.trim()) { req.flash('error','Test title required.'); return res.redirect('/admin/tests/upload'); }
-    const qFname = `q_${Date.now()}.pdf`;
     const qBuf   = req.files.questionPdf.data;
-    fs.writeFileSync(path.join(PDF_DIR,qFname), qBuf);
-    const questionPdfPath = '/uploads/pdfs/'+qFname;
-    let solutionPdfPath = null;
-    if (req.files?.solutionPdf) { const fn=`s_${Date.now()}.pdf`; solutionPdfPath='/uploads/pdfs/'+fn; fs.writeFileSync(path.join(PDF_DIR,fn),req.files.solutionPdf.data); }
     let pdfPageCount=0;
     try {
       const ps = qBuf.toString('latin1');
@@ -1152,7 +1228,7 @@ exports.uploadPdfTest = async (req, res) => {
     } catch {}
     const mpq=parseFloat(marksPerQuestion)||1;
     const totalMarks=pdfPageCount>0?pdfPageCount*mpq:mpq;
-    const groups=Array.isArray(groupIds)?groupIds:(groupIds?[groupIds]:[]);
+    const groups=await validateScopedGroupIds(req, groupIds);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({
@@ -1166,8 +1242,22 @@ exports.uploadPdfTest = async (req, res) => {
       resultReleaseAt:parseLocalDateTime(req.body.resultReleaseAt),
       endTime:timing.endTime,
     });
+    const qFname = `q_${Date.now()}.pdf`;
+    const questionDestination=path.join(PDF_DIR,qFname);
+    fs.writeFileSync(questionDestination,qBuf);
+    persistedPdfFiles.push(questionDestination);
+    const questionPdfPath = '/uploads/pdfs/'+qFname;
+    let solutionPdfPath = null;
+    if (req.files?.solutionPdf) {
+      const fn=`s_${Date.now()}.pdf`;
+      const destination=path.join(PDF_DIR,fn);
+      fs.writeFileSync(destination,req.files.solutionPdf.data);
+      persistedPdfFiles.push(destination);
+      solutionPdfPath='/uploads/pdfs/'+fn;
+    }
     const test = await Test.create({
       title:title.trim(), description:description||null, duration:timing.duration, timingMode:timing.timingMode,
+      organization:organizationIdForWrite(req),
       negativeMarking:parseFloat(negativeMarking)||0.25, startTime:timing.startTime, endTime:timing.endTime,
       instructions:instructions||null, totalMarks, createdBy:req.session.user.id, status:'draft',
       course:courseArr, subject:subjectArr, marksPerQuestion:mpq,
@@ -1182,7 +1272,12 @@ exports.uploadPdfTest = async (req, res) => {
     const pageInfo=pdfPageCount>0?` Detected ${pdfPageCount} page(s) — ${totalMarks} total marks.`:'';
     req.flash('success',`PDF test "${test.title}" created!${pageInfo}${solutionPdfPath?' Model answers attached.':''}`);
     res.redirect(`/admin/tests/${test._id}`);
-  } catch (e) { console.error(e); req.flash('error','Failed: '+e.message); res.redirect('/admin/tests/upload'); }
+  } catch (e) {
+    cleanupIncompleteFiles(persistedPdfFiles);
+    console.error(e);
+    req.flash('error','Failed: '+e.message);
+    res.redirect('/admin/tests/upload');
+  }
 };
 
 // ── PDF TEMPLATE ──────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ const fs   = require('fs');
 const path = require('path');
 const { availabilityFor, timingLabel } = require('../services/timingService');
 const { resultAvailability, safeSubmission } = require('../services/resultReleaseService');
+const { organizationScope } = require('../services/organizationService');
 const DOC_DIR = path.join(__dirname, '../public/uploads/documents');
 if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });
 
@@ -24,7 +25,7 @@ exports.getDashboard = async (req, res) => {
     // Fetch tests for those groups + in-progress in parallel
     const [availableTests, inProgressResults] = await Promise.all([
       groupIds.length
-        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] }, isActive:{ $ne:false } }, 'id title duration timingMode totalMarks subject startTime endTime').sort({ startTime: 1 })
+        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] }, isActive:{ $ne:false }, ...organizationScope(req.organization) }, 'id title duration timingMode totalMarks subject startTime endTime').sort({ startTime: 1 })
         : Promise.resolve([]),
       Result.find({ studentId, status: 'in_progress' }, 'testId'),
     ]);
@@ -105,7 +106,7 @@ exports.getTests = async (req, res) => {
     ]);
     const groupIds = memberships.map(m => m.groupId);
     const tests = groupIds.length
-      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active','closed'] }, isActive:{ $ne:false } }).sort({ createdAt: -1 })
+      ? await Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active','closed'] }, isActive:{ $ne:false }, ...organizationScope(req.organization) }).sort({ createdAt: -1 })
       : [];
 
     const resultMap = {};
@@ -176,9 +177,20 @@ exports.uploadDocument = async (req, res) => {
   try {
     if (!req.files?.document) { req.flash('error', 'No file selected.'); return res.redirect('/student/documents'); }
     const file  = req.files.document;
-    const fname = `doc_${req.session.user.id}_${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+    if (Array.isArray(file)) throw new Error('Upload one document at a time.');
+    const extension = path.extname(file.name || '').toLowerCase();
+    const allowedTypes = new Set(['application/pdf','image/jpeg','image/png']);
+    const allowedExtensions = new Set(['.pdf','.jpg','.jpeg','.png']);
+    if (!allowedTypes.has(file.mimetype) || !allowedExtensions.has(extension)) {
+      throw new Error('Only PDF, JPG and PNG documents are supported.');
+    }
+    const maxSize = parseInt(process.env.MAX_FILE_SIZE, 10) || 20 * 1024 * 1024;
+    if (file.size > maxSize) throw new Error(`Document must be below ${Math.floor(maxSize / 1024 / 1024)} MB.`);
+    const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fname = `doc_${req.session.user.id}_${Date.now()}_${safeName}`;
     fs.writeFileSync(path.join(DOC_DIR, fname), file.data);
     await StudentDocument.create({
+      organization:req.organization?._id || null,
       studentId: req.session.user.id, fileName: fname, originalName: file.name,
       fileType: file.mimetype, fileSize: file.size, filePath: '/uploads/documents/' + fname,
       description: req.body.description || '',

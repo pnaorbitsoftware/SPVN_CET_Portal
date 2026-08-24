@@ -293,14 +293,14 @@ exports.saveAnswer = async (req, res) => {
     }
 
     const [test, questionRows] = await Promise.all([
-      Test.findById(testId).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
     if (!test || !currentQuestion) return res.status(404).json({ success:false, message:'Question not found.' });
     if (!resultHasAccess(test, result)) return res.status(403).json({ success:false, message:'Test access must be verified again.' });
     if (remainingSeconds(test, result) === 0) {
-      const scoringTest = await Test.findById(testId).populate('questions');
+      const scoringTest = await Test.findOne({ _id:testId, ...organizationScope(req.organization) }).populate('questions');
       await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
       return res.status(409).json({ success:false, autoSubmitted:true, message:'Time is over. The test was submitted.' });
     }
@@ -348,7 +348,7 @@ exports.reportViolation = async (req, res) => {
     const { type } = req.body;
     const [result, test] = await Promise.all([
       Result.findOne({ studentId, testId, status: 'in_progress' }),
-      Test.findById(testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result) return res.json({ success: false });
     if (!resultHasAccess(test, result)) return res.status(403).json({ success:false, message:'Test access must be verified again.' });
@@ -399,7 +399,7 @@ exports.submitExam = async (req, res) => {
       return res.redirect('/student/tests');
     }
 
-    const test = await Test.findById(testId).populate('questions');
+    const test = await Test.findOne({ _id:testId, ...organizationScope(req.organization) }).populate('questions');
     if (!test) { req.flash('error','Test not found.'); return res.redirect('/student/tests'); }
     if (!resultHasAccess(test, result)) { req.flash('error','Verify the current test password or PIN before submitting.'); return res.redirect(`/exam/${testId}/instructions`); }
     await finalizeAttempt({ result, test, isAutoSubmit });
@@ -421,7 +421,7 @@ exports.leaveExam = async (req, res) => {
 
     const [result, test] = await Promise.all([
       Result.findOne({ studentId, testId, status: 'in_progress' }),
-      Test.findById(testId).select('testAccessEnabled testAccessUpdatedAt'),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }).select('testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result) return res.sendStatus(204);
     if (!test || !resultHasAccess(test, result)) return res.sendStatus(403);
@@ -467,7 +467,7 @@ exports.leaveExam = async (req, res) => {
 
 exports.getResult = async (req, res) => {
   try {
-    const result = await Result.findById(req.params.resultId)
+    const result = await Result.findOne({ _id:req.params.resultId, ...organizationScope(req.organization) })
       .populate('studentId', 'name rollNo email')
       .populate({ path: 'testId', populate: { path: 'questions' } });
     if (!result) { req.flash('error','Not found.'); return res.redirect('/student/dashboard'); }
@@ -488,7 +488,7 @@ exports.getResult = async (req, res) => {
     const [topperResult, totalAttempted, trend] = await Promise.all([
       Result.findOne({ testId: result.testId._id, rank: 1 }, 'score subjectScores'),
       Result.countDocuments({ testId: result.testId._id, status: { $in: ['submitted','auto_submitted'] } }),
-      Result.find({ studentId: result.studentId._id, status: { $in: ['submitted','auto_submitted'] } })
+      Result.find({ studentId:result.studentId._id, status:{ $in:['submitted','auto_submitted'] }, ...organizationScope(req.organization) })
         .populate('testId','title endTime resultReleaseMode resultReleaseAt resultsReleased').sort({ submittedAt: 1 }).limit(20),
     ]);
 
@@ -508,7 +508,7 @@ exports.getResult = async (req, res) => {
 exports.downloadResultPDF = async (req, res) => {
   try {
     const PDFDocument = require('pdfkit');
-    const result = await Result.findById(req.params.resultId)
+    const result = await Result.findOne({ _id:req.params.resultId, ...organizationScope(req.organization) })
       .populate('studentId', 'name rollNo email')
       .populate({ path: 'testId', populate: { path: 'questions' } });
     if (!result) return res.status(404).send('Not found');
@@ -523,7 +523,7 @@ exports.downloadResultPDF = async (req, res) => {
     const orderedIds  = result.questionOrder?.length ? result.questionOrder : Object.keys(questionMap);
     const questions   = orderedIds.map(id => questionMap[id.toString()]).filter(Boolean);
     const safe        = str => String(str ?? '').replace(/<[^>]*>/g, '').trim();
-    const COLLEGE     = process.env.COLLEGE_NAME || 'College';
+    const COLLEGE     = req.organization?.organizationName || process.env.COLLEGE_NAME || 'College';
     const pct         = result.totalMarks > 0 ? ((result.score / result.totalMarks) * 100).toFixed(1) : '0.0';
 
     const doc = new PDFDocument({ margin: 45, size: 'A4', bufferPages: true });
@@ -617,7 +617,7 @@ exports.getLeaderboard = async (req, res) => {
   try {
     const { testId } = req.params;
     const [test, results] = await Promise.all([
-      Test.findById(testId),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }),
       Result.find({ testId, status: { $in: ['submitted','auto_submitted'] } })
         .populate('studentId', 'name rollNo')
         .sort({ rank:1, score: -1, timeTaken: 1 }).limit(50),

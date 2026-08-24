@@ -246,7 +246,7 @@ exports.remove = async (req, res) => {
   try {
     const paper = await findPaper(req);
     if (!paper) throw new Error('Question paper not found.');
-    const usedByTests = await Test.countDocuments({ sourceQuestionPaper:paper._id, isActive:{ $ne:false } });
+    const usedByTests = await Test.countDocuments({ sourceQuestionPaper:paper._id, isActive:{ $ne:false }, ...organizationScope(req.organization) });
     paper.isActive = false;
     paper.status = 'archived';
     await paper.save();
