@@ -45,6 +45,7 @@
 
       <!-- Anti-cheat settings badge row -->
       <div class="flex flex-wrap gap-3 mb-6">
+        <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5 text-sm"><span class="font-bold text-indigo-700"><%= (test.testType||'CUSTOM').replaceAll('_',' ') %></span><span class="text-indigo-400">·</span><span class="text-indigo-700"><%= test.patternSnapshot?.name||'Legacy Custom Pattern' %></span><span class="text-indigo-400">·</span><span class="text-indigo-700"><%= test.rankingSchemaSnapshot?.name||'Score, then Time' %></span></div>
         <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm shadow-sm">
           <span class="text-base">🔒</span>
           <span class="text-slate-600 font-medium">Auto-Submit on Violation:</span>

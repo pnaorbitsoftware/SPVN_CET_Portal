@@ -5,6 +5,7 @@ const questionImport = require('../controllers/questionImportController');
 const organization    = require('../controllers/organizationController');
 const questionPapers  = require('../controllers/questionPaperController');
 const autoPapers      = require('../controllers/autoPaperController');
+const examConfig      = require('../controllers/examConfigurationController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -16,6 +17,15 @@ router.get('/organizations',                 ...guard, organization.getOrganizat
 router.post('/organizations',                ...guard, organization.createOrganization);
 router.post('/organizations/:id',            ...guard, organization.updateOrganization);
 router.post('/organizations/:id/status',     ...guard, organization.updateOrganizationStatus);
+
+// Reusable test patterns and ranking schemas
+router.get('/exam-configurations',                         ...guard, examConfig.getConfigurations);
+router.post('/exam-configurations/patterns',               ...guard, examConfig.savePattern);
+router.post('/exam-configurations/patterns/:id',           ...guard, examConfig.savePattern);
+router.post('/exam-configurations/patterns/:id/toggle',    ...guard, examConfig.togglePattern);
+router.post('/exam-configurations/rankings',               ...guard, examConfig.saveRanking);
+router.post('/exam-configurations/rankings/:id',           ...guard, examConfig.saveRanking);
+router.post('/exam-configurations/rankings/:id/toggle',    ...guard, examConfig.toggleRanking);
 
 // Students
 router.get('/students',              ...guard, c.getStudents);

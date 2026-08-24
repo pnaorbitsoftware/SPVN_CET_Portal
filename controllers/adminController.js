@@ -18,6 +18,13 @@ const {
   configsByQuestionId,
   totalMarksFromConfigs,
 } = require('../services/testConfigurationService');
+const {
+  TEST_TYPES,
+  ensureDefaultExamConfigurations,
+  resolveExamConfiguration,
+  validateQuestionsForPattern,
+} = require('../services/examConfigurationService');
+const { updateRanks } = require('../services/rankingService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -600,6 +607,7 @@ exports.getCreateTest = async (req, res) => {
     const { subject, course, paperId } = req.query;
     const q = { isActive:true, ...organizationScope(req.organization) };
     if (subject) q.subject = subject;
+    const examConfigurations = await ensureDefaultExamConfigurations(req.organization?._id);
     const [groups, questions, topics, sourcePaper] = await Promise.all([
       Group.find({ isActive:true, ...organizationScope(req.organization) }),
       Question.find(q).sort({ subject:1, difficulty:1 }),
@@ -615,6 +623,14 @@ exports.getCreateTest = async (req, res) => {
     res.render('admin/create-test', {
       title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics,
       filterSubject:subject||'', filterCourse:course||'', sourcePaper, selectedQuestionIds,
+      TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
+      patternOptions:examConfigurations.patterns.map(pattern => ({
+        id:String(pattern._id), code:pattern.code,
+        defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
+        defaultPartialMarks:pattern.defaultPartialMarks, partialMarkPolicy:pattern.partialMarkPolicy,
+        shuffleQuestionsDefault:pattern.shuffleQuestionsDefault, shuffleOptionsDefault:pattern.shuffleOptionsDefault,
+        rankingSchemaId:String(pattern.rankingSchema?._id || pattern.rankingSchema || ''),
+      })),
       aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
     });
   } catch (e) { req.flash('error',`Unable to create test from selection: ${e.message}`); res.redirect('/admin/tests'); }
@@ -625,7 +641,7 @@ exports.createTest = async (req, res) => {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
     if (!selectedQIds.length) { req.flash('error','Select at least one question.'); return res.redirect('/admin/tests/create'); }
-    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion, sourceQuestionPaper } = req.body;
+    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion, sourceQuestionPaper, testPattern, rankingSchema, testType } = req.body;
     const sourcePaper = sourceQuestionPaper
       ? await QuestionPaper.findOne({ _id:sourceQuestionPaper, isActive:{ $ne:false }, ...organizationScope(req.organization) })
       : null;
@@ -639,6 +655,8 @@ exports.createTest = async (req, res) => {
     const questionMap = new Map(questionRows.map(question => [question._id.toString(), question]));
     const questionsData = effectiveSelectedQIds.map(id => questionMap.get(String(id))).filter(Boolean);
     if (questionsData.length !== effectiveSelectedQIds.length) throw new Error('One or more selected questions are unavailable.');
+    const examConfiguration = await resolveExamConfiguration(req.organization?._id, testPattern, rankingSchema);
+    validateQuestionsForPattern(questionsData, examConfiguration.pattern);
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking });
     const totalMarks = totalMarksFromConfigs(questionConfigs);
@@ -653,6 +671,11 @@ exports.createTest = async (req, res) => {
     if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     const test = await Test.create({
       title, description, duration:parseInt(duration)||180,
+      testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
+      testPattern:examConfiguration.pattern._id,
+      patternSnapshot:examConfiguration.patternSnapshot,
+      rankingSchema:examConfiguration.ranking._id,
+      rankingSchemaSnapshot:examConfiguration.rankingSnapshot,
       organization:organizationIdForWrite(req),
       negativeMarking:parsedNegativeMarking, passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
@@ -679,7 +702,7 @@ exports.getTestDetail = async (req, res) => {
     const [test, results] = await Promise.all([
       Test.findById(req.params.id).populate('questions').populate('groups','name'),
       Result.find({ testId:req.params.id, status:{ $in:['submitted','auto_submitted'] } })
-        .populate('studentId','name rollNo').sort({ score:-1 }),
+        .populate('studentId','name rollNo').sort({ rank:1, score:-1, timeTaken:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
     res.render('admin/test-detail', { title:test.title, test, results });
@@ -927,9 +950,10 @@ exports.viewStudentProfile = async (req, res) => {
 // ── EDIT TEST ─────────────────────────────────────────────────────────────
 exports.getEditTest = async (req, res) => {
   try {
+    const examConfigurations = await ensureDefaultExamConfigurations(req.organization?._id);
     const [test, groups, questions] = await Promise.all([
-      Test.findById(req.params.id).populate('questions').populate('groups','name'),
-      Group.find({ isActive:true }),
+      Test.findOne({ _id:req.params.id, ...organizationScope(req.organization) }).populate('questions').populate('groups','name'),
+      Group.find({ isActive:true, ...organizationScope(req.organization) }),
       Question.find({ isActive:true, ...organizationScope(req.organization) }).sort({ subject:1, difficulty:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
@@ -937,6 +961,14 @@ exports.getEditTest = async (req, res) => {
       title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS,
       formatDateTimeLocal,
       questionConfigMap:configsByQuestionId(test),
+      TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
+      patternOptions:examConfigurations.patterns.map(pattern => ({
+        id:String(pattern._id), code:pattern.code,
+        defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
+        defaultPartialMarks:pattern.defaultPartialMarks, partialMarkPolicy:pattern.partialMarkPolicy,
+        shuffleQuestionsDefault:pattern.shuffleQuestionsDefault, shuffleOptionsDefault:pattern.shuffleOptionsDefault,
+        rankingSchemaId:String(pattern.rankingSchema?._id || pattern.rankingSchema || ''),
+      })),
     });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
@@ -945,7 +977,7 @@ exports.updateTest = async (req, res) => {
   try {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
-    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects } = req.body;
+    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, testPattern, rankingSchema, testType } = req.body;
     const existingTest = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) });
     if (!existingTest) throw new Error('Test not found.');
     const effectiveQuestionIds = selectedQIds.length ? selectedQIds : existingTest.questions.map(id => String(id));
@@ -953,6 +985,8 @@ exports.updateTest = async (req, res) => {
     const questionMap = new Map(questionRows.map(question => [question._id.toString(), question]));
     const questionsData = effectiveQuestionIds.map(id => questionMap.get(String(id))).filter(Boolean);
     if (questionsData.length !== effectiveQuestionIds.length) throw new Error('One or more selected questions are unavailable.');
+    const examConfiguration = await resolveExamConfiguration(req.organization?._id, testPattern, rankingSchema);
+    validateQuestionsForPattern(questionsData, examConfiguration.pattern);
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking }, existingTest);
     const totalMarks = totalMarksFromConfigs(questionConfigs);
@@ -964,6 +998,11 @@ exports.updateTest = async (req, res) => {
     if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
     await Test.findByIdAndUpdate(req.params.id, {
       title, description, duration:parseInt(duration)||180,
+      testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
+      testPattern:examConfiguration.pattern._id,
+      patternSnapshot:examConfiguration.patternSnapshot,
+      rankingSchema:examConfiguration.ranking._id,
+      rankingSchemaSnapshot:examConfiguration.rankingSnapshot,
       negativeMarking:parsedNegativeMarking,
       passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
@@ -977,6 +1016,7 @@ exports.updateTest = async (req, res) => {
       questions:effectiveQuestionIds,
       questionConfigs,
     });
+    await updateRanks(req.params.id);
     req.flash('success','Test updated!');
     res.redirect(`/admin/tests/${req.params.id}`);
   } catch (e) { req.flash('error','Failed: '+e.message); res.redirect(`/admin/tests/${req.params.id}`); }

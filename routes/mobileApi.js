@@ -15,7 +15,8 @@ const { organizationIdForWrite, organizationScope, resolveUserOrganization } = r
 const { parseDateOnly, validateDateRange } = require('../utils/validation');
 const { hasSubmittedAnswer, normalizeSubmittedAnswer, questionInputFromBody } = require('../services/questionService');
 const { finalizeAttempt } = require('../services/examSubmissionService');
-const { effectiveQuestionConfig } = require('../services/testConfigurationService');
+const { buildQuestionConfigs, effectiveQuestionConfig, totalMarksFromConfigs } = require('../services/testConfigurationService');
+const { TEST_TYPES, ensureDefaultExamConfigurations, resolveExamConfiguration, validateQuestionsForPattern } = require('../services/examConfigurationService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -183,7 +184,7 @@ router.get('/tests/:testId/leaderboard', requireMobileUser, async (req, res) => 
     Test.findById(req.params.testId).select('title totalMarks duration subject course'),
     Result.find({ testId: req.params.testId, status: completedStatuses })
       .populate('studentId', 'name rollNo')
-      .sort({ score: -1, timeTaken: 1 })
+      .sort({ rank:1, score: -1, timeTaken: 1 })
       .limit(50),
   ]);
   if (!test) return res.status(404).json({ error: 'Test not found.' });
@@ -1081,6 +1082,11 @@ router.get('/admin/tests', requireMobileUser, requireRole('admin'), async (req, 
   return res.json({ tests });
 });
 
+router.get('/admin/exam-configurations', requireMobileUser, requireRole('admin'), async (req, res) => {
+  const { patterns, rankingSchemas } = await ensureDefaultExamConfigurations(req.organization?._id);
+  return res.json({ testTypes:TEST_TYPES, patterns, rankingSchemas });
+});
+
 router.get('/admin/tests/template/pdf', requireMobileUser, requireRole('admin'), (req, res) => {
   controllerSession(req);
   return adminController.downloadPdfTestTemplate(req, res);
@@ -1147,24 +1153,33 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
 
 router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
-    const { title, questionIds, groupIds = [], course = [], subject = [], description, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false } = req.body;
+    const { title, questionIds, groupIds = [], course = [], subject = [], description, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false, testPattern, rankingSchema, testType } = req.body;
     const selectedQuestionIds = Array.isArray(questionIds) ? questionIds : questionIds ? [questionIds] : [];
     if (!title?.trim() || !selectedQuestionIds.length) return res.status(400).json({ error: 'Test title and at least one question are required.' });
-    const questions = await Question.find({ _id: { $in: selectedQuestionIds }, isActive: true });
+    const questionRows = await Question.find({ _id: { $in: selectedQuestionIds }, isActive: true, ...organizationScope(req.organization) });
+    const questionMap = new Map(questionRows.map(question => [String(question._id),question]));
+    const questions = selectedQuestionIds.map(id => questionMap.get(String(id))).filter(Boolean);
     if (questions.length !== selectedQuestionIds.length) return res.status(400).json({ error: 'One or more selected questions are unavailable.' });
+    const examConfiguration = await resolveExamConfiguration(req.organization?._id, testPattern, rankingSchema);
+    validateQuestionsForPattern(questions, examConfiguration.pattern);
     if (startTime && endTime && new Date(endTime) <= new Date(startTime)) return res.status(400).json({ error: 'Test end time must be after start time.' });
     const groups = Array.isArray(groupIds) ? groupIds : [groupIds];
+    const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
+    const questionConfigs = buildQuestionConfigs(questions, req.body, { negativeMarking:parsedNegativeMarking });
     const test = await Test.create({
       title: title.trim(), description: description?.trim() || null, duration: Math.max(5, Number(duration) || 180),
-      totalMarks: questions.reduce((total, question) => total + question.marks, 0), negativeMarking: Math.max(0, Number(negativeMarking) || 0), passingMarks: passingMarks ? Number(passingMarks) : null,
+      organization:organizationIdForWrite(req), testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
+      testPattern:examConfiguration.pattern._id, patternSnapshot:examConfiguration.patternSnapshot,
+      rankingSchema:examConfiguration.ranking._id, rankingSchemaSnapshot:examConfiguration.rankingSnapshot,
+      totalMarks:totalMarksFromConfigs(questionConfigs), negativeMarking:parsedNegativeMarking, passingMarks: passingMarks ? Number(passingMarks) : null,
       shuffleQuestions: Boolean(shuffleQuestions), shuffleOptions: Boolean(shuffleOptions), startTime: startTime ? new Date(startTime) : null, endTime: endTime ? new Date(endTime) : null,
       instructions: instructions?.trim() || null, createdBy: req.mobileUser._id, status: 'draft', course: Array.isArray(course) ? course : [course], subject: Array.isArray(subject) ? subject : [subject], topic: topic || null, subtopic: subtopic || null,
-      questions: selectedQuestionIds, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
+      questions:selectedQuestionIds, questionConfigs, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
     });
     return res.status(201).json({ test });
   } catch (error) {
     console.error('Mobile test create error:', error);
-    return res.status(500).json({ error: 'Unable to create test.' });
+    return res.status(400).json({ error:error.message || 'Unable to create test.' });
   }
 });
 

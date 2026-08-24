@@ -490,7 +490,7 @@ exports.getLeaderboard = async (req, res) => {
       Test.findById(testId),
       Result.find({ testId, status: { $in: ['submitted','auto_submitted'] } })
         .populate('studentId', 'name rollNo')
-        .sort({ score: -1, timeTaken: 1 }).limit(50),
+        .sort({ rank:1, score: -1, timeTaken: 1 }).limit(50),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/student/dashboard'); }
     res.render('exam/leaderboard', { title: `Leaderboard — ${test.title}`, test, results });

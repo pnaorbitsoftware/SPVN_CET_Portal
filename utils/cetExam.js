@@ -12,7 +12,9 @@ function subjectOf(question) {
 
 function isCetSectionTest(test, questions = []) {
   const courses = values(test?.course).map(course => String(course).toUpperCase());
-  if (!courses.includes('CET')) return false;
+  const configuredFlow = test?.patternSnapshot?.cetSectionFlow;
+  if (configuredFlow === false) return false;
+  if (configuredFlow !== true && !courses.includes('CET')) return false;
 
   const subjects = new Set(questions.map(subjectOf));
   return CET_PREREQUISITE_SUBJECTS.every(subject => subjects.has(subject))

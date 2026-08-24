@@ -17,6 +17,11 @@ const testQuestionConfigSchema = new mongoose.Schema({
 const testSchema = new mongoose.Schema({
   organization:    { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   title:           { type: String, required: true },
+  testType:        { type:String, enum:['MOCK','CHAPTER_TEST','SUBJECT_TEST','FULL_SYLLABUS','PRACTICE','PYQ','DIAGNOSTIC','CUSTOM'], default:'CUSTOM', index:true },
+  testPattern:     { type:mongoose.Schema.Types.ObjectId, ref:'TestPattern', default:null },
+  patternSnapshot: { type:mongoose.Schema.Types.Mixed, default:null },
+  rankingSchema:   { type:mongoose.Schema.Types.ObjectId, ref:'RankingSchema', default:null },
+  rankingSchemaSnapshot:{ type:mongoose.Schema.Types.Mixed, default:null },
   description:     { type: String, default: null },
   duration:        { type: Number, default: 180 },   // minutes
   totalMarks:      { type: Number, default: 0 },

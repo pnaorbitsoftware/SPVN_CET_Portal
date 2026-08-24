@@ -23,6 +23,10 @@
               <input type="text" name="title" required value="<%= test.title %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="e.g. CET Mock Test 1 — Physics"/></div>
             <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Description</label>
               <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"><%= test.description || '' %></textarea></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Test Type *</label><select name="testType" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><% TEST_TYPES.forEach(type=>{ %><option value="<%= type %>" <%= (test.testType||'CUSTOM')===type?'selected':'' %>><%= type.replaceAll('_',' ') %></option><% }) %></select></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Test Pattern *</label><select id="testPatternSelect" name="testPattern" required onchange="applyPatternDefaults(this.value)" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><% const currentPatternId=String(test.testPattern?._id||test.testPattern||''); patterns.forEach(pattern=>{ %><option value="<%= pattern.id %>" <%= currentPatternId===String(pattern.id)||(!currentPatternId&&pattern.code==='CUSTOM')?'selected':'' %>><%= pattern.name %> (<%= pattern.code %>)</option><% }) %></select></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Ranking Schema *</label><select id="rankingSchemaSelect" name="rankingSchema" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><% const currentRankingId=String(test.rankingSchema?._id||test.rankingSchema||''); rankingSchemas.forEach(schema=>{ %><option value="<%= schema.id %>" <%= currentRankingId===String(schema.id)||(!currentRankingId&&schema.code==='SCHEME_1')?'selected':'' %>><%= schema.name %></option><% }) %></select></div>
+            <div class="rounded-xl bg-indigo-50 p-3 text-xs text-indigo-700"><strong>Snapshot-safe:</strong> this test stores the selected pattern and ranking configuration.</div>
             <div class="md:col-span-2">
               <label class="block text-sm font-semibold mb-2">Course</label>
               <div class="flex flex-wrap gap-2">
@@ -54,11 +58,11 @@
             <div><label class="block text-sm font-semibold mb-1.5">End Time</label>
               <input type="datetime-local" name="endTime" value="<%= formatDateTimeLocal(test.endTime) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
             <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Instructions</label>
-              <textarea name="instructions" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Instructions for students..."></textarea></div>
+              <textarea name="instructions" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Instructions for students..."><%= test.instructions||'' %></textarea></div>
           </div>
           <div class="flex flex-wrap gap-5 mt-4">
-            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleQuestions" value="on" checked class="rounded"/> Shuffle Questions</label>
-            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleOptions" value="on" class="rounded"/> Shuffle Options</label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleQuestions" value="on" <%= test.shuffleQuestions?'checked':'' %> class="rounded"/> Shuffle Questions</label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" name="shuffleOptions" value="on" <%= test.shuffleOptions?'checked':'' %> class="rounded"/> Shuffle Options</label>
           </div>
         </div>
 
@@ -384,6 +388,23 @@
   </main>
 </div>
 <script>
+const TEST_PATTERN_OPTIONS = <%- JSON.stringify(patternOptions).replace(/</g, '\\u003c') %>;
+function applyPatternDefaults(patternId) {
+  const pattern = TEST_PATTERN_OPTIONS.find(item => item.id === patternId);
+  if (!pattern || !confirm(`Apply ${pattern.code} marking and shuffle defaults to every question? Existing overrides will be replaced.`)) return;
+  document.querySelector('input[name="negativeMarking"]').value = pattern.defaultNegativeMarks;
+  document.querySelector('input[name="shuffleQuestions"]').checked = pattern.shuffleQuestionsDefault;
+  document.querySelector('input[name="shuffleOptions"]').checked = pattern.shuffleOptionsDefault;
+  if (pattern.rankingSchemaId) document.getElementById('rankingSchemaSelect').value = pattern.rankingSchemaId;
+  document.querySelectorAll('.marking-grid').forEach(grid => {
+    grid.querySelector('.mark-positive').value = pattern.defaultPositiveMarks;
+    grid.querySelector('.mark-negative').value = pattern.defaultNegativeMarks;
+    grid.querySelector('.mark-partial').value = pattern.defaultPartialMarks;
+    const mode = grid.querySelector('select[name$="[markingMode]"]');
+    if (mode) mode.value = pattern.partialMarkPolicy;
+  });
+  updCount();
+}
 // ── Counter ───────────────────────────────────────────────────────────────
 function updCount() {
   const selected = [...document.querySelectorAll('input[name="questionIds"]:checked')];

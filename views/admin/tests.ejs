@@ -73,12 +73,14 @@
 
           <!-- Meta -->
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span class="font-semibold text-indigo-600"><%= (test.testType||'CUSTOM').replaceAll('_',' ') %></span>
             <span><%= test.duration %> mins</span>
             <span><%= test.totalMarks %> marks</span>
             <span><%= (test.questions||[]).length %> Qs</span>
             <% if (Array.isArray(test.subject) ? test.subject.length : test.subject) { %>
             <span class="text-navy-600 font-medium"><%= Array.isArray(test.subject) ? test.subject.join(', ') : test.subject %></span>
             <% } %>
+            <% if (test.patternSnapshot?.name) { %><span class="text-violet-600"><%= test.patternSnapshot.name %></span><% } %>
           </div>
 
           <!-- Groups -->
