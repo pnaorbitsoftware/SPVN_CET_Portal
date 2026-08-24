@@ -7,11 +7,14 @@ const questionPapers  = require('../controllers/questionPaperController');
 const autoPapers      = require('../controllers/autoPaperController');
 const examConfig      = require('../controllers/examConfigurationController');
 const reports         = require('../controllers/reportController');
+const liveMonitor     = require('../controllers/liveMonitorController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
 
 router.get('/dashboard', ...guard, c.getDashboard);
+router.get('/live-monitor',      ...guard, liveMonitor.getMonitor);
+router.get('/live-monitor/data', ...guard, liveMonitor.getMonitorData);
 
 // Organization management and defaults
 router.get('/organizations',                 ...guard, organization.getOrganizations);
