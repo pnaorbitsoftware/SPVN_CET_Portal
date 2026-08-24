@@ -32,6 +32,8 @@ const {
   releaseConfiguration,
   releaseLabel,
 } = require('../services/resultReleaseService');
+const { buildReports } = require('../services/reportService');
+const { buildAdminAnalytics } = require('../services/adminAnalyticsService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -149,17 +151,27 @@ function safeFilenamePart(value, fallback) {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
-    const userScope = organizationScope(req.organization);
-    const groupScope = organizationScope(req.organization);
-    const [studentCount, testCount, groupCount, questionCount, recentResults, recentUsers] = await Promise.all([
-      User.countDocuments({ role:'student', isActive:true, ...userScope }),
-      Test.countDocuments(),
-      Group.countDocuments({ isActive:true, ...groupScope }),
-      Question.countDocuments({ isActive:true }),
-      Result.find().sort({ createdAt:-1 }).limit(8).populate('studentId','name rollNo').populate('testId','title'),
-      User.find({ role:'student', ...userScope }).sort({ createdAt:-1 }).limit(5),
+    const scope = organizationScope(req.organization);
+    const [students, groups, tests, memberships, questionCount] = await Promise.all([
+      User.find({ role:'student', ...scope }).select('name rollNo isActive organization').lean(),
+      Group.find({ isActive:{ $ne:false }, ...scope }).select('name course').lean(),
+      Test.find({ isActive:{ $ne:false }, ...scope }).select('title status groups subject createdAt startTime endTime').lean(),
+      GroupMember.find({ role:'student' }).select('groupId userId').lean(),
+      Question.countDocuments({ isActive:{ $ne:false }, ...scope }),
     ]);
-    res.render('admin/dashboard', { title:'Admin Dashboard', stats:{ studentCount, testCount, groupCount, questionCount }, recentResults, recentUsers, COURSES });
+    const studentIds = new Set(students.map(student => String(student._id)));
+    const groupIds = new Set(groups.map(group => String(group._id)));
+    const testIds = new Set(tests.map(test => String(test._id)));
+    const scopedMemberships = memberships.filter(item => groupIds.has(String(item.groupId)) && studentIds.has(String(item.userId)));
+    const rawResults = studentIds.size && testIds.size ? await Result.find({
+      studentId:{ $in:[...studentIds] }, testId:{ $in:[...testIds] }, status:completedResultStatus,
+    }).select('studentId testId score totalMarks correctAnswers wrongAnswers partialAnswers skippedAnswers rank timeTaken submittedAt subjectScores topicScores').lean() : [];
+    const studentMap = new Map(students.map(student => [String(student._id),student]));
+    const testMap = new Map(tests.map(test => [String(test._id),test]));
+    const results = rawResults.map(result => ({ ...result, studentId:studentMap.get(String(result.studentId)), testId:testMap.get(String(result.testId)) })).filter(result => result.studentId && result.testId);
+    const reports = buildReports({ groups, students, memberships:scopedMemberships, tests, results });
+    const analytics = buildAdminAnalytics({ reports, tests, results, questionCount });
+    res.render('admin/dashboard', { title:'Admin Dashboard', analytics });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/auth/login'); }
 };
 
