@@ -1,184 +1,132 @@
 <%- include('../partials/head') %>
-<div class="min-h-screen flex">
 
-  <!-- Left Panel — College Branding -->
-  <div class="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col justify-between p-14"
-       style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);">
-    <!-- Animated gradient orbs -->
-    <div class="absolute top-20 right-20 w-80 h-80 rounded-full opacity-20"
-         style="background: radial-gradient(circle, #6366f1, transparent); filter: blur(60px);"></div>
-    <div class="absolute bottom-20 left-20 w-64 h-64 rounded-full opacity-15"
-         style="background: radial-gradient(circle, #f59e0b, transparent); filter: blur(50px);"></div>
-    <div class="absolute top-1/2 left-1/2 w-96 h-96 rounded-full opacity-10 -translate-x-1/2 -translate-y-1/2"
-         style="background: radial-gradient(circle, #3b82f6, transparent); filter: blur(80px);"></div>
+<main class="spvn-auth-shell">
+  <section class="auth-story" aria-labelledby="auth-story-title">
+    <div class="story-grid" aria-hidden="true"></div>
+    <div class="story-glow story-glow-one" aria-hidden="true"></div>
+    <div class="story-glow story-glow-two" aria-hidden="true"></div>
+    <img class="story-watermark" src="/brand/spvn-logo.png" alt="" aria-hidden="true" />
 
-    <!-- Top logo -->
-    <div class="relative z-10 flex items-center gap-4">
-      <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-slate-900"
-           style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-        <%= (collegeShort||'X').charAt(0) %>
-      </div>
-      <div>
-        <p class="text-white font-bold text-base leading-tight"><%= collegeShort %></p>
-        <p class="text-indigo-300 text-xs">Student Examination Portal</p>
-      </div>
-    </div>
+    <a class="story-brand" href="/" aria-label="Return to SPVN home">
+      <span class="story-brand-mark"><img src="/brand/spvn-logo.png" alt="SPVN emblem" /></span>
+      <span>
+        <strong><%= collegeShort %></strong>
+        <small>Student Examination Portal</small>
+      </span>
+    </a>
 
-    <!-- Hero content -->
-    <div class="relative z-10">
-      <div class="inline-flex items-center gap-2 bg-indigo-500/20 border border-indigo-500/30 rounded-full px-4 py-1.5 mb-6">
-        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-        <span class="text-indigo-200 text-xs font-medium">Portal is Live</span>
-      </div>
-      <h1 class="text-5xl font-black text-white leading-[1.1] mb-5">
-        CET Online<br/>
-        <span style="background: linear-gradient(135deg, #f59e0b, #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Examination</span><br/>
-        System
-      </h1>
-      <p class="text-slate-400 text-base leading-relaxed max-w-sm">
-        Secure, real-time MCQ examinations for <%= collegeName %>.
+    <div class="story-copy">
+      <div class="live-pill"><i></i> Portal is live</div>
+      <p class="story-kicker">Shardabai Pawar Vidya Niketan · Shardanagar</p>
+      <h1 id="auth-story-title">Focused learning.<br /><em>Confident progress.</em></h1>
+      <p class="story-lead">
+        A secure examination space designed for calm attempts, fair assessment
+        and meaningful academic growth.
       </p>
     </div>
 
-    <!-- Stats row -->
-    <div class="relative z-10 grid grid-cols-3 gap-4">
-      <% [
-        {icon:'🎓', label:'Students', sub:'Secure access'},
-        {icon:'📝', label:'Live Exams', sub:'Real-time'},
-        {icon:'🏆', label:'Results', sub:'Instant rank'},
-      ].forEach(s => { %>
-      <div class="rounded-2xl p-4 border border-white/10" style="background: rgba(255,255,255,0.05); backdrop-filter: blur(10px);">
-        <div class="text-2xl mb-2"><%= s.icon %></div>
-        <p class="text-white font-semibold text-sm"><%= s.label %></p>
-        <p class="text-slate-400 text-xs mt-0.5"><%= s.sub %></p>
-      </div>
-      <% }) %>
+    <div class="story-features" aria-label="Portal highlights">
+      <article>
+        <span class="feature-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-5 9 5-9 5-9-5Z"/><path d="M7 12.5V17c2.8 2 7.2 2 10 0v-4.5"/></svg>
+        </span>
+        <strong>Students</strong><small>Secure access</small>
+      </article>
+      <article>
+        <span class="feature-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>
+        </span>
+        <strong>Live exams</strong><small>Focused attempts</small>
+      </article>
+      <article>
+        <span class="feature-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4"/></svg>
+        </span>
+        <strong>Results</strong><small>Clear insights</small>
+      </article>
     </div>
 
-    <p class="relative z-10 text-slate-600 text-xs">© <%= new Date().getFullYear() %> <%= collegeName %></p>
-  </div>
+    <div class="story-footer">
+      <span>© <%= new Date().getFullYear() %> <%= collegeName %></span>
+      <span>विद्या · संस्कार · प्रगती</span>
+    </div>
+  </section>
 
-  <!-- Right Panel — Login Form -->
-  <div class="flex-1 flex items-center justify-center bg-slate-50 p-6 lg:p-12">
-    <div class="w-full max-w-[400px]">
+  <section class="auth-form-panel" aria-label="Student login area">
+    <div class="panel-texture" aria-hidden="true"></div>
+    <img class="panel-watermark" src="/brand/spvn-logo.png" alt="" aria-hidden="true" />
 
-      <!-- Mobile logo -->
-      <div class="lg:hidden flex items-center gap-3 mb-8 justify-center">
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-slate-900 text-lg"
-             style="background: linear-gradient(135deg, #f59e0b, #f97316);">
-          <%= (collegeShort||'X').charAt(0) %>
-        </div>
-        <div>
-          <p class="font-bold text-slate-900"><%= collegeShort %></p>
-          <p class="text-slate-400 text-xs">Student Portal</p>
-        </div>
-      </div>
+    <a class="mobile-brand" href="/" aria-label="Return to SPVN home">
+      <span><img src="/brand/spvn-logo.png" alt="SPVN emblem" /></span>
+      <div><strong><%= collegeShort %></strong><small>Student Portal</small></div>
+    </a>
 
-      <!-- Card -->
-      <div class="bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
-        <!-- Header -->
-        <div class="mb-7">
-          <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-               style="background: linear-gradient(135deg, #eef2ff, #e0e7ff);">
-            <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0112 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
-            </svg>
+    <div class="auth-form-wrap">
+      <div class="auth-card">
+        <header class="auth-card-header">
+          <div class="auth-card-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-5 9 5-9 5-9-5Z"/><path d="M7 12.5V17c2.8 2 7.2 2 10 0v-4.5"/></svg>
           </div>
-          <h2 class="text-2xl font-black text-slate-900">Student Login</h2>
-          <p class="text-slate-400 text-sm mt-1">Enter your roll number and password</p>
-        </div>
+          <span class="auth-eyebrow">Welcome to SPVN</span>
+          <h2>Student Login</h2>
+          <p>Enter your roll number and password to continue.</p>
+        </header>
 
         <%- include('../partials/flash') %>
 
-        <form action="/auth/login" method="POST" class="space-y-4">
-          <input type="hidden" name="role" value="student"/>
+        <form action="/auth/login" method="POST" class="auth-form">
+          <input type="hidden" name="role" value="student" />
 
-          <!-- Roll Number -->
-          <div>
-            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Roll Number</label>
-            <div class="relative">
-              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2"/>
-                </svg>
-              </div>
-              <input type="text" name="identifier" required autofocus
-                class="w-full pl-11 pr-4 py-3.5 border border-slate-200 rounded-2xl text-sm text-slate-900 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white transition-all placeholder-slate-400"
-                placeholder="e.g. 2024CE001"/>
+          <div class="auth-field">
+            <label for="studentRollNumber">Roll number</label>
+            <div class="field-control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-5"/><path d="M10 6V5a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0ZM8 15c.5-1.2 1.5-2 3-2s2.5.8 3 2"/><circle cx="11" cy="10" r="1.5"/></svg>
+              <input id="studentRollNumber" type="text" name="identifier" required autofocus autocomplete="username" placeholder="e.g. 2024CE001" />
             </div>
           </div>
 
-          <!-- Password -->
-          <div>
-            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Password</label>
-            <div class="relative">
-              <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                </svg>
-              </div>
-              <input type="password" name="password" id="sPw" required
-                class="w-full pl-11 pr-12 py-3.5 border border-slate-200 rounded-2xl text-sm text-slate-900 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white transition-all placeholder-slate-400"
-                placeholder="Enter your password"/>
-              <button type="button" onclick="const i=document.getElementById('sPw');i.type=i.type==='password'?'text':'password'"
-                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                </svg>
+          <div class="auth-field">
+            <label for="sPw">Password</label>
+            <div class="field-control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>
+              <input id="sPw" type="password" name="password" required autocomplete="current-password" placeholder="Enter your password" />
+              <button class="password-toggle" id="passwordToggle" type="button" aria-label="Show password" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>
               </button>
             </div>
           </div>
 
-          <!-- Default password hint -->
-          <div class="bg-indigo-50 rounded-2xl p-3.5 flex items-start gap-3">
-            <svg class="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-            </svg>
-            <p class="text-indigo-700 text-xs leading-relaxed">
-              Default password: <span class="font-mono font-bold">CET@XXXX</span> (last 4 digits of your roll number). You will be asked to change it on first login.
-            </p>
+          <div class="password-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            <p>Default password: <strong>CET@XXXX</strong> (last 4 digits of your roll number). You will be asked to change it on first login.</p>
           </div>
 
-          <!-- Submit -->
-          <button type="submit"
-            class="w-full text-white font-bold py-4 rounded-2xl transition-all active:scale-95 shadow-lg mt-2 flex items-center justify-center gap-2"
-            style="background: linear-gradient(135deg, #4f46e5, #6366f1); box-shadow: 0 8px 24px rgba(99,102,241,0.35);">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
-            </svg>
-            Sign In to Portal
+          <button class="login-submit" type="submit">
+            <span>Sign in to portal</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
         </form>
 
-        <div class="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3.5">
-          <button id="pwa-install-trigger" type="button"
-            class="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-[.98]">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14a2 2 0 002-2v-2M3 17v2a2 2 0 002 2"/>
-            </svg>
-            Install SPVN App (APK)
+        <div class="install-card">
+          <button id="pwa-install-trigger" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+            <span>Install SPVN App</span>
           </button>
-          <p id="pwa-install-status" class="mt-2 text-center text-[11px] leading-relaxed text-indigo-700" aria-live="polite">
-            Install the complete portal on Android for quick access.
-          </p>
+          <p id="pwa-install-status" aria-live="polite">Install the complete portal on Android for quick access.</p>
         </div>
 
-        <!-- Admin link -->
-        <div class="mt-6 pt-5 border-t border-slate-100 text-center">
-          <a href="/auth/admin" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-            </svg>
+        <div class="admin-access">
+          <a href="/auth/admin">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-10V5l-7-3-7 3v6c0 6.5 7 10 7 10Z"/><path d="m9 12 2 2 4-4"/></svg>
             Are you an administrator?
           </a>
         </div>
       </div>
 
-      <p class="text-center text-xs text-slate-400 mt-5">
-        <%= collegeName %> · Academic Year <%= academicYear %>
-      </p>
+      <p class="auth-meta"><%= collegeName %> · Academic Year <%= academicYear %></p>
     </div>
-  </div>
-</div>
+  </section>
+</main>
+
+<script src="/auth-login.js?v=1.0" defer></script>
 </body></html>

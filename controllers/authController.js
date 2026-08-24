@@ -48,7 +48,10 @@ exports.postAdminLogin = async (req, res) => {
 };
 
 exports.getLogin = (req, res) =>
-  res.render('auth/login', { title: 'Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal' });
+  res.render('auth/login', {
+    title: 'Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal',
+    pageStylesheet: '/auth-login.css?v=1.1',
+  });
 
 exports.postLogin = async (req, res) => {
   try {

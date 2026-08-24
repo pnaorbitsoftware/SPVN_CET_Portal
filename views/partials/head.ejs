@@ -88,6 +88,9 @@
     .spvn-math-fallback{font-family:'Times New Roman',serif;font-size:1.08em}
     .math-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   </style>
+  <% if (typeof pageStylesheet !== 'undefined' && pageStylesheet) { %>
+  <link rel="stylesheet" href="<%= pageStylesheet %>"/>
+  <% } %>
 </head>
 <body class="h-full bg-slate-50 text-slate-800">
 <!-- PWA script deferred — does not block render -->
