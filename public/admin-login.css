@@ -57,10 +57,11 @@ body {
   pointer-events: none;
 }
 .admin-watermark-wrap img {
-  width: min(72vw, 50rem);
-  opacity: .105;
-  filter: blur(4.5px) grayscale(.6);
+  width: min(90vw, 60rem);
+  opacity: .15;
+  filter: blur(3px) grayscale(.25);
   transform: rotate(-7deg) scale(1.05);
+  mix-blend-mode: multiply;
   user-select: none;
 }
 
@@ -171,7 +172,7 @@ body {
   .admin-home-link svg { width: 1.2rem; height: 1.2rem; }
   .admin-login-card { border-radius: 1.65rem; padding: 1.45rem 1.3rem; }
   .admin-login-header { margin-bottom: 1.25rem; }
-  .admin-watermark-wrap img { width: 36rem; opacity: .1; filter: blur(5px) grayscale(.7); }
+  .admin-watermark-wrap img { width: 43rem; opacity: .13; filter: blur(3.5px) grayscale(.4); }
   .admin-page-meta { bottom: .85rem; }
 }
 

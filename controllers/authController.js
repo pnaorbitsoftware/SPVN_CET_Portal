@@ -27,7 +27,7 @@ function sessionUser(user, organization) {
 exports.getAdminLogin = (req, res) =>
   res.render('auth/admin-login', {
     title: 'Admin Login — ' + (process.env.COLLEGE_SHORT_NAME || 'CET') + ' Portal',
-    pageStylesheet: '/admin-login.css?v=1.1',
+    pageStylesheet: '/admin-login.css?v=1.2',
   });
 
 exports.postAdminLogin = async (req, res) => {
