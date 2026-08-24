@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title %> — SPVN Examination Portal</title>
+  <meta name="description" content="The official academic and examination portal of Shardabai Pawar Vidya Niketan, Shardanagar, Baramati." />
+  <meta name="theme-color" content="#073b2a" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+  <link rel="icon" type="image/png" href="/icons/icon-96x96.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://feeds.abplive.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/landing.css?v=1.0" />
+  <script>document.documentElement.classList.add('landing-js');</script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <div class="intro-stage" id="introStage" aria-hidden="true">
+    <div class="intro-orbit intro-orbit-one"></div>
+    <div class="intro-orbit intro-orbit-two"></div>
+    <div class="travel-logo" id="travelLogo">
+      <img src="/brand/spvn-logo.png" alt="" />
+    </div>
+    <p class="intro-copy">विद्या&nbsp;&nbsp;·&nbsp;&nbsp;संस्कार&nbsp;&nbsp;·&nbsp;&nbsp;प्रगती</p>
+  </div>
+
+  <header class="site-header" id="siteHeader">
+    <nav class="nav-shell" aria-label="Main navigation">
+      <a class="brand" href="#home" aria-label="SPVN home">
+        <span class="brand-mark" id="brandTarget">
+          <img id="brandLogo" src="/brand/spvn-logo.png" alt="SPVN emblem" />
+        </span>
+        <span class="brand-copy">
+          <strong>SPVN</strong>
+          <small>Shardanagar, Baramati</small>
+        </span>
+      </a>
+
+      <div class="nav-links" aria-label="Page sections">
+        <a href="#home">Home</a>
+        <a href="#about">About</a>
+        <a href="#portal">Exam Portal</a>
+        <a href="#contact">Contact</a>
+      </div>
+
+      <div class="nav-actions">
+        <a class="text-action" href="/auth/admin">Admin</a>
+        <a class="primary-action primary-action-small" href="/auth/login">
+          Student Login
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </a>
+      </div>
+
+      <button class="menu-toggle" id="menuToggle" type="button" aria-expanded="false" aria-controls="mobileMenu" aria-label="Open navigation">
+        <span></span><span></span><span></span>
+      </button>
+    </nav>
+
+    <div class="mobile-menu" id="mobileMenu" hidden>
+      <a href="#home">Home</a>
+      <a href="#about">About</a>
+      <a href="#portal">Exam Portal</a>
+      <a href="#contact">Contact</a>
+      <div class="mobile-menu-actions">
+        <a href="/auth/admin">Admin Access</a>
+        <a href="/auth/login">Student Login</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero-section" id="home">
+      <div class="hero-texture" aria-hidden="true"></div>
+      <div class="hero-shell">
+        <div class="hero-copy">
+          <div class="eyebrow hero-enter">
+            <span></span>
+            Agricultural Development Trust · Shardanagar
+          </div>
+          <h1 class="hero-enter">
+            Rooted in values.<br />
+            <em>Ready for tomorrow.</em>
+          </h1>
+          <p class="hero-lead hero-enter">
+            A modern academic and examination gateway for the students of
+            <strong>Shardabai Pawar Vidya Niketan</strong>—built for focused learning,
+            fair assessment and confident progress.
+          </p>
+          <div class="hero-actions hero-enter">
+            <a class="primary-action" href="/auth/login">
+              Enter Student Portal
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </a>
+            <a class="secondary-action" href="#about">
+              Discover SPVN
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+
+          <div class="hero-facts hero-enter" aria-label="School and portal facts">
+            <div><strong>1991</strong><span>Established</span></div>
+            <div><strong>04</strong><span>Question formats</span></div>
+            <div><strong>03</strong><span>Flexible timing modes</span></div>
+          </div>
+        </div>
+
+        <figure class="campus-visual hero-enter" id="campusVisual">
+          <div class="campus-fallback" aria-hidden="true">
+            <span>SPVN</span>
+            <small>Shardanagar</small>
+          </div>
+          <img
+            id="campusPhoto"
+            src="<%= campusPhoto.url %>"
+            alt="The entrance and campus building of Shardabai Pawar Vidya Niketan, Shardanagar"
+            referrerpolicy="no-referrer"
+            fetchpriority="high"
+          />
+          <div class="campus-shade"></div>
+          <figcaption>
+            <span class="campus-pin" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></svg>
+            </span>
+            <span><strong>Our campus</strong><small>Shardanagar, Baramati</small></span>
+          </figcaption>
+          <a class="photo-credit" href="<%= campusPhoto.sourceUrl %>" target="_blank" rel="noopener noreferrer">Photo source: <%= campusPhoto.sourceLabel %></a>
+          <div class="legacy-badge"><strong>Since</strong><span>1991</span></div>
+        </figure>
+      </div>
+
+      <a class="scroll-cue" href="#about" aria-label="Scroll to about SPVN">
+        <span></span>
+        Scroll to explore
+      </a>
+    </section>
+
+    <section class="marquee-band" aria-label="SPVN values">
+      <div class="marquee-track">
+        <span>विद्या</span><i></i><span>संस्कार</span><i></i><span>प्रगती</span><i></i>
+        <span>Knowledge</span><i></i><span>Character</span><i></i><span>Progress</span>
+      </div>
+    </section>
+
+    <section class="about-section section-pad" id="about">
+      <div class="section-shell about-grid">
+        <div class="section-heading reveal" data-reveal>
+          <span class="section-kicker">A legacy with purpose</span>
+          <h2>Empowering rural talent with confidence and capability.</h2>
+          <p>
+            SPVN began its journey in 1991 with a clear purpose: to make quality education
+            meaningful, disciplined and future-facing for students from the region.
+          </p>
+          <a class="inline-link" href="<%= officialContact.website %>" target="_blank" rel="noopener noreferrer">
+            Visit the official school website
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" /></svg>
+          </a>
+        </div>
+
+        <div class="values-grid">
+          <article class="value-card reveal" data-reveal>
+            <span class="value-number">01</span>
+            <div class="value-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-10V5l-7-3-7 3v6c0 6.5 7 10 7 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+            </div>
+            <h3>Character</h3>
+            <p>Values, discipline and responsibility that extend well beyond the classroom.</p>
+          </article>
+          <article class="value-card value-card-gold reveal" data-reveal>
+            <span class="value-number">02</span>
+            <div class="value-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg>
+            </div>
+            <h3>Knowledge</h3>
+            <p>Strong academic foundations enriched by scientific thinking and life skills.</p>
+          </article>
+          <article class="value-card reveal" data-reveal>
+            <span class="value-number">03</span>
+            <div class="value-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18" /><path d="m5 16 4-4 3 3 7-8" /><path d="M15 7h4v4" /></svg>
+            </div>
+            <h3>Progress</h3>
+            <p>Technology-enabled assessment and clear insights that help every learner grow.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="portal-section section-pad" id="portal">
+      <div class="portal-glow" aria-hidden="true"></div>
+      <div class="section-shell">
+        <div class="portal-heading reveal" data-reveal>
+          <span class="section-kicker section-kicker-light">The SPVN examination experience</span>
+          <h2>Assessment that feels calm.<br />Insights that move students forward.</h2>
+          <p>One secure space for tests, progress and performance—designed for clarity on every screen.</p>
+        </div>
+
+        <div class="portal-showcase">
+          <div class="portal-features">
+            <article class="portal-feature reveal" data-reveal>
+              <span>01</span>
+              <div><h3>Structured examinations</h3><p>Single correct, multiple correct, numerical and true/false questions with configurable marking.</p></div>
+            </article>
+            <article class="portal-feature reveal" data-reveal>
+              <span>02</span>
+              <div><h3>Fair, flexible timing</h3><p>Personal duration, fixed windows and untimed assessments with secure access controls.</p></div>
+            </article>
+            <article class="portal-feature reveal" data-reveal>
+              <span>03</span>
+              <div><h3>Meaningful feedback</h3><p>Subject insights, rank, percentile and question-level review after controlled result release.</p></div>
+            </article>
+          </div>
+
+          <div class="exam-preview reveal" data-reveal aria-label="Illustration of the SPVN examination portal">
+            <div class="preview-topbar">
+              <span class="preview-logo">SPVN</span>
+              <span class="preview-title">CET Practice Assessment</span>
+              <span class="preview-timer">29:42</span>
+            </div>
+            <div class="preview-body">
+              <div class="preview-question">
+                <span class="preview-label">Question 08 of 20</span>
+                <h3>Which quantity is measured in newtons?</h3>
+                <div class="preview-options">
+                  <span>A&nbsp;&nbsp; Energy</span>
+                  <span class="selected">B&nbsp;&nbsp; Force <i>✓</i></span>
+                  <span>C&nbsp;&nbsp; Power</span>
+                  <span>D&nbsp;&nbsp; Pressure</span>
+                </div>
+              </div>
+              <div class="preview-palette">
+                <strong>Questions</strong>
+                <div><i class="done">1</i><i class="done">2</i><i>3</i><i>4</i><i class="marked">5</i><i>6</i><i>7</i><i class="active">8</i><i>9</i><i>10</i><i>11</i><i>12</i></div>
+                <small><b></b> Answered &nbsp; <b></b> Review</small>
+              </div>
+            </div>
+            <div class="preview-footer"><span>Mark for review</span><button type="button" tabindex="-1">Save &amp; next →</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="access-section section-pad">
+      <div class="section-shell">
+        <div class="access-heading reveal" data-reveal>
+          <span class="section-kicker">Your portal, your pathway</span>
+          <h2>Everything important is one click away.</h2>
+        </div>
+        <div class="access-grid">
+          <article class="access-card access-card-student reveal" data-reveal>
+            <div class="access-card-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-5 9 5-9 5-9-5Z" /><path d="M7 12.5V17c2.8 2 7.2 2 10 0v-4.5" /></svg>
+            </div>
+            <span>For students</span>
+            <h3>Learn. Attempt. Improve.</h3>
+            <p>Access assigned tests, continue active attempts and understand every released result.</p>
+            <a href="/auth/login">Open Student Portal <strong>→</strong></a>
+          </article>
+          <article class="access-card access-card-admin reveal" data-reveal>
+            <div class="access-card-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-10V5l-7-3-7 3v6c0 6.5 7 10 7 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+            </div>
+            <span>For authorised staff</span>
+            <h3>Plan. Monitor. Guide.</h3>
+            <p>Create examinations, watch live progress and turn real performance data into action.</p>
+            <a href="/auth/admin">Open Admin Portal <strong>→</strong></a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="contact-section" id="contact">
+      <div class="section-shell contact-shell">
+        <div class="contact-copy reveal" data-reveal>
+          <span class="section-kicker section-kicker-light">Contact SPVN</span>
+          <h2>We are here in Shardanagar.</h2>
+          <p>For school enquiries, admissions and official information, connect directly with the institution.</p>
+        </div>
+        <div class="contact-list reveal" data-reveal>
+          <a href="tel:<%= officialContact.phone.replace(/[^\d+]/g, '') %>">
+            <span>Phone</span><strong><%= officialContact.phone %></strong>
+            <i>↗</i>
+          </a>
+          <a href="mailto:<%= officialContact.email %>">
+            <span>Email</span><strong><%= officialContact.email %></strong>
+            <i>↗</i>
+          </a>
+          <a href="<%= officialContact.website %>" target="_blank" rel="noopener noreferrer">
+            <span>Official website</span><strong><%= officialContact.websiteLabel %></strong>
+            <i>↗</i>
+          </a>
+          <div>
+            <span>Address</span><strong>Shardanagar, Tal. Baramati, Dist. Pune — 413115</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="section-shell footer-grid">
+      <div class="footer-brand">
+        <img src="/brand/spvn-logo.png" alt="SPVN emblem" />
+        <div><strong>Shardabai Pawar Vidya Niketan</strong><span>Shardanagar · Baramati</span></div>
+      </div>
+      <p>विद्या &nbsp;·&nbsp; संस्कार &nbsp;·&nbsp; प्रगती</p>
+      <div class="footer-links"><a href="#about">About</a><a href="#portal">Exam Portal</a><a href="#contact">Contact</a></div>
+    </div>
+    <div class="section-shell footer-bottom">
+      <span>© <%= new Date().getFullYear() %> Shardabai Pawar Vidya Niketan. All rights reserved.</span>
+      <span>Academic Year <%= academicYear %></span>
+    </div>
+  </footer>
+
+  <script src="/landing.js?v=1.0" defer></script>
+</body>
+</html>

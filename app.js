@@ -40,6 +40,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
   },
 }));
+app.use('/brand', express.static(path.join(__dirname, 'mobile', 'assets'), {
+  maxAge: '30d',
+  immutable: true,
+}));
 app.use('/vendor/katex', express.static(path.join(__dirname, 'node_modules', 'katex', 'dist'), {
   maxAge: '30d',
   immutable: true,
@@ -109,7 +113,20 @@ app.use('/api/mobile', require('./routes/mobileApi'));
 
 app.get('/', (req, res) => {
   if (req.session.user) return res.redirect(`/${req.session.user.role}/dashboard`);
-  res.redirect('/auth/login');
+  res.render('landing', {
+    title: 'Shardabai Pawar Vidya Niketan',
+    officialContact: {
+      phone: process.env.COLLEGE_PHONE || '+91 2112 254832',
+      email: process.env.COLLEGE_EMAIL || 'ghodkeamoladt@gmail.com',
+      website: process.env.COLLEGE_WEBSITE || 'https://www.adtschool.co.in',
+      websiteLabel: process.env.COLLEGE_WEBSITE_LABEL || 'adtschool.co.in',
+    },
+    campusPhoto: {
+      url: 'https://feeds.abplive.com/onecms/images/uploaded-images/2024/03/05/fac88e6a6364c2bf1a5534774ab5f81f1709636690386442_original.png',
+      sourceUrl: 'https://marathi.abplive.com/news/pune/baramati-news-shardabai-pawar-vidyaniketan-shardanagar-school-ranks-second-in-the-state-1261974',
+      sourceLabel: 'ABP Majha',
+    },
+  });
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
