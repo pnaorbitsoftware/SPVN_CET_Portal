@@ -6,6 +6,7 @@ export const API_ORIGIN = API_BASE_URL.replace(/\/api\/mobile$/, '');
 
 const TOKEN_KEY = 'spvn_mobile_access_token';
 let accessToken = '';
+const testAccessTokens = new Map<string, string>();
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string, public details?: Record<string, unknown>) {
@@ -71,6 +72,7 @@ export const mobileApi = {
   },
   async clearSession() {
     accessToken = '';
+    testAccessTokens.clear();
     await SecureStore.deleteItemAsync(TOKEN_KEY);
   },
   async changePassword(payload: { currentPassword: string; newPassword: string; confirmPassword: string }) {
@@ -91,6 +93,11 @@ export const mobileApi = {
   getStudentDashboard: () => request<StudentDashboard>('/student/dashboard'),
   getStudentTests: () => request<{ tests: MobileTest[] }>('/student/tests'),
   getStudentInstructions: (testId: string) => request<TestInstructions>(`/student/tests/${testId}/instructions`),
+  async unlockStudentTest(testId: string, testAccessPassword: string) {
+    const response = await request<{ accessToken: string | null; required: boolean }>(`/student/tests/${testId}/unlock`, { method:'POST', body:JSON.stringify({ testAccessPassword }) });
+    if (response.accessToken) testAccessTokens.set(testId, response.accessToken);
+    return response;
+  },
   getStudentResults: () => request<{ results: MobileResult[] }>('/student/results'),
   getResult: (resultId: string) => request<ResultDetail>(`/results/${resultId}`),
   getLeaderboard: (testId: string) => request<Leaderboard>(`/tests/${testId}/leaderboard`),
@@ -98,7 +105,7 @@ export const mobileApi = {
   getStudentNotifications: () => request<{ notifications: MobileNotification[] }>('/student/notifications'),
   getStudentDocuments: () => request<{ documents: MobileDocument[] }>('/student/documents'),
   uploadStudentDocument: (document: FormData) => request<{ document: MobileDocument }>('/student/documents', { method: 'POST', body: document }),
-  startStudentTest: (testId: string) => request<{ resultId: string; firstQuestionNumber: number; questionCount: number }>(`/student/tests/${testId}/start`, { method: 'POST' }),
+  startStudentTest: (testId: string) => request<{ resultId: string; firstQuestionNumber: number; questionCount: number }>(`/student/tests/${testId}/start`, { method: 'POST', body:JSON.stringify({ accessToken:testAccessTokens.get(testId) || null }) }),
   getStudentQuestion: (testId: string, questionNumber: number) => request<ExamQuestionState>(`/student/tests/${testId}/questions/${questionNumber}`),
   saveStudentAnswer: (testId: string, payload: ExamAnswerPayload) => request<{ saved: boolean; answeredCount: number }>(`/student/tests/${testId}/answers`, { method: 'POST', body: JSON.stringify(payload) }),
   leaveStudentTest: (testId: string, payload: ExamAnswerPayload) => request<{ saved: boolean }>(`/student/tests/${testId}/leave`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -168,7 +175,7 @@ export type SubjectScore = { correct: number; wrong: number; skipped: number; ma
 export type MobileNotification = { _id: string; title?: string; message?: string; type?: string; isRead?: boolean; link?: string | null; createdAt: string };
 export type MobileDocument = { _id: string; originalName: string; fileType: string; fileSize: number; filePath: string; description: string; createdAt: string };
 export type StudentDashboard = { stats: { pending: number; completed: number; averageScore: number; accuracy: number; totalCorrect: number; totalAttempted: number; scoreTrend: 'up' | 'down' | 'neutral' }; pendingTests: MobileTest[]; recentResults: MobileResult[]; notifications: MobileNotification[]; subjectStats: { name: string; marks: number; maxMarks: number; count: number; percentage: number }[]; chartData: { label: string; percentage: number; score: number; total: number; date: string | null }[] };
-export type TestInstructions = { test: MobileTest & { questions: MobileQuestion[] }; questionCount: number; inProgress: boolean; submittedResultId: string | null; canStart: boolean; availability: 'completed' | 'in_progress' | 'upcoming' | 'expired' | 'available'; timingMode: TimingMode; timingLabel: string; cetSectionFlow: boolean; sectionSummary: { subject: string; questionCount: number; totalMarks: number }[] };
+export type TestInstructions = { test: MobileTest; questionCount: number; inProgress: boolean; submittedResultId: string | null; canStart: boolean; availability: 'completed' | 'in_progress' | 'upcoming' | 'expired' | 'available'; timingMode: TimingMode; timingLabel: string; requiresAccess: boolean; cetSectionFlow: boolean; sectionSummary: { subject: string; questionCount: number; totalMarks: number }[] };
 export type ResultDetail = { result: MobileResult & { testId: MobileAdminTest & { questions: MobileQuestion[] }; studentId: MobileAdminStudent }; percentage: number; topperResult?: MobileResult; totalAttempted?: number; trend?: MobileResult[] };
 export type Leaderboard = { test: MobileAdminTest; results: MobileResult[] };
 export type AdminDashboard = { stats: { students: number; tests: number; groups: number; questions: number; submittedResults: number }; recentResults: MobileResult[]; recentUsers: MobileAdminStudent[] };
@@ -182,8 +189,8 @@ export type MobileQuestion = { _id: string; question: string; questionImage?: st
 export type QuestionPayload = Omit<MobileQuestion, '_id' | 'questionImage' | 'optionAImage' | 'optionBImage' | 'optionCImage' | 'optionDImage'>;
 export type QuestionFilters = { subject?: string; topic?: string; subtopic?: string; difficulty?: string; page?: number; limit?: number };
 export type QuestionPage = { questions: MobileQuestion[]; total: number; page: number; totalPages: number };
-export type MobileAdminTest = { _id: string; title: string; description?: string | null; status: string; timingMode?: TimingMode; duration: number | null; totalMarks: number; negativeMarking?: number; passingMarks?: number | null; instructions?: string | null; course?: string[]; subject?: string[]; topic?: string | null; subtopic?: string | null; startTime?: string | null; endTime?: string | null; groups: MobileAdminGroup[]; questions?: MobileQuestion[]; questionPdfPath?: string | null; solutionPdfPath?: string | null; shuffleQuestions?: boolean; shuffleOptions?: boolean; autoSubmitOnViolation?: boolean; maxTabSwitches?: number; maxFocusLosses?: number; blockCopyPaste?: boolean; requireFullscreen?: boolean };
-export type TestPayload = { title: string; description?: string; timingMode: TimingMode; duration: number; negativeMarking: number; passingMarks?: number | null; questionIds: string[]; groupIds: string[]; course: string[]; subject: string[]; topic?: string; subtopic?: string; startTime?: string | null; endTime?: string | null; instructions?: string; shuffleQuestions?: boolean; shuffleOptions?: boolean; autoSubmitOnViolation?: boolean; maxTabSwitches?: number; maxFocusLosses?: number; blockCopyPaste?: boolean; requireFullscreen?: boolean };
+export type MobileAdminTest = { _id: string; title: string; description?: string | null; status: string; timingMode?: TimingMode; duration: number | null; totalMarks: number; negativeMarking?: number; passingMarks?: number | null; instructions?: string | null; course?: string[]; subject?: string[]; topic?: string | null; subtopic?: string | null; startTime?: string | null; endTime?: string | null; groups: MobileAdminGroup[]; questions?: MobileQuestion[]; questionPdfPath?: string | null; solutionPdfPath?: string | null; shuffleQuestions?: boolean; shuffleOptions?: boolean; autoSubmitOnViolation?: boolean; maxTabSwitches?: number; maxFocusLosses?: number; blockCopyPaste?: boolean; requireFullscreen?: boolean; testAccessEnabled?: boolean };
+export type TestPayload = { title: string; description?: string; timingMode: TimingMode; duration: number; negativeMarking: number; passingMarks?: number | null; questionIds: string[]; groupIds: string[]; course: string[]; subject: string[]; topic?: string; subtopic?: string; startTime?: string | null; endTime?: string | null; instructions?: string; shuffleQuestions?: boolean; shuffleOptions?: boolean; autoSubmitOnViolation?: boolean; maxTabSwitches?: number; maxFocusLosses?: number; blockCopyPaste?: boolean; requireFullscreen?: boolean; testAccessEnabled?: boolean; testAccessPassword?: string };
 export type MobileAdminDocument = MobileDocument & { studentId: MobileAdminStudent };
 export type AdminResultsResponse = { results: MobileResult[]; groups: MobileAdminGroup[]; tests: MobileAdminTest[] };
 export type BulkImportResult = { created: number; existing: number; assigned: number; skipped: number; duplicates: string[]; groupAssigned: boolean };

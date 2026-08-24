@@ -33,6 +33,7 @@ const resultSchema = new mongoose.Schema({
   startedAt:       { type: Date, default: null },
   lastActivityAt:  { type: Date, default: null },
   deadlineAt:      { type: Date, default: null },
+  accessVersion:   { type: Date, default: null },
   submittedAt:     { type: Date, default: null },
 }, { timestamps: true });
 

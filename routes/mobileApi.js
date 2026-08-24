@@ -18,6 +18,14 @@ const { finalizeAttempt } = require('../services/examSubmissionService');
 const { buildQuestionConfigs, effectiveQuestionConfig, totalMarksFromConfigs } = require('../services/testConfigurationService');
 const { TEST_TYPES, ensureDefaultExamConfigurations, resolveExamConfiguration, validateQuestionsForPattern } = require('../services/examConfigurationService');
 const { availabilityFor, deadlineForAttempt, remainingSeconds, timingInput, timingLabel } = require('../services/timingService');
+const {
+  accessConfiguration,
+  accessVersion,
+  issueAccessGrant,
+  resultHasAccess,
+  validateAccessAttempt,
+  verifyAccessGrant,
+} = require('../services/testAccessService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -368,8 +376,10 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
       summary[subject].totalMarks += effectiveQuestionConfig(test, question).positiveMarks;
       return summary;
     }, {}));
+    const safeTest = test.toObject();
+    delete safeTest.questions;
     return res.json({
-      test,
+      test:safeTest,
       questionCount: test.questions.length,
       inProgress: Boolean(inProgress),
       submittedResultId: submitted?._id || null,
@@ -377,12 +387,43 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
       availability: submitted ? 'completed' : availability.state,
       timingMode:test.timingMode || 'PERSONAL_DURATION',
       timingLabel:timingLabel(test),
+      requiresAccess:Boolean(test.testAccessEnabled && !resultHasAccess(test, inProgress)),
       cetSectionFlow: isCetSectionTest(test, test.questions),
       sectionSummary,
     });
   } catch (error) {
     console.error('Mobile instructions error:', error);
     return res.status(500).json({ error: 'Unable to load test instructions.' });
+  }
+});
+
+router.post('/student/tests/:testId/unlock', requireMobileUser, requireRole('student'), async (req, res) => {
+  try {
+    const [test, memberships] = await Promise.all([
+      Test.findOne({ _id:req.params.testId, status:{ $in:['published','active'] }, isActive:{ $ne:false }, ...organizationScope(req.organization) }).select('+testAccessHash'),
+      GroupMember.find({ userId:req.mobileUser._id, role:'student' }, 'groupId'),
+    ]);
+    if (!test) return res.status(404).json({ error:'Test is not available.' });
+    const membershipIds = new Set(memberships.map(item => String(item.groupId)));
+    if (!test.groups.some(groupId => membershipIds.has(String(groupId)))) return res.status(403).json({ error:'This test is not assigned to your batch.' });
+    if (!test.testAccessEnabled) return res.json({ accessToken:null, required:false });
+    const attempt = await validateAccessAttempt({
+      userId:req.mobileUser._id,
+      testId:test._id,
+      password:req.body.testAccessPassword,
+      passwordHash:test.testAccessHash,
+    });
+    if (!attempt.ok) {
+      if (attempt.code === 'RATE_LIMITED') res.setHeader('Retry-After', String(attempt.retryAfterSeconds));
+      return res.status(attempt.code === 'RATE_LIMITED' ? 429 : 401).json({
+        error:attempt.code === 'RATE_LIMITED' ? `Too many invalid attempts. Try again in ${attempt.retryAfterSeconds} seconds.` : 'Incorrect test password or PIN.',
+        code:attempt.code,
+      });
+    }
+    return res.json({ accessToken:issueAccessGrant({ userId:req.mobileUser._id, test, secret:tokenSecret }), required:true });
+  } catch (error) {
+    console.error('Mobile test unlock error:', error);
+    return res.status(500).json({ error:'Unable to verify test access.' });
   }
 });
 
@@ -402,6 +443,11 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
     const membershipIds = new Set(memberships.map((item) => item.groupId.toString()));
     if (!test.groups.some((groupId) => membershipIds.has(groupId.toString()))) {
       return res.status(403).json({ error: 'This test is not assigned to your batch.' });
+    }
+
+    const grantIsValid = verifyAccessGrant({ token:req.body.accessToken, userId:studentId, test, secret:tokenSecret });
+    if (test.testAccessEnabled && !resultHasAccess(test, inProgress) && !grantIsValid) {
+      return res.status(403).json({ error:'Verify the test password or PIN before starting.', code:'TEST_ACCESS_REQUIRED' });
     }
 
     const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
@@ -430,10 +476,14 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
         startedAt,
         lastActivityAt: startedAt,
         deadlineAt:deadlineForAttempt(test, startedAt),
+        accessVersion:accessVersion(test),
         questionOrder: buildQuestionOrder(test, test.questions),
         markedForReview: [],
         visitedQuestionIds: [],
       });
+    } else if (!resultHasAccess(test, result) && grantIsValid) {
+      result.accessVersion = accessVersion(test);
+      await result.save();
     }
     return res.json({ resultId: result._id, firstQuestionNumber: 1, questionCount: result.questionOrder.length });
   } catch (error) {
@@ -453,6 +503,7 @@ router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser
     ]);
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!test) return res.status(404).json({ error: 'Test not found.' });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Verify the current test password or PIN to resume.', code:'TEST_ACCESS_REQUIRED' });
     const remaining = remainingSeconds(test, result);
     if (remaining !== null && remaining <= 0) {
       const scoringTest = await Test.findById(testId).populate('questions');
@@ -523,10 +574,11 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
     const [test, questionRows] = await Promise.all([
-      Test.findById(req.params.testId).select('course timingMode duration endTime'),
+      Test.findById(req.params.testId).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     if (!test) return res.status(404).json({ error: 'Test not found.' });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
     if (remainingSeconds(test, result) === 0) {
       const scoringTest = await Test.findById(req.params.testId).populate('questions');
       const submitted = await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
@@ -566,9 +618,10 @@ router.post('/student/tests/:testId/violations', requireMobileUser, requireRole(
     if (!['tabSwitch', 'fullscreenExit', 'focusLoss'].includes(type)) return res.status(400).json({ error: 'Invalid violation type.' });
     const [result, test] = await Promise.all([
       Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' }),
-      Test.findById(req.params.testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses'),
+      Test.findById(req.params.testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result || !test) return res.status(409).json({ error: 'No active test session.' });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
     const flags = { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0, ...(result.cheatingFlags || {}) };
     if (type === 'tabSwitch') flags.tabSwitches += 1;
     if (type === 'fullscreenExit') flags.fullscreenExits += 1;
@@ -590,8 +643,12 @@ router.post('/student/tests/:testId/violations', requireMobileUser, requireRole(
 router.post('/student/tests/:testId/leave', requireMobileUser, requireRole('student'), async (req, res) => {
   try {
     const { questionId, answer, markForReview = false, timeSpent = 0 } = req.body;
-    const result = await Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' });
+    const [result, test] = await Promise.all([
+      Result.findOne({ studentId: req.mobileUser._id, testId: req.params.testId, status: 'in_progress' }),
+      Test.findById(req.params.testId).select('testAccessEnabled testAccessUpdatedAt'),
+    ]);
     if (!result || !questionId) return res.json({ saved: false });
+    if (!test || !resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error:'Question does not belong to this test.' });
     const question = await Question.findById(questionId).select('questionType');
     if (!question) return res.status(404).json({ error:'Question not found.' });
@@ -628,6 +685,7 @@ router.post('/student/tests/:testId/submit', requireMobileUser, requireRole('stu
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     const test = await Test.findById(testId).populate('questions');
     if (!test) return res.status(404).json({ error: 'Test not found.' });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ error:'Test access must be verified again.', code:'TEST_ACCESS_REQUIRED' });
 
     const submitted = await finalizeAttempt({ result, test, isAutoSubmit:Boolean(req.body?.auto) });
     return res.json({ result: submitted });
@@ -1148,6 +1206,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     const pageCount = pageMatches?.length || Number(countMatch?.[1]) || 0;
     const perQuestion = Math.max(0.25, Number(marksPerQuestion) || 1);
     const timing = timingInput({ timingMode, duration, startTime, endTime });
+    const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
     const test = await Test.create({
       title: String(title).trim(), description: String(description || '').trim() || null,
       organization:organizationIdForWrite(req), duration:timing.duration, timingMode:timing.timingMode,
@@ -1160,6 +1219,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
       autoSubmitOnViolation: Boolean(req.body.autoSubmitOnViolation), maxTabSwitches: Number(req.body.maxTabSwitches) || 3,
       maxFocusLosses: Number(req.body.maxFocusLosses) || 5, blockCopyPaste: req.body.blockCopyPaste !== false,
       requireFullscreen: Boolean(req.body.requireFullscreen),
+      ...access,
     });
     return res.status(201).json({ test, pageCount });
   } catch (error) {
@@ -1183,6 +1243,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
     const groups = Array.isArray(groupIds) ? groupIds : [groupIds];
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questions, req.body, { negativeMarking:parsedNegativeMarking });
+    const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
     const test = await Test.create({
       title: title.trim(), description: description?.trim() || null, duration:timing.duration, timingMode:timing.timingMode,
       organization:organizationIdForWrite(req), testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -1192,6 +1253,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
       shuffleQuestions: Boolean(shuffleQuestions), shuffleOptions: Boolean(shuffleOptions), startTime:timing.startTime, endTime:timing.endTime,
       instructions: instructions?.trim() || null, createdBy: req.mobileUser._id, status: 'draft', course: Array.isArray(course) ? course : [course], subject: Array.isArray(subject) ? subject : [subject], topic: topic || null, subtopic: subtopic || null,
       questions:selectedQuestionIds, questionConfigs, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
+      ...access,
     });
     return res.status(201).json({ test });
   } catch (error) {
@@ -1201,7 +1263,7 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
 });
 
 router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const existingTest = await Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) });
+  const existingTest = await Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) }).select('+testAccessHash');
   if (!existingTest) return res.status(404).json({ error: 'Test not found.' });
   const allowed = ['title', 'description', 'timingMode', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'groupIds', 'questions', 'questionIds', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
   const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
@@ -1222,6 +1284,14 @@ router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), as
         endTime:Object.hasOwn(req.body,'endTime') ? req.body.endTime : existingTest.endTime,
       });
       Object.assign(update, timing);
+    } catch (error) {
+      return res.status(400).json({ error:error.message });
+    }
+  }
+  if (Object.hasOwn(req.body,'testAccessEnabled') || Object.hasOwn(req.body,'testAccessPassword')) {
+    try {
+      const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword, existingHash:existingTest.testAccessHash, existingUpdatedAt:existingTest.testAccessUpdatedAt });
+      Object.assign(update, access);
     } catch (error) {
       return res.status(400).json({ error:error.message });
     }

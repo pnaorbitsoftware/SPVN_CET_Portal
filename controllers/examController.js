@@ -18,24 +18,41 @@ const {
   timingLabel,
   timingModeOf,
 } = require('../services/timingService');
+const { organizationScope } = require('../services/organizationService');
+const {
+  accessVersion,
+  grantSessionAccess,
+  resultHasAccess,
+  sessionHasAccess,
+  validateAccessAttempt,
+} = require('../services/testAccessService');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+
+async function isAssignedStudent(studentId, test) {
+  if (!test?.groups?.length) return false;
+  return Boolean(await GroupMember.exists({ userId:studentId, role:'student', groupId:{ $in:test.groups } }));
+}
 
 exports.getInstructions = async (req, res) => {
   try {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const [test, submitted, inProgress] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions'),
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false }, ...organizationScope(req.organization) }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
       Result.findOne({ studentId, testId, status: 'in_progress' }),
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
+    if (!(await isAssignedStudent(studentId, test))) { req.flash('error','This test is not assigned to your batch.'); return res.redirect('/student/tests'); }
     if (submitted) { req.flash('info','Already submitted.'); return res.redirect(`/results/${submitted._id}`); }
     const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
     if (!availability.canStart && !availability.canResume) {
       req.flash('error', availability.message);
       return res.redirect('/student/tests');
+    }
+    if (!sessionHasAccess(req, test)) {
+      return res.render('exam/access', { title:`Access — ${test.title}`, test, timingLabel:timingLabel(test) });
     }
     const cetSectionFlow = isCetSectionTest(test, test.questions);
     const sectionSummary = cetSectionFlow
@@ -61,17 +78,55 @@ exports.getInstructions = async (req, res) => {
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
 
+exports.unlockTest = async (req, res) => {
+  try {
+    const studentId = req.session.user.id;
+    const test = await Test.findOne({
+      _id:req.params.testId,
+      status:{ $in:['published','active'] },
+      isActive:{ $ne:false },
+      ...organizationScope(req.organization),
+    }).select('+testAccessHash');
+    if (!test || !(await isAssignedStudent(studentId, test))) {
+      req.flash('error','Test not available.');
+      return res.redirect('/student/tests');
+    }
+    if (!test.testAccessEnabled) return res.redirect(`/exam/${test._id}/instructions`);
+    const attempt = await validateAccessAttempt({
+      userId:studentId,
+      testId:test._id,
+      password:req.body.testAccessPassword,
+      passwordHash:test.testAccessHash,
+    });
+    if (!attempt.ok) {
+      req.flash('error', attempt.code === 'RATE_LIMITED'
+        ? `Too many invalid attempts. Try again in ${attempt.retryAfterSeconds} seconds.`
+        : 'Incorrect test password or PIN.');
+      return res.redirect(`/exam/${test._id}/instructions`);
+    }
+    grantSessionAccess(req, test);
+    req.flash('success','Test access verified.');
+    return res.redirect(`/exam/${test._id}/instructions`);
+  } catch (error) {
+    console.error(error);
+    req.flash('error','Unable to verify test access.');
+    return res.redirect('/student/tests');
+  }
+};
+
 exports.startExam = async (req, res) => {
   try {
     const studentId = req.session.user.id;
     const { testId } = req.params;
     const [test, submitted, inProgress] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions'),
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false }, ...organizationScope(req.organization) }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
       Result.findOne({ studentId, testId, status:'in_progress' }),
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
+    if (!(await isAssignedStudent(studentId, test))) { req.flash('error','This test is not assigned to your batch.'); return res.redirect('/student/tests'); }
     if (submitted) { req.flash('info','Already submitted.'); return res.redirect(`/results/${submitted._id}`); }
+    if (!sessionHasAccess(req, test)) { req.flash('error','Enter the test password or PIN first.'); return res.redirect(`/exam/${testId}/instructions`); }
 
     const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
     if (!availability.canStart && !availability.canResume) {
@@ -94,8 +149,12 @@ exports.startExam = async (req, res) => {
         cheatingFlags: { tabSwitches:0, fullscreenExits:0, focusLosses:0 },
         violationCount: 0, status: 'in_progress', startedAt, lastActivityAt:startedAt,
         deadlineAt:deadlineForAttempt(test, startedAt),
+        accessVersion:accessVersion(test),
         questionOrder: questionIds, markedForReview: [],
       });
+    } else if (!resultHasAccess(test, result)) {
+      result.accessVersion = accessVersion(test);
+      await result.save();
     }
     res.redirect(`/exam/${testId}/question/1`);
   } catch (e) { console.error(e); req.flash('error','Failed to start.'); res.redirect('/student/tests'); }
@@ -109,7 +168,7 @@ exports.getQuestion = async (req, res) => {
 
     const [result, test] = await Promise.all([
       Result.findOne({ studentId, testId, status: 'in_progress' }),
-      Test.findById(testId),
+      Test.findOne({ _id:testId, ...organizationScope(req.organization) }),
     ]);
 
     if (!result) {
@@ -118,6 +177,7 @@ exports.getQuestion = async (req, res) => {
       return res.redirect(`/exam/${testId}/instructions`);
     }
     if (!test) { req.flash('error','Test not found.'); return res.redirect('/student/tests'); }
+    if (!resultHasAccess(test, result)) { req.flash('error','Verify the current test password or PIN to resume.'); return res.redirect(`/exam/${testId}/instructions`); }
 
     const remaining = remainingSeconds(test, result);
     if (remaining !== null && remaining <= 0) { req.body = { auto:'true' }; return exports.submitExam(req, res); }
@@ -231,11 +291,12 @@ exports.saveAnswer = async (req, res) => {
     }
 
     const [test, questionRows] = await Promise.all([
-      Test.findById(testId).select('course timingMode duration endTime'),
+      Test.findById(testId).select('course timingMode duration endTime testAccessEnabled testAccessUpdatedAt'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
     if (!test || !currentQuestion) return res.status(404).json({ success:false, message:'Question not found.' });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ success:false, message:'Test access must be verified again.' });
     if (remainingSeconds(test, result) === 0) {
       const scoringTest = await Test.findById(testId).populate('questions');
       await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
@@ -285,9 +346,10 @@ exports.reportViolation = async (req, res) => {
     const { type } = req.body;
     const [result, test] = await Promise.all([
       Result.findOne({ studentId, testId, status: 'in_progress' }),
-      Test.findById(testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses'),
+      Test.findById(testId).select('autoSubmitOnViolation maxTabSwitches maxFocusLosses testAccessEnabled testAccessUpdatedAt'),
     ]);
     if (!result) return res.json({ success: false });
+    if (!resultHasAccess(test, result)) return res.status(403).json({ success:false, message:'Test access must be verified again.' });
 
     const flags = result.cheatingFlags || { tabSwitches:0, fullscreenExits:0, focusLosses:0 };
     if (type === 'tabSwitch')           flags.tabSwitches    = (flags.tabSwitches||0) + 1;
@@ -337,6 +399,7 @@ exports.submitExam = async (req, res) => {
 
     const test = await Test.findById(testId).populate('questions');
     if (!test) { req.flash('error','Test not found.'); return res.redirect('/student/tests'); }
+    if (!resultHasAccess(test, result)) { req.flash('error','Verify the current test password or PIN before submitting.'); return res.redirect(`/exam/${testId}/instructions`); }
     await finalizeAttempt({ result, test, isAutoSubmit });
     return res.redirect(`/results/${result._id}`);
   } catch (e) { console.error(e); req.flash('error','Submit failed.'); res.redirect('/student/tests'); }
@@ -354,8 +417,12 @@ exports.leaveExam = async (req, res) => {
     const body = req.body || {};
     const { questionId, answer, markForReview, timeSpent } = body;
 
-    const result = await Result.findOne({ studentId, testId, status: 'in_progress' });
+    const [result, test] = await Promise.all([
+      Result.findOne({ studentId, testId, status: 'in_progress' }),
+      Test.findById(testId).select('testAccessEnabled testAccessUpdatedAt'),
+    ]);
     if (!result) return res.sendStatus(204);
+    if (!test || !resultHasAccess(test, result)) return res.sendStatus(403);
 
     // Save the current answer first
     if (questionId) {

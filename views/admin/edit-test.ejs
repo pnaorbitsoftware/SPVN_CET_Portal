@@ -67,6 +67,15 @@
           </div>
         </div>
 
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 class="font-bold text-slate-900 mb-1">🔑 Test Access</h3>
+          <p class="text-xs text-slate-500 mb-4">The saved secret is never displayed. Leave the password blank to keep the current one.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <label class="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm font-semibold text-slate-700"><input id="testAccessEnabled" type="checkbox" name="testAccessEnabled" value="on" onchange="updateAccessField()" class="rounded" <%= test.testAccessEnabled?'checked':'' %>/> Enable Test Password / PIN</label>
+            <div id="testAccessField"><label class="block text-sm font-semibold mb-1.5">New Password / PIN</label><input id="testAccessPassword" type="password" name="testAccessPassword" minlength="4" maxlength="64" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="<%= testAccessConfigured?'Leave blank to keep saved secret':'Enter 4–64 characters' %>"/></div>
+          </div>
+        </div>
+
         <!-- Anti-Cheat & Proctoring Settings -->
         <div class="bg-white rounded-xl border border-slate-200 p-6">
           <h3 class="font-bold text-slate-900 mb-1 flex items-center gap-2">🔒 Anti-Cheat & Proctoring</h3>
@@ -422,6 +431,13 @@ function updateTimingFields() {
     : mode === 'UNTIMED' ? 'No countdown. Start/end only control when new attempts may begin.'
       : 'Each student receives the full personal duration after starting within the access window.';
 }
+function updateAccessField() {
+  const enabled = document.getElementById('testAccessEnabled').checked;
+  const password = document.getElementById('testAccessPassword');
+  document.getElementById('testAccessField').classList.toggle('opacity-50', !enabled);
+  password.disabled = !enabled;
+  password.required = enabled && <%- testAccessConfigured ? 'false' : 'true' %>;
+}
 // ── Counter ───────────────────────────────────────────────────────────────
 function updCount() {
   const selected = [...document.querySelectorAll('input[name="questionIds"]:checked')];
@@ -707,6 +723,7 @@ document.querySelectorAll('.diff-chip').forEach(b => {
 });
 updCount();
 updateTimingFields();
+updateAccessField();
 </script>
 
 <script>

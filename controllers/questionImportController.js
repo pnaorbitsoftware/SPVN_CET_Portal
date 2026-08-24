@@ -20,6 +20,7 @@ const { organizationIdForWrite } = require('../services/organizationService');
 const { questionInputFromBody } = require('../services/questionService');
 const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/testConfigurationService');
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
+const { accessConfiguration } = require('../services/testAccessService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -245,6 +246,7 @@ exports.commitSmartImport = async (req, res) => {
       startTime:parseLocalDateTime(req.body.startTime),
       endTime:parseLocalDateTime(req.body.endTime),
     }) : null;
+    const access = createTest ? await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword }) : null;
 
     let createdTest = null;
     const session = await mongoose.startSession();
@@ -307,6 +309,7 @@ exports.commitSmartImport = async (req, res) => {
             questionConfigs,
             groups: validGroups.map(group => group._id),
             blockCopyPaste: true,
+            ...access,
           }], { session });
           createdTest = tests[0];
 

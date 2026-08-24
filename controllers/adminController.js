@@ -26,6 +26,7 @@ const {
 } = require('../services/examConfigurationService');
 const { updateRanks } = require('../services/rankingService');
 const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
+const { accessConfiguration } = require('../services/testAccessService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -670,6 +671,7 @@ exports.createTest = async (req, res) => {
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
+    const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword });
     const test = await Test.create({
       title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -692,6 +694,7 @@ exports.createTest = async (req, res) => {
       maxFocusLosses:parseInt(req.body.maxFocusLosses)||5,
       blockCopyPaste:req.body.blockCopyPaste==='on',
       requireFullscreen:req.body.requireFullscreen==='on',
+      ...access,
     });
     req.flash('success','Test created!');
     res.redirect(`/admin/tests/${test._id}`);
@@ -953,17 +956,19 @@ exports.getEditTest = async (req, res) => {
   try {
     const examConfigurations = await ensureDefaultExamConfigurations(req.organization?._id);
     const [test, groups, questions] = await Promise.all([
-      Test.findOne({ _id:req.params.id, ...organizationScope(req.organization) }).populate('questions').populate('groups','name'),
+      Test.findOne({ _id:req.params.id, ...organizationScope(req.organization) }).select('+testAccessHash').populate('questions').populate('groups','name'),
       Group.find({ isActive:true, ...organizationScope(req.organization) }),
       Question.find({ isActive:true, ...organizationScope(req.organization) }).sort({ subject:1, difficulty:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
+    const testAccessConfigured = Boolean(test.testAccessHash);
+    test.testAccessHash = undefined;
     res.render('admin/edit-test', {
       title:'Edit Test', test, groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS,
       formatDateTimeLocal,
       questionConfigMap:configsByQuestionId(test),
       TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
-      TIMING_MODES,
+      TIMING_MODES, testAccessConfigured,
       patternOptions:examConfigurations.patterns.map(pattern => ({
         id:String(pattern._id), code:pattern.code,
         defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
@@ -981,7 +986,7 @@ exports.updateTest = async (req, res) => {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
     const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, testPattern, rankingSchema, testType } = req.body;
-    const existingTest = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) });
+    const existingTest = await Test.findOne({ _id:req.params.id, isActive:{ $ne:false }, ...organizationScope(req.organization) }).select('+testAccessHash');
     if (!existingTest) throw new Error('Test not found.');
     const effectiveQuestionIds = selectedQIds.length ? selectedQIds : existingTest.questions.map(id => String(id));
     const questionRows = await Question.find({ _id:{ $in:effectiveQuestionIds }, ...organizationScope(req.organization) });
@@ -997,6 +1002,7 @@ exports.updateTest = async (req, res) => {
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
     const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
+    const access = await accessConfiguration({ enabled:req.body.testAccessEnabled, password:req.body.testAccessPassword, existingHash:existingTest.testAccessHash, existingUpdatedAt:existingTest.testAccessUpdatedAt });
     await Test.findByIdAndUpdate(req.params.id, {
       title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
@@ -1016,6 +1022,7 @@ exports.updateTest = async (req, res) => {
       requireFullscreen:req.body.requireFullscreen==='on',
       questions:effectiveQuestionIds,
       questionConfigs,
+      ...access,
     });
     await updateRanks(req.params.id);
     req.flash('success','Test updated!');

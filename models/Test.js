@@ -54,6 +54,9 @@ const testSchema = new mongoose.Schema({
   maxFocusLosses:        { type: Number, default: 5 },
   blockCopyPaste:        { type: Boolean, default: true },
   requireFullscreen:     { type: Boolean, default: false },
+  testAccessEnabled:     { type: Boolean, default: false },
+  testAccessHash:        { type: String, default: null, select: false },
+  testAccessUpdatedAt:   { type: Date, default: null },
   isActive:              { type: Boolean, default: true },
 }, { timestamps: true });
 
