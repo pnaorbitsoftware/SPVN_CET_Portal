@@ -9,7 +9,9 @@
     "test": "node --test test/*.test.js",
     "verify": "node scripts/verify.js",
     "import:pyq": "node scripts/import-pyq-dataset.js",
+    "import:pyq:cet": "node scripts/import-mht-cet-pyq.js",
     "verify:pyq": "node scripts/verify-pyq-import.js",
+    "verify:pyq:cet": "node scripts/verify-mht-cet-import.js",
     "seed": "node seeders/seed.js",
     "seed:fresh": "node seeders/seed.js"
   },
