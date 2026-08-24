@@ -39,6 +39,7 @@ const testSchema = new mongoose.Schema({
   // Embedded question list (replaces TestQuestion join table)
   questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
   questionConfigs: { type: [testQuestionConfigSchema], default: [] },
+  sourceQuestionPaper: { type:mongoose.Schema.Types.ObjectId, ref:'QuestionPaper', default:null },
   // Groups assigned (replaces TestGroup join table)
   groups:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
   // Anti-cheat

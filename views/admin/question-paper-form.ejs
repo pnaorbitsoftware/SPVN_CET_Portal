@@ -1,0 +1,162 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur lg:px-8">
+      <a href="<%= paper ? `/admin/question-papers/${paper.id}` : '/admin/question-papers' %>" class="text-slate-400">←</a>
+      <div class="flex-1"><h1 class="text-lg font-bold text-slate-900"><%= paper ? 'Edit Question Paper' : 'Create Question Paper' %></h1><p class="text-xs text-slate-400">Reusable paper with a preserved question order</p></div>
+    </header>
+
+    <div class="mx-auto max-w-6xl p-5 lg:p-8">
+      <%- include('../partials/flash') %>
+      <form id="paperForm" action="<%= paper ? `/admin/question-papers/${paper.id}` : '/admin/question-papers' %>" method="POST" class="space-y-6" onsubmit="return validatePaperForm()">
+        <section class="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 class="mb-4 font-bold text-slate-900">Paper Details</h2>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="text-sm font-semibold text-slate-700 md:col-span-2">Title *<input name="title" required maxlength="200" value="<%= paper ? paper.title : '' %>" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-normal" placeholder="e.g. CET 2026 Physics Full Syllabus"/></label>
+            <label class="text-sm font-semibold text-slate-700">Code<input name="code" maxlength="60" value="<%= paper ? paper.code : '' %>" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-mono font-normal uppercase" placeholder="Auto-generated when blank"/></label>
+            <label class="text-sm font-semibold text-slate-700">Course<select name="course" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-normal"><option value="">Not specified</option><% COURSES.forEach(course => { %><option value="<%= course %>" <%= paper&&paper.course===course?'selected':'' %>><%= course %></option><% }) %></select></label>
+            <fieldset class="md:col-span-2"><legend class="text-sm font-semibold text-slate-700">Subjects</legend><div class="mt-2 flex flex-wrap gap-2"><% SUBJECTS.forEach(subject => { %><label class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold"><input type="checkbox" name="subjects" value="<%= subject %>" class="mr-2 rounded" <%= paper&&(paper.subjects||[]).includes(subject)?'checked':'' %>/><%= subject %></label><% }) %></div></fieldset>
+            <label class="text-sm font-semibold text-slate-700 md:col-span-2">Tags<input name="tags" value="<%= paper ? (paper.tags||[]).join(', ') : '' %>" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-normal" placeholder="CET-2026, Full-Syllabus, PYQ, Revision"/><span class="mt-1 block text-[11px] font-normal text-slate-400">Comma-separated, searchable tags.</span></label>
+            <label class="text-sm font-semibold text-slate-700 md:col-span-2">Description<textarea name="description" maxlength="2000" rows="3" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-normal"><%= paper ? (paper.description||'') : '' %></textarea></label>
+            <label class="text-sm font-semibold text-slate-700">Status<select name="status" class="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-2.5 font-normal"><% ['draft','ready','archived'].forEach(status => { %><option value="<%= status %>" <%= (paper?paper.status:'draft')===status?'selected':'' %>><%= status.charAt(0).toUpperCase()+status.slice(1) %></option><% }) %></select></label>
+          </div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-6">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div><h2 class="font-bold text-slate-900">Question Selector</h2><p class="text-xs text-slate-400">Server-side filters preserve selections across pages.</p></div>
+            <div id="paperSummary" class="rounded-xl bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-700">0 selected</div>
+          </div>
+
+          <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+            <div>
+              <div class="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 md:grid-cols-4">
+                <select id="filterCourse" class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"><option value="">All courses</option><% COURSES.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %></select>
+                <select id="filterSubject" class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"><option value="">All subjects</option><% SUBJECTS.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %></select>
+                <input id="filterTopic" placeholder="Topic / chapter" class="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
+                <input id="filterSubtopic" placeholder="Subtopic" class="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
+                <select id="filterDifficulty" class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"><option value="">All difficulty</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
+                <select id="filterType" class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"><option value="">All types</option><% QUESTION_TYPES.forEach(type => { %><option value="<%= type %>"><%= type.replaceAll('_',' ') %></option><% }) %></select>
+                <select id="filterSubtype" class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"><option value="">All sub-types</option><% QUESTION_SUB_TYPES.forEach(type => { %><option value="<%= type %>"><%= type.replaceAll('_',' ') %></option><% }) %></select>
+                <input id="filterTag" placeholder="Exact tag" class="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
+                <input id="filterId" placeholder="Exact Question ID" class="rounded-lg border border-slate-200 px-2 py-2 text-xs md:col-span-2"/>
+                <input id="filterSearch" placeholder="Search question text…" class="rounded-lg border border-slate-200 px-2 py-2 text-xs md:col-span-2"/>
+                <button type="button" onclick="loadQuestions(1)" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Search</button>
+                <button type="button" onclick="clearFilters()" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">Clear</button>
+                <button type="button" onclick="selectPage()" class="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 md:col-span-2">Select all on this filtered page</button>
+              </div>
+              <div id="questionResults" class="max-h-[580px] space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-2"></div>
+              <div class="mt-3 flex items-center justify-between"><button type="button" id="prevPage" onclick="loadQuestions(currentPage-1)" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">← Previous</button><span id="pageInfo" class="text-xs text-slate-400"></span><button type="button" id="nextPage" onclick="loadQuestions(currentPage+1)" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Next →</button></div>
+            </div>
+
+            <aside class="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+              <div class="mb-2 flex items-center justify-between"><h3 class="text-xs font-bold uppercase tracking-wider text-indigo-800">Selected Order</h3><button type="button" onclick="clearSelection()" class="text-[10px] font-bold text-rose-600">Clear all</button></div>
+              <div id="selectedQuestions" class="max-h-[650px] space-y-2 overflow-y-auto"></div>
+              <div id="questionInputs"></div>
+            </aside>
+          </div>
+        </section>
+
+        <div class="flex gap-3"><button class="flex-1 rounded-xl bg-navy-950 py-3.5 font-bold text-white"><%= paper ? 'Save Question Paper' : 'Create Question Paper' %></button><a href="/admin/question-papers" class="rounded-xl border border-slate-200 px-6 py-3.5 font-semibold text-slate-600">Cancel</a></div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+const INITIAL_QUESTIONS = <%- JSON.stringify(initialQuestions).replace(/</g, '\\u003c') %>;
+const INITIAL_SELECTED = <%- JSON.stringify(selectedQuestions).replace(/</g, '\\u003c') %>;
+const selected = new Map(INITIAL_SELECTED.map(question => [question.id, question]));
+let pageQuestions = INITIAL_QUESTIONS;
+let currentPage = 1;
+let totalPages = 1;
+
+const el = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+function filterParams(page) {
+  const map = {
+    course:'filterCourse', subject:'filterSubject', topic:'filterTopic', subtopic:'filterSubtopic',
+    difficulty:'filterDifficulty', questionType:'filterType', questionSubType:'filterSubtype',
+    tag:'filterTag', questionId:'filterId', search:'filterSearch',
+  };
+  const params = new URLSearchParams({ page, limit:50 });
+  Object.entries(map).forEach(([key,id]) => { const value=document.getElementById(id).value.trim(); if(value) params.set(key,value); });
+  return params;
+}
+
+async function loadQuestions(page = 1) {
+  if (page < 1) return;
+  const result = document.getElementById('questionResults');
+  result.textContent = 'Loading question bank…';
+  try {
+    const response = await fetch(`/admin/question-papers/questions/search?${filterParams(page)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Search failed.');
+    pageQuestions = data.questions;
+    currentPage = data.page;
+    totalPages = data.totalPages;
+    renderResults();
+    document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages} · ${data.total} result(s)`;
+    document.getElementById('prevPage').disabled = currentPage <= 1;
+    document.getElementById('nextPage').disabled = currentPage >= totalPages;
+  } catch (error) {
+    result.textContent = error.message;
+  }
+}
+
+function renderResults() {
+  const root = document.getElementById('questionResults');
+  root.replaceChildren();
+  if (!pageQuestions.length) return root.appendChild(el('p','p-6 text-center text-xs text-slate-400','No questions match these filters.'));
+  pageQuestions.forEach(question => {
+    const card = el('div','rounded-lg border border-slate-200 bg-white p-3');
+    const row = el('div','flex items-start gap-3');
+    const checkbox = el('input','mt-1 rounded'); checkbox.type='checkbox'; checkbox.checked=selected.has(question.id);
+    checkbox.addEventListener('change', () => { if(checkbox.checked) selected.set(question.id,question); else selected.delete(question.id); renderSelected(); });
+    const content = el('div','min-w-0 flex-1');
+    content.appendChild(el('p','text-sm font-medium leading-snug text-slate-800',question.question));
+    content.appendChild(el('p','mt-1 text-[10px] text-slate-500',`${question.subject} · ${question.topic||'No topic'} · ${question.difficulty} · ${question.questionType.replaceAll('_',' ')} · ${question.marks} mark(s)`));
+    const details = el('details','mt-2 rounded bg-slate-50 p-2');
+    details.appendChild(el('summary','cursor-pointer text-[10px] font-bold text-indigo-700','Preview answer & explanation'));
+    details.appendChild(el('p','mt-2 text-xs font-semibold text-emerald-700',`Answer: ${question.answer||'—'}`));
+    details.appendChild(el('p','mt-1 whitespace-pre-wrap text-xs text-slate-600',question.explanation||'No explanation saved.'));
+    content.appendChild(details); row.append(checkbox,content); card.appendChild(row); root.appendChild(card);
+  });
+}
+
+function renderSelected() {
+  const root = document.getElementById('selectedQuestions');
+  const inputs = document.getElementById('questionInputs');
+  root.replaceChildren(); inputs.replaceChildren();
+  const difficulty={Easy:0,Medium:0,Hard:0}, types={}; let marks=0;
+  [...selected.values()].forEach((question,index) => {
+    marks += Number(question.marks)||0; difficulty[question.difficulty]=(difficulty[question.difficulty]||0)+1; types[question.questionType]=(types[question.questionType]||0)+1;
+    const item=el('div','flex items-start gap-2 rounded-lg border border-indigo-100 bg-white p-2');
+    item.appendChild(el('span','flex h-6 w-6 shrink-0 items-center justify-center rounded bg-indigo-100 text-[10px] font-bold text-indigo-700',index+1));
+    const text=el('p','line-clamp-2 flex-1 text-[11px] text-slate-700',question.question);
+    const remove=el('button','text-xs font-bold text-rose-500','×'); remove.type='button'; remove.onclick=()=>{selected.delete(question.id);renderSelected();renderResults();};
+    item.append(text,remove); root.appendChild(item);
+    const input=el('input'); input.type='hidden'; input.name='questionIds'; input.value=question.id; inputs.appendChild(input);
+  });
+  if (!selected.size) root.appendChild(el('p','py-10 text-center text-xs text-slate-400','No questions selected.'));
+  const typeText=Object.entries(types).map(([type,count])=>`${type.replaceAll('_',' ')} ${count}`).join(' · ');
+  document.getElementById('paperSummary').textContent=`${selected.size} selected · ${marks.toFixed(2)} marks · E/M/H ${difficulty.Easy}/${difficulty.Medium}/${difficulty.Hard}${typeText?' · '+typeText:''}`;
+}
+
+function selectPage() { pageQuestions.forEach(question=>selected.set(question.id,question)); renderSelected(); renderResults(); }
+function clearSelection() { if(selected.size && !confirm(`Remove all ${selected.size} selected questions?`)) return; selected.clear(); renderSelected(); renderResults(); }
+function clearFilters() { ['filterCourse','filterSubject','filterTopic','filterSubtopic','filterDifficulty','filterType','filterSubtype','filterTag','filterId','filterSearch'].forEach(id=>document.getElementById(id).value=''); loadQuestions(1); }
+function validatePaperForm() { if(!selected.size){alert('Select at least one question.');return false;} return true; }
+
+let searchTimer;
+document.getElementById('filterSearch').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadQuestions(1),350);});
+['filterCourse','filterSubject','filterDifficulty','filterType','filterSubtype'].forEach(id=>document.getElementById(id).addEventListener('change',()=>loadQuestions(1)));
+renderResults(); renderSelected();
+</script>
+</body></html>

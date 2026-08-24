@@ -20,15 +20,15 @@
           <h3 class="font-bold text-slate-900 mb-4">📝 Test Details</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Title *</label>
-              <input type="text" name="title" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="e.g. CET Mock Test 1 — Physics"/></div>
+              <input type="text" name="title" value="<%= sourcePaper ? sourcePaper.title : '' %>" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500" placeholder="e.g. CET Mock Test 1 — Physics"/></div>
             <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Description</label>
-              <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"></textarea></div>
+              <textarea name="description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"><%= sourcePaper ? (sourcePaper.description||'') : '' %></textarea></div>
             <div class="md:col-span-2">
               <label class="block text-sm font-semibold mb-2">Course</label>
               <div class="flex flex-wrap gap-2">
                 <% COURSES.forEach(c => { %>
                 <label class="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
-                  <input type="checkbox" name="courses" value="<%= c %>" class="rounded" <%= (Array.isArray(filterCourse)?filterCourse:[filterCourse]).includes(c)?'checked':'' %>/>
+                  <input type="checkbox" name="courses" value="<%= c %>" class="rounded" <%= ((Array.isArray(filterCourse)?filterCourse:[filterCourse]).includes(c)||(sourcePaper&&sourcePaper.course===c))?'checked':'' %>/>
                   <span class="text-sm font-medium text-slate-700"><%= c %></span>
                 </label>
                 <% }) %>
@@ -39,7 +39,7 @@
               <div class="flex flex-wrap gap-2">
                 <% SUBJECTS.forEach(s => { %>
                 <label class="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
-                  <input type="checkbox" name="subjects" value="<%= s %>" class="rounded" <%= (Array.isArray(filterSubject)?filterSubject:[filterSubject]).includes(s)?'checked':'' %>/>
+                  <input type="checkbox" name="subjects" value="<%= s %>" class="rounded" <%= ((Array.isArray(filterSubject)?filterSubject:[filterSubject]).includes(s)||(sourcePaper&&(sourcePaper.subjects||[]).includes(s)))?'checked':'' %>/>
                   <span class="text-sm font-medium text-slate-700"><%= s %></span>
                 </label>
                 <% }) %>
@@ -145,6 +145,12 @@
 
         <!-- Select Questions -->
         <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <% if (sourcePaper) { %>
+          <input type="hidden" name="sourceQuestionPaper" value="<%= sourcePaper.id %>"/>
+          <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+            <strong>Loaded from Question Paper:</strong> <%= sourcePaper.title %> (<%= sourcePaper.code %>). You can still adjust the selection before creating this test.
+          </div>
+          <% } %>
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-bold text-slate-900">❓ Select Questions</h3>
             <span id="selCount" class="text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">0 selected</span>
@@ -272,7 +278,7 @@
               data-diff="<%= q.difficulty %>"
               data-type="<%= q.questionType || 'SINGLE_CORRECT' %>"
               data-text="<%= q.question.toLowerCase() %>" data-idx="<%= i %>">
-              <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0"/>
+              <input type="checkbox" name="questionIds" value="<%= q.id %>" onchange="updCount()" class="mt-0.5 rounded shrink-0" <%= selectedQuestionIds.includes(String(q.id))?'checked':'' %>/>
               <div class="flex-1 min-w-0">
                 <p class="math-content math-clamp-2 text-sm text-slate-800 leading-snug"><%= q.question %></p>
                 <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
@@ -870,5 +876,6 @@ function prepareEmbeddedSmartScan() {
   document.getElementById('embeddedScanOverlay').classList.remove('hidden');
   return true;
 }
+updCount();
 </script>
 </body></html>

@@ -1,5 +1,5 @@
 // controllers/adminController.js — MongoDB / Mongoose
-const { User, Group, Question, Test, GroupMember, Result, Notification, Topic, StudentDocument } = require('../models');
+const { User, Group, Question, QuestionPaper, Test, GroupMember, Result, Notification, Topic, StudentDocument } = require('../models');
 const xlsx = require('xlsx');
 const fs   = require('fs');
 const path = require('path');
@@ -597,16 +597,27 @@ exports.getTests = async (req, res) => {
 
 exports.getCreateTest = async (req, res) => {
   try {
-    const { subject, course } = req.query;
-    const q = { isActive:true };
+    const { subject, course, paperId } = req.query;
+    const q = { isActive:true, ...organizationScope(req.organization) };
     if (subject) q.subject = subject;
-    const [groups, questions, topics] = await Promise.all([
-      Group.find({ isActive:true }),
+    const [groups, questions, topics, sourcePaper] = await Promise.all([
+      Group.find({ isActive:true, ...organizationScope(req.organization) }),
       Question.find(q).sort({ subject:1, difficulty:1 }),
       loadTopics(course, subject),
+      paperId ? QuestionPaper.findOne({ _id:paperId, isActive:{ $ne:false }, ...organizationScope(req.organization) }) : null,
     ]);
-    res.render('admin/create-test', { title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics, filterSubject:subject||'', filterCourse:course||'', aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY) });
-  } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
+    const selectedQuestionIds = sourcePaper ? sourcePaper.questionIds.map(id => String(id)) : [];
+    if (sourcePaper) {
+      const availableIds = new Set(questions.map(question => String(question._id)));
+      const unavailableCount = selectedQuestionIds.filter(id => !availableIds.has(id)).length;
+      if (unavailableCount) throw new Error(`The paper contains ${unavailableCount} unavailable question(s). Edit the paper before creating a test.`);
+    }
+    res.render('admin/create-test', {
+      title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics,
+      filterSubject:subject||'', filterCourse:course||'', sourcePaper, selectedQuestionIds,
+      aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
+    });
+  } catch (e) { req.flash('error',`Unable to create test from selection: ${e.message}`); res.redirect('/admin/tests'); }
 };
 
 exports.createTest = async (req, res) => {
@@ -614,11 +625,20 @@ exports.createTest = async (req, res) => {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
     if (!selectedQIds.length) { req.flash('error','Select at least one question.'); return res.redirect('/admin/tests/create'); }
-    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion } = req.body;
-    const questionRows = await Question.find({ _id:{ $in:selectedQIds }, ...organizationScope(req.organization) });
+    const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion, sourceQuestionPaper } = req.body;
+    const sourcePaper = sourceQuestionPaper
+      ? await QuestionPaper.findOne({ _id:sourceQuestionPaper, isActive:{ $ne:false }, ...organizationScope(req.organization) })
+      : null;
+    if (sourceQuestionPaper && !sourcePaper) throw new Error('Source question paper is unavailable.');
+    const selectedSet = new Set(selectedQIds.map(String));
+    const paperOrder = sourcePaper ? sourcePaper.questionIds.map(id => String(id)) : [];
+    const effectiveSelectedQIds = sourcePaper
+      ? [...paperOrder.filter(id => selectedSet.has(id)), ...selectedQIds.filter(id => !paperOrder.includes(String(id)))]
+      : selectedQIds;
+    const questionRows = await Question.find({ _id:{ $in:effectiveSelectedQIds }, ...organizationScope(req.organization) });
     const questionMap = new Map(questionRows.map(question => [question._id.toString(), question]));
-    const questionsData = selectedQIds.map(id => questionMap.get(String(id))).filter(Boolean);
-    if (questionsData.length !== selectedQIds.length) throw new Error('One or more selected questions are unavailable.');
+    const questionsData = effectiveSelectedQIds.map(id => questionMap.get(String(id))).filter(Boolean);
+    if (questionsData.length !== effectiveSelectedQIds.length) throw new Error('One or more selected questions are unavailable.');
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questionsData, req.body, { negativeMarking:parsedNegativeMarking });
     const totalMarks = totalMarksFromConfigs(questionConfigs);
@@ -641,7 +661,8 @@ exports.createTest = async (req, res) => {
       course: courseArr, subject: subjectArr, topic:topic||null, subtopic:subtopic||null,
       marksPerQuestion:parseFloat(marksPerQuestion)||1,
       questionPdfPath, solutionPdfPath,
-      questions:selectedQIds, questionConfigs, groups,
+      questions:effectiveSelectedQIds, questionConfigs, groups,
+      sourceQuestionPaper:sourcePaper?._id || null,
       autoSubmitOnViolation:req.body.autoSubmitOnViolation==='on',
       maxTabSwitches:parseInt(req.body.maxTabSwitches)||3,
       maxFocusLosses:parseInt(req.body.maxFocusLosses)||5,

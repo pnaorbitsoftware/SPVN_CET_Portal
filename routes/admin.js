@@ -3,6 +3,7 @@ const router         = express.Router();
 const c              = require('../controllers/adminController');
 const questionImport = require('../controllers/questionImportController');
 const organization    = require('../controllers/organizationController');
+const questionPapers  = require('../controllers/questionPaperController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -60,6 +61,19 @@ router.post('/questions/bulk-import',          ...guard, c.bulkImportQuestions);
 router.get('/questions/template/download',     ...guard, c.downloadQuestionTemplate);
 router.delete('/questions/:id',                ...guard, c.deleteQuestion);
 router.post('/questions/:id/delete',           ...guard, c.deleteQuestion);
+
+// Reusable question paper library
+router.get('/question-papers/questions/search', ...guard, questionPapers.searchQuestions);
+router.get('/question-papers',                  ...guard, questionPapers.list);
+router.get('/question-papers/create',           ...guard, questionPapers.getCreate);
+router.post('/question-papers',                 ...guard, questionPapers.create);
+router.get('/question-papers/:id',              ...guard, questionPapers.view);
+router.get('/question-papers/:id/edit',         ...guard, questionPapers.getEdit);
+router.post('/question-papers/:id',             ...guard, questionPapers.update);
+router.post('/question-papers/:id/duplicate',   ...guard, questionPapers.duplicate);
+router.post('/question-papers/:id/archive',     ...guard, questionPapers.archive);
+router.post('/question-papers/:id/delete',      ...guard, questionPapers.remove);
+router.get('/question-papers/:id/create-test',  ...guard, questionPapers.createTest);
 
 // Tests
 router.get('/tests',                      ...guard, c.getTests);
