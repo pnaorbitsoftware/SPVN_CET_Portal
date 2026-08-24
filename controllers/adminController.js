@@ -714,7 +714,7 @@ exports.createTest = async (req, res) => {
   try {
     const questionIds_raw = req.body.questionIds;
     const selectedQIds = Array.isArray(questionIds_raw) ? questionIds_raw : (questionIds_raw ? [questionIds_raw] : []);
-    if (!selectedQIds.length) { req.flash('error','Select at least one question.'); return res.redirect('/admin/tests/create'); }
+    if (!selectedQIds.length) { req.flash('error','Select at least one question.'); return res.redirect('/admin/tests/create/legacy'); }
     const { title, description, duration, negativeMarking, passingMarks, shuffleQuestions, shuffleOptions, startTime, endTime, instructions, groupIds, courses, subjects, topic, subtopic, marksPerQuestion, sourceQuestionPaper, testPattern, rankingSchema, testType } = req.body;
     const sourcePaper = sourceQuestionPaper
       ? await QuestionPaper.findOne({ _id:sourceQuestionPaper, isActive:{ $ne:false }, ...organizationScope(req.organization) })
@@ -791,7 +791,7 @@ exports.createTest = async (req, res) => {
   } catch (e) {
     cleanupIncompleteFiles(persistedPdfFiles);
     req.flash('error','Failed: '+e.message);
-    res.redirect('/admin/tests/create');
+    res.redirect('/admin/tests/create/legacy');
   }
 };
 
@@ -800,7 +800,7 @@ exports.getTestDetail = async (req, res) => {
     const test = await Test.findOne({
       _id:req.params.id,
       ...organizationScope(req.organization),
-    }).populate('questions').populate('groups','name');
+    }).populate('questions').populate('groups','name').populate('sourceTestParts','name subject');
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
     const [results, recalculations] = await Promise.all([
       Result.find({ testId:req.params.id, status:{ $in:['submitted','auto_submitted'] }, ...organizationScope(req.organization) })
@@ -832,27 +832,41 @@ exports.publishTest = async (req, res) => {
 // ── RESULTS ───────────────────────────────────────────────────────────────────
 exports.getAllResults = async (req, res) => {
   try {
-    const selectedGroupId = String(req.query.groupId || '');
-    const selectedTestId = String(req.query.testId || '');
-    const query = await resultQueryFrom({
-      groupId: selectedGroupId,
-      testId: selectedTestId,
-    }, req.organization);
-    const [results, groups, tests] = await Promise.all([
-      Result.find(query)
-        .sort({ createdAt:-1 })
-        .populate('studentId','name rollNo')
-        .populate('testId','title course subject'),
-      Group.find({ isActive:true, ...organizationScope(req.organization) }).sort({ name:1 }),
-      Test.find({ ...organizationScope(req.organization) }).select('title groups status').sort({ createdAt:-1 }),
-    ]);
+    const completedQuery = { status:completedResultStatus, ...organizationScope(req.organization) };
+    const resultTestIds = (await Result.distinct('testId', completedQuery)).filter(Boolean);
+    const tests = await Test.find({
+      _id:{ $in:resultTestIds },
+      ...organizationScope(req.organization),
+    }).select('title groups status startTime endTime createdAt').sort({ startTime:-1, createdAt:-1 });
+    const requestedTestId = String(req.query.testId || '');
+    const selectedTest = tests.find(test => String(test._id) === requestedTestId) || tests[0] || null;
+    const selectedTestId = selectedTest ? String(selectedTest._id) : '';
+    const rows = selectedTestId
+      ? await Result.find({ ...completedQuery, testId:selectedTestId })
+          .populate('studentId','name rollNo')
+          .populate('testId','title course subject')
+      : [];
+    rows.sort((left, right) => {
+      const leftRank = Number.isFinite(left.rank) && left.rank > 0 ? left.rank : Number.MAX_SAFE_INTEGER;
+      const rightRank = Number.isFinite(right.rank) && right.rank > 0 ? right.rank : Number.MAX_SAFE_INTEGER;
+      return leftRank - rightRank || Number(right.score || 0) - Number(left.score || 0)
+        || String(left.studentId?.name || '').localeCompare(String(right.studentId?.name || ''));
+    });
+    const results = rows.map((result, index) => {
+      const object = result.toObject({ virtuals:true });
+      const effectiveRank = Number.isFinite(result.rank) && result.rank > 0 ? result.rank : index + 1;
+      object.displayRank = effectiveRank;
+      object.displayPercentile = Number.isFinite(result.percentile)
+        ? Number(result.percentile)
+        : rows.length ? Number((((rows.length - effectiveRank + 1) / rows.length) * 100).toFixed(2)) : 0;
+      return object;
+    });
     res.render('admin/results', {
       title:'Batch-wise Results',
       results,
-      groups,
       tests,
-      selectedGroupId,
       selectedTestId,
+      selectedTest,
     });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
@@ -895,10 +909,11 @@ exports.exportResultsExcel = async (req, res) => {
       'Physics Marks':subjectResultValue(r, 'Physics'),
       'Chemistry Marks':subjectResultValue(r, 'Chemistry'),
       'Mathematics Marks':subjectResultValue(r, 'Mathematics'),
+      'Biology Marks':subjectResultValue(r, 'Biology'),
       'Total Marks Obtained':r.score,
       'Maximum Marks (Attempted Subjects)':r.totalMarks,
       'Full Test Marks':r.fullTotalMarks || r.totalMarks,
-      Percentage:r.totalMarks>0?((r.score/r.totalMarks)*100).toFixed(1)+'%':'0%',
+      Percentile:Number.isFinite(r.percentile) ? Number(r.percentile).toFixed(2) : '',
       Rank:r.rank||'', Status:r.status,
       Date:r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'',
     }));

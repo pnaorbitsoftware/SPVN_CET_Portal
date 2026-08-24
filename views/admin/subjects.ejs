@@ -80,7 +80,7 @@
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                   <a href="/admin/questions?subject=<%= encodeURIComponent(subject) %>" class="text-xs text-navy-600 hover:text-navy-800 font-medium">Questions</a>
-                  <a href="/admin/tests/create?subject=<%= encodeURIComponent(subject) %>" class="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Create Test</a>
+                  <a href="/admin/test-parts/create?subject=<%= encodeURIComponent(subject) %>" class="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Create Test Part</a>
                   <% if ((subjectStats[subject] || 0) === 0) { %>
                   <form action="/admin/subjects/delete" method="POST" onsubmit="return confirm('Delete &quot;<%= subject %>&quot;?')">
                     <input type="hidden" name="name" value="<%= subject %>">

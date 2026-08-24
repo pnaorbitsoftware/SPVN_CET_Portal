@@ -2,124 +2,52 @@
 <div class="flex h-screen overflow-hidden">
   <%- include('../partials/sidebar-admin') %>
   <main class="lg:ml-64 flex-1 overflow-y-auto">
-    <header class="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4">
-      <h1 class="text-xl font-bold text-gray-900">Batch-wise Results</h1>
+    <header class="sticky top-0 z-20 flex items-center gap-4 border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur lg:px-8">
+      <button onclick="openSidebar()" class="text-slate-500 lg:hidden">☰</button>
+      <div class="flex-1"><h1 class="text-xl font-bold text-slate-950">Batch-wise Ranked Results</h1><p class="text-sm text-slate-500">Select a completed test and see its rank list.</p></div>
+      <% if (selectedTestId) { %><a href="/admin/results/export?testId=<%= encodeURIComponent(selectedTestId) %>" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 font-semibold text-emerald-700">Download Excel</a><% } %>
     </header>
-    <div class="p-8">
+
+    <div class="p-5 lg:p-8">
       <%- include('../partials/flash') %>
-      <form method="GET" action="/admin/results" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
-        <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Batch</label>
-            <select id="resultBatch" name="groupId" onchange="filterResultTests()"
-              class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">All Batches</option>
-              <% groups.forEach(group => { %>
-              <option value="<%= group._id %>" <%= selectedGroupId===group._id.toString()?'selected':'' %>><%= group.name %></option>
-              <% }) %>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Test</label>
-            <select id="resultTest" name="testId"
-              class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">All Tests</option>
-              <% tests.forEach(test => { %>
-              <option value="<%= test._id %>"
-                data-groups="<%= (test.groups||[]).map(groupId=>groupId.toString()).join(',') %>"
-                <%= selectedTestId===test._id.toString()?'selected':'' %>><%= test.title %></option>
-              <% }) %>
-            </select>
-          </div>
-          <div class="flex gap-2">
-            <button type="submit" class="bg-slate-950 text-white font-semibold px-5 py-2.5 rounded-xl hover:bg-slate-800">View Results</button>
-            <a href="/admin/results" class="border border-slate-200 text-slate-600 font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50">Reset</a>
-          </div>
+      <form method="GET" action="/admin/results" class="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+        <label class="block text-lg font-bold text-slate-950">Choose test by date</label>
+        <p class="mb-3 mt-1 text-sm text-slate-500">Only tests with submitted student results appear here.</p>
+        <div class="flex flex-col gap-3 sm:flex-row">
+          <select name="testId" required class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold" onchange="this.form.submit()">
+            <% if (!tests.length) { %><option value="">No completed test results yet</option><% } %>
+            <% let lastDate=''; tests.forEach(test => { const date=new Date(test.startTime||test.createdAt); const dateKey=date.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); if(dateKey!==lastDate){ if(lastDate){ %></optgroup><% } %><optgroup label="<%= dateKey %>"><% lastDate=dateKey; } %><option value="<%= test._id %>" <%= selectedTestId===String(test._id)?'selected':'' %>><%= test.title %></option><% }); if(lastDate){ %></optgroup><% } %>
+          </select>
+          <button class="rounded-xl bg-navy-950 px-6 py-3 font-bold text-white">Show Rank List</button>
         </div>
       </form>
 
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 class="font-semibold text-gray-900">Completed Results (<%= results.length %>)</h3>
-            <p class="text-xs text-slate-400 mt-0.5">Select a batch and test to view or download its complete result.</p>
-          </div>
-          <div class="flex gap-2">
-            <input type="text" placeholder="Search..." onkeyup="filterTable(this.value,'resultsTable')"
-              class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 w-40" />
-            <a href="/admin/results/export?groupId=<%= encodeURIComponent(selectedGroupId) %>&testId=<%= encodeURIComponent(selectedTestId) %>"
-              class="bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 whitespace-nowrap">Download Excel</a>
-          </div>
-        </div>
+      <% if (selectedTest) { %>
+      <section class="mb-5 rounded-2xl bg-gradient-to-r from-navy-950 to-indigo-900 p-6 text-white shadow-card-lg">
+        <div class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-semibold text-indigo-200">SELECTED TEST</p><h2 class="mt-1 text-2xl font-bold"><%= selectedTest.title %></h2><p class="mt-2 text-indigo-200"><%= new Date(selectedTest.startTime||selectedTest.createdAt).toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}) %></p></div><div class="rounded-xl bg-white/10 px-5 py-3 text-center"><strong class="block text-2xl"><%= results.length %></strong><span class="text-sm text-indigo-200">Students ranked</span></div></div>
+      </section>
+      <% } %>
+
+      <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
         <div class="overflow-x-auto">
-          <table class="w-full text-xs sm:text-sm" id="resultsTable">
-            <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
-              <tr>
-                <th class="px-6 py-3 text-left">Student</th>
-                <th class="px-6 py-3 text-left">Roll No</th>
-                <th class="px-6 py-3 text-left">Test</th>
-                <th class="px-6 py-3 text-left">Physics</th>
-                <th class="px-6 py-3 text-left">Chemistry</th>
-                <th class="px-6 py-3 text-left">Mathematics</th>
-                <th class="px-6 py-3 text-left">Total</th>
-                <th class="px-6 py-3 text-left">%</th>
-                <th class="px-6 py-3 text-left">Rank</th>
-                <th class="px-6 py-3 text-left">Date</th>
-                <th class="px-6 py-3 text-left">Action</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <% results.forEach(r => { %>
-              <% const pct = r.totalMarks > 0 ? ((r.score/r.totalMarks)*100).toFixed(1) : 0; %>
-              <% const physics=r.subjectScores?.Physics, chemistry=r.subjectScores?.Chemistry, mathematics=r.subjectScores?.Mathematics; %>
-              <tr class="hover:bg-gray-50 transition-colors result-row">
-                <td class="px-6 py-4 font-medium text-gray-900"><%= r.student?.name %></td>
-                <td class="px-6 py-4 font-mono text-gray-500 text-xs"><%= r.student?.rollNo %></td>
-                <td class="px-6 py-4 text-gray-600 max-w-[200px] truncate"><%= r.test?.title %></td>
-                <% [physics,chemistry,mathematics].forEach(subjectResult => { %>
-                <td class="px-6 py-4 font-semibold <%= subjectResult?.status==='ABSENT'?'text-rose-600':'text-slate-700' %>">
-                  <%= subjectResult?.status==='ABSENT' ? 'ABSENT' : subjectResult ? `${subjectResult.marks||0}/${subjectResult.total||0}` : '—' %>
-                </td>
-                <% }) %>
-                <td class="px-6 py-4 font-bold text-gray-900"><%= r.score %>/<%= r.totalMarks %></td>
-                <td class="px-6 py-4">
-                  <span class="font-semibold <%= pct >= 60 ? 'text-green-600' : pct >= 40 ? 'text-yellow-600' : 'text-red-500' %>"><%= pct %>%</span>
-                </td>
-                <td class="px-6 py-4 text-gray-600"><%= r.rank || '—' %></td>
-                <td class="px-6 py-4 text-gray-400 text-xs"><%= r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-IN') : '—' %></td>
-                <td class="px-6 py-4">
-                  <a href="/results/<%= r.id %>" class="text-primary-600 hover:underline text-xs font-medium mr-2">View</a>
-                  <a href="/results/<%= r.id %>/pdf" class="text-red-500 hover:underline text-xs font-medium">PDF</a>
-                </td>
+          <table class="w-full min-w-[980px]">
+            <thead class="bg-slate-50 text-sm font-bold uppercase tracking-wide text-slate-500"><tr><th class="px-5 py-4 text-center">Rank</th><th class="px-5 py-4 text-left">Student</th><th class="px-5 py-4 text-center">Physics</th><th class="px-5 py-4 text-center">Chemistry</th><th class="px-5 py-4 text-center">Mathematics</th><th class="px-5 py-4 text-center">Biology</th><th class="px-5 py-4 text-center">Total</th><th class="px-5 py-4 text-center">Percentile</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+              <% results.forEach(result => { const subjects=['Physics','Chemistry','Mathematics','Biology']; %>
+              <tr class="transition hover:bg-slate-50 <%= result.displayRank===1?'bg-amber-50/50':'' %>">
+                <td class="px-5 py-4 text-center"><span class="inline-flex h-10 min-w-10 items-center justify-center rounded-xl font-bold <%= result.displayRank===1?'bg-amber-400 text-slate-950':result.displayRank===2?'bg-slate-300 text-slate-800':result.displayRank===3?'bg-orange-200 text-orange-900':'bg-slate-100 text-slate-700' %>">#<%= result.displayRank %></span></td>
+                <td class="px-5 py-4"><strong class="block text-base text-slate-950"><%= result.studentId?.name || 'Student' %></strong><span class="text-sm text-slate-400"><%= result.studentId?.rollNo || '' %></span></td>
+                <% subjects.forEach(subject => { const score=result.subjectScores?.[subject]; %><td class="px-5 py-4 text-center font-semibold <%= score?.status==='ABSENT'?'text-rose-600':'text-slate-700' %>"><%= score?.status==='ABSENT'?'Absent':score?`${Number(score.marks||0)}/${Number(score.total||0)}`:'—' %></td><% }) %>
+                <td class="px-5 py-4 text-center"><strong class="text-lg text-slate-950"><%= Number(result.score||0) %></strong><span class="text-sm text-slate-400"> / <%= Number(result.fullTotalMarks||result.totalMarks||0) %></span></td>
+                <td class="px-5 py-4 text-center"><span class="rounded-xl bg-indigo-50 px-3 py-2 text-lg font-bold text-indigo-700"><%= Number(result.displayPercentile).toFixed(2) %></span></td>
               </tr>
               <% }) %>
-              <% if (results.length === 0) { %>
-              <tr><td colspan="12" class="px-6 py-12 text-center text-gray-400">No completed results for this batch/test selection.</td></tr>
-              <% } %>
+              <% if (!results.length) { %><tr><td colspan="8" class="px-6 py-20 text-center"><div class="text-4xl">🏆</div><h3 class="mt-3 text-lg font-bold text-slate-700">No submitted results for this test</h3><p class="mt-1 text-slate-400">The rank list will appear here after students submit.</p></td></tr><% } %>
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 </div>
-<script>
-function filterTable(q, id) {
-  document.querySelectorAll(`#${id} .result-row`).forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
-  });
-}
-function filterResultTests() {
-  const groupId = document.getElementById('resultBatch').value;
-  const testSelect = document.getElementById('resultTest');
-  Array.from(testSelect.options).forEach(option => {
-    if (!option.value) return;
-    const groupIds = (option.dataset.groups || '').split(',').filter(Boolean);
-    option.hidden = Boolean(groupId) && !groupIds.includes(groupId);
-  });
-  if (testSelect.selectedOptions[0]?.hidden) testSelect.value = '';
-}
-filterResultTests();
-</script>
-</body>
-</html>
+</body></html>

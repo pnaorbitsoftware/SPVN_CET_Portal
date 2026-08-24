@@ -10,6 +10,8 @@ const reports         = require('../controllers/reportController');
 const liveMonitor     = require('../controllers/liveMonitorController');
 const recalculation   = require('../controllers/recalculationController');
 const pyq             = require('../controllers/pyqController');
+const testParts       = require('../controllers/testPartController');
+const testWizard      = require('../controllers/testWizardController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -97,10 +99,30 @@ router.post('/question-papers/:id/archive',     ...guard, questionPapers.archive
 router.post('/question-papers/:id/delete',      ...guard, questionPapers.remove);
 router.get('/question-papers/:id/create-test',  ...guard, questionPapers.createTest);
 
+// Subject-wise reusable test parts
+router.get('/test-parts',                     ...guard, testParts.list);
+router.get('/test-parts/create',              ...guard, testParts.getCreate);
+router.post('/test-parts',                    ...guard, testParts.create);
+router.get('/test-parts/:id/edit',            ...guard, testParts.getEdit);
+router.post('/test-parts/:id',                ...guard, testParts.update);
+router.post('/test-parts/:id/questions',      ...guard, testParts.addQuestion);
+router.post('/test-parts/:id/archive',        ...guard, testParts.archive);
+
 // Tests
 router.get('/tests',                      ...guard, c.getTests);
 router.get('/tests/upload',                ...guard, (req, res) => res.redirect('/admin/questions/smart-import'));
-router.get('/tests/create',               ...guard, c.getCreateTest);
+router.get('/tests/create',               ...guard, testWizard.start);
+router.get('/tests/create/legacy',        ...guard, c.getCreateTest);
+router.get('/tests/create/parts',         ...guard, testWizard.getParts);
+router.post('/tests/create/parts',        ...guard, testWizard.saveParts);
+router.get('/tests/create/identity',      ...guard, testWizard.getIdentity);
+router.post('/tests/create/identity',     ...guard, testWizard.saveIdentity);
+router.get('/tests/create/audience',      ...guard, testWizard.getAudience);
+router.post('/tests/create/audience',     ...guard, testWizard.saveAudience);
+router.get('/tests/create/delivery',      ...guard, testWizard.getDelivery);
+router.post('/tests/create/delivery',     ...guard, testWizard.saveDelivery);
+router.get('/tests/create/review',        ...guard, testWizard.getReview);
+router.post('/tests/create/finish',       ...guard, testWizard.finish);
 router.post('/tests',                     ...guard, c.createTest);
 router.post('/tests/upload-pdf',          ...guard, c.uploadPdfTest);
 router.get('/tests/template/pdf',         ...guard, c.downloadPdfTestTemplate);

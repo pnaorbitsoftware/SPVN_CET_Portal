@@ -262,7 +262,7 @@ exports.createTest = async (req, res) => {
   const paper = await findPaper(req);
   if (!paper) { req.flash('error','Question paper not found.'); return res.redirect('/admin/question-papers'); }
   if (paper.status === 'archived') { req.flash('error','Restore this paper before creating a test from it.'); return res.redirect(`/admin/question-papers/${paper._id}`); }
-  return res.redirect(`/admin/tests/create?paperId=${paper._id}`);
+  return res.redirect(`/admin/tests/create/legacy?paperId=${paper._id}`);
 };
 
 exports.searchQuestions = async (req, res) => {

@@ -46,6 +46,7 @@ const testSchema = new mongoose.Schema({
   questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
   questionConfigs: { type: [testQuestionConfigSchema], default: [] },
   sourceQuestionPaper: { type:mongoose.Schema.Types.ObjectId, ref:'QuestionPaper', default:null },
+  sourceTestParts: [{ type:mongoose.Schema.Types.ObjectId, ref:'TestPart' }],
   // Groups assigned (replaces TestGroup join table)
   groups:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
   // Anti-cheat

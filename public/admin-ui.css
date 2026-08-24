@@ -1,0 +1,56 @@
+/* Admin readability layer. Scoped by the sidebar sibling so landing/auth pages are untouched. */
+[data-admin-sidebar] {
+  font-size: 16px !important;
+}
+
+[data-admin-sidebar] .text-sm {
+  font-size: 0.96rem !important;
+  line-height: 1.45rem !important;
+}
+
+[data-admin-sidebar] .text-xs,
+[data-admin-sidebar] .text-\[13px\] {
+  font-size: 0.86rem !important;
+  line-height: 1.25rem !important;
+}
+
+[data-admin-sidebar] .text-\[10px\],
+[data-admin-sidebar] .text-\[11px\] {
+  font-size: 0.78rem !important;
+  line-height: 1.1rem !important;
+}
+
+[data-admin-sidebar] ~ main {
+  font-size: 17px !important;
+  line-height: 1.55;
+}
+
+[data-admin-sidebar] ~ main .text-sm {
+  font-size: 1rem !important;
+  line-height: 1.55rem !important;
+}
+
+[data-admin-sidebar] ~ main .text-xs,
+[data-admin-sidebar] ~ main .text-\[13px\] {
+  font-size: 0.9rem !important;
+  line-height: 1.35rem !important;
+}
+
+[data-admin-sidebar] ~ main .text-\[10px\],
+[data-admin-sidebar] ~ main .text-\[11px\] {
+  font-size: 0.82rem !important;
+  line-height: 1.2rem !important;
+}
+
+[data-admin-sidebar] ~ main input,
+[data-admin-sidebar] ~ main select,
+[data-admin-sidebar] ~ main textarea,
+[data-admin-sidebar] ~ main button {
+  font-size: 1rem;
+}
+
+@media (max-width: 640px) {
+  [data-admin-sidebar] ~ main {
+    font-size: 16px;
+  }
+}

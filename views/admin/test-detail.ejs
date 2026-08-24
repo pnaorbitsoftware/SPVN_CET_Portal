@@ -45,6 +45,9 @@
 
       <!-- Anti-cheat settings badge row -->
       <div class="flex flex-wrap gap-3 mb-6">
+        <% if ((test.sourceTestParts||[]).length) { %>
+        <div class="flex flex-wrap items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 text-sm"><span class="font-bold text-emerald-800">Combined from:</span><% test.sourceTestParts.forEach(part => { %><span class="rounded-lg bg-white px-2 py-1 font-semibold text-emerald-700"><%= part.subject %> · <%= part.name %></span><% }) %></div>
+        <% } %>
         <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5 text-sm"><span class="font-bold text-indigo-700"><%= (test.testType||'CUSTOM').replaceAll('_',' ') %></span><span class="text-indigo-400">·</span><span class="text-indigo-700"><%= test.patternSnapshot?.name||'Legacy Custom Pattern' %></span><span class="text-indigo-400">·</span><span class="text-indigo-700"><%= test.rankingSchemaSnapshot?.name||'Score, then Time' %></span></div>
         <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm shadow-sm"><span>🔑</span><span class="text-slate-600">Test Password:</span><strong class="<%= test.testAccessEnabled?'text-emerald-600':'text-slate-400' %>"><%= test.testAccessEnabled?'ENABLED':'OFF' %></strong></div>
         <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm shadow-sm"><span>📊</span><span class="text-slate-600">Student Results:</span><strong class="<%= releaseLabel(test)==='Available'?'text-emerald-600':'text-amber-600' %>"><%= releaseLabel(test) %></strong></div>

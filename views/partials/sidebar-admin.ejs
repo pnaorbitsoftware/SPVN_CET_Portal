@@ -1,7 +1,7 @@
 <%# Mobile overlay %>
 <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-20 lg:hidden" onclick="closeSidebar()"></div>
 
-<aside id="mainSidebar" class="fixed inset-y-0 left-0 w-64 bg-navy-950 text-white flex flex-col z-30 shadow-2xl
+<aside id="mainSidebar" data-admin-sidebar class="fixed inset-y-0 left-0 w-64 bg-navy-950 text-white flex flex-col z-30 shadow-2xl
   transition-transform duration-300 ease-in-out" style="transform: translateX(-100%);">
 
   <%# Logo %>
@@ -61,6 +61,10 @@
     <a href="/admin/question-papers" class="sidebar-link group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/70 hover:text-white transition-colors">
       <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M7 3h8l4 4v14H7a2 2 0 01-2-2V5a2 2 0 012-2zm8 0v5h5M9 12h6m-6 4h6"/></svg>
       Question Papers
+    </a>
+    <a href="/admin/test-parts" class="sidebar-link group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/70 hover:text-white transition-colors">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 3h8a2 2 0 012 2v3a2 2 0 002 2h1v8a3 3 0 01-3 3H6a3 3 0 01-3-3v-8h1a2 2 0 002-2V5a2 2 0 012-2zm0 0v5a4 4 0 01-4 4m12-9v5a4 4 0 004 4M8 15h8"/></svg>
+      Subject Test Parts
     </a>
     <a href="/admin/tests" class="sidebar-link group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/70 hover:text-white transition-colors">
       <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
