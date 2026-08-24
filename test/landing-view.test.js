@@ -12,6 +12,17 @@ test('landing page exposes accessible portal paths and verified contact placehol
   assert.match(view, /officialContact\.phone/);
   assert.match(view, /officialContact\.email/);
   assert.match(view, /alt="The entrance and campus building of Shardabai Pawar Vidya Niketan/);
+  assert.match(view, /href="<%= campusMap\.url %>"/);
+  assert.match(view, /aria-label="Open <%= campusMap\.label %> in Google Maps"/);
+  assert.match(view, /target="_blank"/);
+});
+
+test('landing campus map uses the official school name and supports deployment override', () => {
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  assert.match(app, /process\.env\.COLLEGE_MAP_URL/);
+  assert.match(app, /google\.com\/maps\/search\/\?api=1&query=/);
+  assert.match(app, /Shardabai%20Pawar%20Vidya%20Niketan/);
+  assert.match(app, /query_place_id=ChIJ0wZeTvugwzsRNpZjXEek0VE/);
 });
 
 test('landing animation settles the logo into the navbar and respects reduced motion', () => {

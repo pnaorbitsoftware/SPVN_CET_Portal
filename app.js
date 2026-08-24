@@ -126,6 +126,10 @@ app.get('/', (req, res) => {
       sourceUrl: 'https://marathi.abplive.com/news/pune/baramati-news-shardabai-pawar-vidyaniketan-shardanagar-school-ranks-second-in-the-state-1261974',
       sourceLabel: 'ABP Majha',
     },
+    campusMap: {
+      url: process.env.COLLEGE_MAP_URL || 'https://www.google.com/maps/search/?api=1&query=Shardabai%20Pawar%20Vidya%20Niketan%20%28SPVN%29%2C%20Shardanagar&query_place_id=ChIJ0wZeTvugwzsRNpZjXEek0VE',
+      label: 'Shardabai Pawar Vidya Mandir & Vidya Niketan, Shardanagar, Baramati',
+    },
   });
 });
 

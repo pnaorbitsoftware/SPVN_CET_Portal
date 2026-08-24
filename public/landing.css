@@ -260,12 +260,15 @@ img { display: block; max-width: 100%; }
 .campus-fallback span { font-family: Manrope, sans-serif; font-size: 4rem; font-weight: 800; letter-spacing: .15em; }
 .campus-fallback small { margin-top: .6rem; letter-spacing: .22em; text-transform: uppercase; }
 .campus-shade { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 48%, rgba(2,29,20,.75) 100%); pointer-events: none; }
-.campus-visual figcaption { position: absolute; z-index: 2; left: 1.5rem; bottom: 1.5rem; display: flex; align-items: center; gap: .8rem; color: white; }
-.campus-visual figcaption span:nth-child(2) { display: flex; flex-direction: column; }
-.campus-visual figcaption strong { font-family: Manrope, sans-serif; font-size: .98rem; }
-.campus-visual figcaption small { margin-top: .16rem; color: rgba(255,255,255,.68); font-size: .72rem; }
+.campus-location { position: absolute; z-index: 5; left: 1.25rem; bottom: 1.35rem; display: flex; align-items: center; gap: .8rem; max-width: calc(100% - 2.5rem); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: .48rem .68rem .48rem .48rem; color: white; background: rgba(4,43,30,.42); box-shadow: 0 10px 28px rgba(2,29,20,.2); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: transform .2s ease, border-color .2s ease, background .2s ease; }
+.campus-location:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.42); background: rgba(4,43,30,.66); }
+.campus-location:focus-visible { outline: 3px solid var(--gold-400); outline-offset: 3px; }
+.campus-location > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
+.campus-location strong { font-family: Manrope, sans-serif; font-size: .98rem; }
+.campus-location small { margin-top: .16rem; overflow: hidden; color: rgba(255,255,255,.72); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .campus-pin { width: 2.7rem; height: 2.7rem; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.24); border-radius: 50%; background: rgba(255,255,255,.14); backdrop-filter: blur(10px); }
 .campus-pin svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: white; stroke-width: 1.6; }
+.campus-map-cue { margin-left: .25rem; color: var(--gold-300); font-size: .62rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .legacy-badge { position: absolute; z-index: 3; top: 1.5rem; right: 1.5rem; width: 5.7rem; height: 5.7rem; display: grid; place-content: center; text-align: center; border-radius: 50%; background: var(--gold-400); color: var(--forest-950); box-shadow: 0 12px 30px rgba(4, 43, 30, .18); }
 .legacy-badge strong { font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; }
 .legacy-badge span { font-family: Manrope, sans-serif; font-size: 1.22rem; font-weight: 800; }
@@ -427,6 +430,8 @@ img { display: block; max-width: 100%; }
   .hero-facts strong { font-size: 1.15rem; }
   .hero-facts span { font-size: .61rem; }
   .campus-visual { min-height: 29rem; border-radius: 1.5rem 1.5rem 5rem 1.5rem; }
+  .campus-location { left: .85rem; bottom: 1.15rem; max-width: calc(100% - 1.7rem); }
+  .campus-map-cue { display: none; }
   .legacy-badge { width: 4.7rem; height: 4.7rem; }
   .marquee-track { justify-content: flex-start; gap: 1.5rem; overflow: hidden; }
   .values-grid, .access-grid { grid-template-columns: 1fr; }
