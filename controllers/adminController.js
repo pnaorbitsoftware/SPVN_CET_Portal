@@ -1,5 +1,5 @@
 // controllers/adminController.js — MongoDB / Mongoose
-const { User, Group, Question, QuestionPaper, Test, GroupMember, Result, Notification, Topic, StudentDocument } = require('../models');
+const { User, Group, Question, QuestionPaper, Test, GroupMember, Result, ResultRecalculation, Notification, Topic, StudentDocument } = require('../models');
 const xlsx = require('xlsx');
 const fs   = require('fs');
 const path = require('path');
@@ -726,13 +726,20 @@ exports.createTest = async (req, res) => {
 
 exports.getTestDetail = async (req, res) => {
   try {
-    const [test, results] = await Promise.all([
-      Test.findById(req.params.id).populate('questions').populate('groups','name'),
+    const test = await Test.findOne({
+      _id:req.params.id,
+      ...organizationScope(req.organization),
+    }).populate('questions').populate('groups','name');
+    if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
+    const [results, recalculations] = await Promise.all([
       Result.find({ testId:req.params.id, status:{ $in:['submitted','auto_submitted'] } })
         .populate('studentId','name rollNo').sort({ rank:1, score:-1, timeTaken:1 }),
+      ResultRecalculation.find({ testId:test._id, ...organizationScope(req.organization) })
+        .populate('initiatedBy','name email').sort({ createdAt:-1 }).limit(10),
     ]);
-    if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
-    res.render('admin/test-detail', { title:test.title, test, results, timingLabel, releaseLabel });
+    res.render('admin/test-detail', {
+      title:test.title, test, results, recalculations, timingLabel, releaseLabel, answerForDisplay,
+    });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 

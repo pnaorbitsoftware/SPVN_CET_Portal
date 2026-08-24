@@ -8,6 +8,7 @@ const autoPapers      = require('../controllers/autoPaperController');
 const examConfig      = require('../controllers/examConfigurationController');
 const reports         = require('../controllers/reportController');
 const liveMonitor     = require('../controllers/liveMonitorController');
+const recalculation   = require('../controllers/recalculationController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -108,6 +109,7 @@ router.post('/tests/:id/edit',            ...guard, c.updateTest);
 router.post('/tests/:id/delete',          ...guard, c.deleteTest);
 router.post('/tests/:id/publish',         ...guard, c.publishTest);
 router.post('/tests/:id/results/release', ...guard, c.releaseTestResults);
+router.post('/tests/:id/results/recalculate', ...guard, recalculation.recalculate);
 
 // Results
 router.get('/results',        ...guard, c.getAllResults);

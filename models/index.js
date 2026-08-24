@@ -13,9 +13,10 @@ const Organization    = require('./Organization');
 const QuestionPaper   = require('./QuestionPaper');
 const RankingSchema   = require('./RankingSchema');
 const TestPattern     = require('./TestPattern');
+const ResultRecalculation = require('./ResultRecalculation');
 
 module.exports = {
   User, Group, GroupMember, Question, Test,
   Result, Notification, Topic, StudentDocument, QuestionImport, Organization, QuestionPaper,
-  RankingSchema, TestPattern,
+  RankingSchema, TestPattern, ResultRecalculation,
 };

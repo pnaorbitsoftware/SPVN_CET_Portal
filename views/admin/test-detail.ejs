@@ -89,7 +89,7 @@
             <div class="px-5 py-3 hover:bg-slate-50">
               <p class="math-clamp-2 text-xs text-slate-800 leading-snug"><span><%= i+1 %>.</span> <span class="math-content"><%= q.question %></span></p>
               <div class="flex gap-2 mt-1">
-                <span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Ans: <%= q.correctAnswer %></span>
+                <span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Ans: <%= answerForDisplay(q) %></span>
                 <span class="text-xs text-slate-400"><%= q.subject %></span>
               </div>
             </div>
@@ -130,8 +130,45 @@
           <% } %>
         </div>
       </div>
+
+      <% if (results.length) { %>
+      <section class="mt-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 class="font-semibold text-slate-900">Result Recalculation Audit</h3>
+            <p class="text-xs text-slate-500 mt-1">Use after correcting an answer key, marks, or bonus rule. Saved answers and submission times are preserved.</p>
+          </div>
+          <button type="button" onclick="document.getElementById('recalculationModal').classList.remove('hidden')" class="bg-amber-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-amber-600">Recalculate Results</button>
+        </div>
+        <% if (!recalculations.length) { %>
+        <p class="px-6 py-6 text-sm text-slate-400">No recalculation has been run for this test.</p>
+        <% } else { %>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-5 py-3 text-left">When</th><th class="px-5 py-3 text-left">Admin</th><th class="px-5 py-3 text-left">Reason</th><th class="px-5 py-3 text-left">Status</th><th class="px-5 py-3 text-left">Impact</th></tr></thead>
+            <tbody class="divide-y">
+              <% recalculations.forEach(run => { %>
+              <tr><td class="px-5 py-3 whitespace-nowrap"><%= new Date(run.createdAt).toLocaleString('en-IN') %></td><td class="px-5 py-3"><%= run.initiatedBy?.name || run.initiatedBy?.email || 'Admin' %></td><td class="px-5 py-3 max-w-sm"><%= run.reason %></td><td class="px-5 py-3"><span class="px-2 py-1 rounded-full text-xs font-semibold <%= run.status==='COMPLETED'?'bg-emerald-100 text-emerald-700':run.status==='FAILED'?'bg-rose-100 text-rose-700':'bg-amber-100 text-amber-700' %>"><%= run.status %></span></td><td class="px-5 py-3"><%= run.affectedResults %> checked, <%= run.changedResults %> changed</td></tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+        <% } %>
+      </section>
+      <% } %>
     </div>
   </main>
+</div>
+<div id="recalculationModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+    <h3 class="font-bold text-slate-900 text-lg">Recalculate submitted results?</h3>
+    <p class="text-sm text-slate-500 mt-2">Scores, subject/topic analysis, ranks and percentiles will be recomputed from the current answer key and marking rules. This action is recorded.</p>
+    <form action="/admin/tests/<%= test.id %>/results/recalculate" method="POST" class="mt-5 space-y-4" onsubmit="return confirm('Run the verified recalculation now?')">
+      <label class="block"><span class="text-sm font-semibold text-slate-700">Reason</span><textarea name="reason" minlength="10" maxlength="1000" required rows="3" class="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2" placeholder="Example: Question 12 answer key corrected after review"></textarea></label>
+      <label class="block"><span class="text-sm font-semibold text-slate-700">Type RECALCULATE to confirm</span><input name="confirmation" required autocomplete="off" pattern="RECALCULATE" class="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 font-mono" /></label>
+      <div class="flex gap-3"><button class="flex-1 bg-amber-500 text-white font-semibold py-3 rounded-xl hover:bg-amber-600">Confirm Recalculation</button><button type="button" onclick="document.getElementById('recalculationModal').classList.add('hidden')" class="flex-1 border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl">Cancel</button></div>
+    </form>
+  </div>
 </div>
 <!-- Delete Test Modal -->
 <div id="deleteTestModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
