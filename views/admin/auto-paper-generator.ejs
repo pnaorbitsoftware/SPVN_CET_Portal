@@ -1,0 +1,125 @@
+<%- include('../partials/head') %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/sidebar-admin') %>
+  <main class="lg:ml-64 flex-1 overflow-y-auto">
+    <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur lg:px-8">
+      <a href="/admin/question-papers" class="text-slate-400">←</a>
+      <div class="flex-1"><h1 class="text-lg font-bold text-slate-900">Auto Paper Generator</h1><p class="text-xs text-slate-400">Exact inventory, difficulty and total-mark validation</p></div>
+    </header>
+    <div class="mx-auto max-w-6xl p-5 lg:p-8">
+      <%- include('../partials/flash') %>
+      <form id="generatorForm" action="/admin/question-papers/generate/save" method="POST" class="space-y-6" onsubmit="return validateSave()">
+        <section class="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 class="mb-4 font-bold text-slate-900">1. Generation Blueprint</h2>
+          <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <label class="text-xs font-bold text-slate-600">Course *<select id="course" name="course" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"><option value="">Choose</option><% COURSES.forEach(c=>{ %><option value="<%= c %>"><%= c %></option><% }) %></select></label>
+            <label class="text-xs font-bold text-slate-600">Subject *<select id="subject" name="subject" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"><option value="">Choose</option><% SUBJECTS.forEach(s=>{ %><option value="<%= s %>"><%= s %></option><% }) %></select></label>
+            <label class="text-xs font-bold text-slate-600">Total Questions *<input id="totalQuestions" name="totalQuestions" type="number" min="1" max="500" value="10" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"/></label>
+            <label class="text-xs font-bold text-slate-600">Total Marks *<input id="totalMarks" name="totalMarks" type="number" min="0.01" max="10000" step="0.01" value="10" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"/></label>
+            <label class="text-xs font-bold text-emerald-700">Easy Count<input id="easyCount" name="easyCount" type="number" min="0" max="500" value="3" class="mt-1.5 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 font-normal"/></label>
+            <label class="text-xs font-bold text-amber-700">Medium Count<input id="mediumCount" name="mediumCount" type="number" min="0" max="500" value="5" class="mt-1.5 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 font-normal"/></label>
+            <label class="text-xs font-bold text-rose-700">Hard Count<input id="hardCount" name="hardCount" type="number" min="0" max="500" value="2" class="mt-1.5 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 font-normal"/></label>
+            <div class="rounded-xl bg-slate-50 p-3 text-xs"><p class="font-bold text-slate-600">Distribution Check</p><p id="distributionCheck" class="mt-2 text-slate-500">3 + 5 + 2 = 10</p></div>
+            <label class="col-span-2 text-xs font-bold text-slate-600">Topics / Chapters<input id="topics" name="topics" list="topicOptions" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" placeholder="Comma-separated; blank means all"/><datalist id="topicOptions"><% topics.forEach(t=>{ %><option value="<%= t %>"></option><% }) %></datalist></label>
+            <label class="col-span-2 text-xs font-bold text-slate-600">Subtopics<input id="subtopics" name="subtopics" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" placeholder="Comma-separated; blank means all"/></label>
+            <label class="col-span-2 text-xs font-bold text-slate-600">Required Question Tags<input id="questionTags" name="questionTags" list="tagOptions" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" placeholder="Every listed tag must match"/><datalist id="tagOptions"><% tags.forEach(t=>{ %><option value="<%= t %>"></option><% }) %></datalist></label>
+            <label class="col-span-2 text-xs font-bold text-slate-600">Excluded Question IDs<textarea id="excludedQuestionIds" name="excludedQuestionIds" rows="2" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-mono font-normal" placeholder="Comma-separated IDs"></textarea></label>
+          </div>
+          <fieldset class="mt-4"><legend class="text-xs font-bold text-slate-600">Allowed Question Types</legend><div class="mt-2 flex flex-wrap gap-2"><% QUESTION_TYPES.forEach(type=>{ %><label class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold"><input type="checkbox" name="questionTypes" value="<%= type %>" checked class="mr-2 rounded"/><%= type.replaceAll('_',' ') %></label><% }) %></div></fieldset>
+          <div class="mt-5 flex gap-2"><button type="button" id="previewButton" onclick="generatePreview()" class="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white">Generate Preview</button><button type="button" id="regenerateButton" onclick="generatePreview()" disabled class="rounded-xl border border-indigo-200 px-5 py-3 text-sm font-bold text-indigo-700 disabled:opacity-40">Regenerate</button></div>
+          <div id="generatorError" class="mt-4 hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"></div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-6">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-bold text-slate-900">2. Preview &amp; Adjust</h2><p class="text-xs text-slate-400">Replace, remove, or add an exact Question ID before saving.</p></div><div id="selectionSummary" class="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600">Generate a preview first</div></div>
+          <div class="mb-4 flex gap-2"><input id="manualQuestionId" placeholder="Exact Question ID to add manually" class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono"/><button type="button" onclick="addManualQuestion()" class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white">Add Question</button></div>
+          <div id="selectionWarning" class="mb-4 hidden rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800"></div>
+          <div id="generatedQuestions" class="space-y-3"><p class="rounded-xl border border-dashed border-slate-300 py-14 text-center text-sm text-slate-400">No preview generated.</p></div>
+          <div id="selectedInputs"></div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 class="mb-4 font-bold text-slate-900">3. Save Reusable Paper</h2>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="text-xs font-bold text-slate-600 md:col-span-2">Paper Title *<input name="title" required maxlength="200" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" placeholder="e.g. Auto Physics Mock 01"/></label>
+            <label class="text-xs font-bold text-slate-600">Paper Code<input name="code" maxlength="60" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-mono font-normal uppercase" placeholder="Auto-generated when blank"/></label>
+            <label class="text-xs font-bold text-slate-600">Status<select name="status" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"><option value="draft">Draft</option><option value="ready">Ready</option></select></label>
+            <label class="text-xs font-bold text-slate-600 md:col-span-2">Paper Tags<input name="tags" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" placeholder="Mock, Practice, CET-2026"/></label>
+            <label class="text-xs font-bold text-slate-600 md:col-span-2">Description<textarea name="description" rows="2" maxlength="2000" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal"></textarea></label>
+          </div>
+          <button id="saveButton" disabled class="mt-5 w-full rounded-xl bg-navy-950 py-3.5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">Save Generated Question Paper</button>
+        </section>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+let selectedQuestions=[];
+const field=id=>document.getElementById(id);
+const csv=value=>String(value||'').split(',').map(item=>item.trim()).filter(Boolean);
+
+function rulesFromForm(){
+  return {
+    course:field('course').value, subject:field('subject').value,
+    totalQuestions:Number(field('totalQuestions').value), totalMarks:Number(field('totalMarks').value),
+    easyCount:Number(field('easyCount').value), mediumCount:Number(field('mediumCount').value), hardCount:Number(field('hardCount').value),
+    topics:csv(field('topics').value), subtopics:csv(field('subtopics').value), questionTags:csv(field('questionTags').value),
+    excludedQuestionIds:csv(field('excludedQuestionIds').value),
+    questionTypes:[...document.querySelectorAll('input[name="questionTypes"]:checked')].map(input=>input.value),
+  };
+}
+
+function showError(message,details){
+  const box=field('generatorError'); box.classList.remove('hidden'); box.replaceChildren();
+  const title=document.createElement('p'); title.className='font-bold'; title.textContent=message; box.appendChild(title);
+  if(details&&Object.keys(details).length){const pre=document.createElement('pre');pre.className='mt-2 overflow-x-auto whitespace-pre-wrap text-xs';pre.textContent=JSON.stringify(details,null,2);box.appendChild(pre);}
+}
+
+async function generatePreview(){
+  field('generatorError').classList.add('hidden'); field('previewButton').disabled=true;
+  try{
+    const response=await fetch('/admin/question-papers/generate/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:rulesFromForm()})});
+    const data=await response.json(); if(!response.ok) throw data;
+    selectedQuestions=data.questions; renderSelection(); field('regenerateButton').disabled=false;
+  }catch(error){showError(error.error||'Generation failed.',error.details);}
+  finally{field('previewButton').disabled=false;}
+}
+
+function textNode(tag,className,text){const node=document.createElement(tag);node.className=className||'';node.textContent=text;return node;}
+function renderSelection(){
+  const root=field('generatedQuestions'), inputs=field('selectedInputs'); root.replaceChildren();inputs.replaceChildren();
+  const difficulty={Easy:0,Medium:0,Hard:0},types={};let marks=0;
+  selectedQuestions.forEach((question,index)=>{
+    difficulty[question.difficulty]=(difficulty[question.difficulty]||0)+1;types[question.questionType]=(types[question.questionType]||0)+1;marks+=Number(question.marks)||0;
+    const card=textNode('article','rounded-xl border border-slate-200 p-4','');
+    const row=textNode('div','flex items-start gap-3',''); row.appendChild(textNode('span','flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-xs font-bold text-indigo-700',String(index+1)));
+    const content=textNode('div','min-w-0 flex-1','');content.appendChild(textNode('p','text-sm font-medium text-slate-800',question.question));content.appendChild(textNode('p','mt-1 text-[10px] text-slate-400',`${question.subject} · ${question.topic||'No topic'} · ${question.difficulty} · ${question.questionType.replaceAll('_',' ')} · ${question.marks} mark(s)`));
+    const details=textNode('details','mt-2 rounded-lg bg-slate-50 p-2','');details.appendChild(textNode('summary','cursor-pointer text-[10px] font-bold text-indigo-700','Answer & explanation'));details.appendChild(textNode('p','mt-2 text-xs font-semibold text-emerald-700',`Answer: ${question.answer||'—'}`));details.appendChild(textNode('p','mt-1 whitespace-pre-wrap text-xs text-slate-600',question.explanation||'No explanation saved.'));content.appendChild(details);
+    const actions=textNode('div','flex shrink-0 flex-col gap-2','');const replace=textNode('button','rounded-lg bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700','Replace');replace.type='button';replace.onclick=()=>replaceQuestion(question.id);const remove=textNode('button','rounded-lg bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600','Remove');remove.type='button';remove.onclick=()=>{selectedQuestions=selectedQuestions.filter(item=>item.id!==question.id);renderSelection();};actions.append(replace,remove);row.append(content,actions);card.appendChild(row);root.appendChild(card);
+    const input=document.createElement('input');input.type='hidden';input.name='questionIds';input.value=question.id;inputs.appendChild(input);
+  });
+  if(!selectedQuestions.length)root.appendChild(textNode('p','rounded-xl border border-dashed border-slate-300 py-14 text-center text-sm text-slate-400','No questions selected.'));
+  const rules=rulesFromForm(), matches=selectedQuestions.length===rules.totalQuestions&&Number(marks.toFixed(2))===rules.totalMarks&&difficulty.Easy===rules.easyCount&&difficulty.Medium===rules.mediumCount&&difficulty.Hard===rules.hardCount;
+  field('selectionSummary').textContent=`${selectedQuestions.length} Q · ${marks.toFixed(2)} marks · E/M/H ${difficulty.Easy}/${difficulty.Medium}/${difficulty.Hard}`;
+  field('selectionWarning').classList.toggle('hidden',matches);field('selectionWarning').textContent=matches?'':`Final manual selection differs from blueprint. Requested ${rules.totalQuestions} Q, ${rules.totalMarks} marks, E/M/H ${rules.easyCount}/${rules.mediumCount}/${rules.hardCount}. It can still be saved with this difference recorded.`;
+  field('saveButton').disabled=!selectedQuestions.length;
+}
+
+async function replaceQuestion(questionId){
+  field('generatorError').classList.add('hidden');
+  try{const response=await fetch('/admin/question-papers/generate/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:rulesFromForm(),selectedQuestionIds:selectedQuestions.map(q=>q.id),replaceQuestionId:questionId})});const data=await response.json();if(!response.ok)throw data;selectedQuestions=selectedQuestions.map(q=>q.id===questionId?data.question:q);renderSelection();}
+  catch(error){showError(error.error||'Replacement failed.',error.details);}
+}
+
+async function addManualQuestion(){
+  const id=field('manualQuestionId').value.trim();if(!id)return alert('Enter a Question ID.');if(selectedQuestions.some(q=>q.id===id))return alert('That question is already selected.');
+  try{const response=await fetch(`/admin/question-papers/questions/search?questionId=${encodeURIComponent(id)}&limit=10`);const data=await response.json();if(!response.ok)throw new Error(data.error);if(!data.questions.length)throw new Error('Question not found or unavailable.');selectedQuestions.push(data.questions[0]);field('manualQuestionId').value='';renderSelection();}
+  catch(error){alert(error.message);}
+}
+
+function validateSave(){if(!selectedQuestions.length){alert('Generate or select questions before saving.');return false;}return true;}
+function updateDistribution(){const e=Number(field('easyCount').value)||0,m=Number(field('mediumCount').value)||0,h=Number(field('hardCount').value)||0,t=Number(field('totalQuestions').value)||0;field('distributionCheck').textContent=`${e} + ${m} + ${h} = ${e+m+h}${e+m+h===t?' ✓':` (must equal ${t})`}`;field('distributionCheck').className=e+m+h===t?'mt-2 font-bold text-emerald-600':'mt-2 font-bold text-rose-600';}
+['easyCount','mediumCount','hardCount','totalQuestions'].forEach(id=>field(id).addEventListener('input',updateDistribution));
+</script>
+</body></html>

@@ -4,6 +4,7 @@ const c              = require('../controllers/adminController');
 const questionImport = require('../controllers/questionImportController');
 const organization    = require('../controllers/organizationController');
 const questionPapers  = require('../controllers/questionPaperController');
+const autoPapers      = require('../controllers/autoPaperController');
 const { isAuthenticated, requireRole, requirePasswordChange } = require('../middleware/auth');
 
 const guard = [isAuthenticated, requirePasswordChange, requireRole('admin')];
@@ -64,6 +65,10 @@ router.post('/questions/:id/delete',           ...guard, c.deleteQuestion);
 
 // Reusable question paper library
 router.get('/question-papers/questions/search', ...guard, questionPapers.searchQuestions);
+router.get('/question-papers/generate',          ...guard, autoPapers.getGenerator);
+router.post('/question-papers/generate/preview', ...guard, autoPapers.preview);
+router.post('/question-papers/generate/replace', ...guard, autoPapers.replace);
+router.post('/question-papers/generate/save',    ...guard, autoPapers.save);
 router.get('/question-papers',                  ...guard, questionPapers.list);
 router.get('/question-papers/create',           ...guard, questionPapers.getCreate);
 router.post('/question-papers',                 ...guard, questionPapers.create);

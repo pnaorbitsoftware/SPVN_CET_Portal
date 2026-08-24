@@ -280,4 +280,4 @@ exports.searchQuestions = async (req, res) => {
   }
 };
 
-exports._private = { baseCode, questionSearchFilter, selectedIds, serializeQuestion };
+exports._private = { availableCode, baseCode, questionSearchFilter, questionsForIds, selectedIds, serializeQuestion };
