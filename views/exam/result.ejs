@@ -221,14 +221,13 @@
         </h3>
       </div>
       <div class="divide-y divide-slate-50">
-        <% const answers = result.answers || {};
-           result.test.questions.forEach((q, idx) => {
-          const given   = (answers[String(q.id)] || answers[q.id])?.answer || null;
-          const correct = q.correctAnswer;
-          const isRight = given && given === correct;
-          const isSkip  = !given;
-          const clr     = isSkip?'slate':isRight?'emerald':'rose';
+        <% reviewQuestions.forEach((q, idx) => {
+          const review  = questionReview(result, q);
+          const isRight = review.status === 'correct';
+          const isSkip  = !review.attempted && review.status !== 'bonus';
+          const clr     = isSkip?'slate':isRight?'emerald':review.status==='partial'?'amber':review.status==='bonus'?'violet':'rose';
           const optMap  = {A:q.optionA, B:q.optionB, C:q.optionC, D:q.optionD};
+          const statusLabel = isSkip?'Not Attempted':isRight?'Correct':review.status==='partial'?'Partially Correct':review.status==='bonus'?'Bonus':'Wrong';
         %>
         <div class="px-5 py-4">
           <div class="flex items-start gap-3">
@@ -238,26 +237,27 @@
             <div class="flex-1 min-w-0">
               <p class="math-content text-sm font-medium text-slate-900 leading-relaxed mb-3"><%= q.question %></p>
               <% if (q.questionImage) { %><div class="overflow-x-auto mb-3"><img src="<%= q.questionImage %>" alt="Question <%= idx+1 %> diagram" class="block w-auto h-auto max-w-full rounded-xl border border-slate-200 bg-white"/></div><% } %>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-3">
+              <% if (q.questionType !== 'NUMERICAL') { %><div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-3">
                 <% ['A','B','C','D'].forEach(key => {
                   const val = optMap[key];
                   if (!val) return;
-                  const isCorrectOpt = key === correct;
-                  const isGivenOpt   = key === given;
+                  const isCorrectOpt = review.correctOptionKeys.includes(key);
+                  const isGivenOpt   = review.selectedOptionKeys.includes(key);
                   let cls = 'border-slate-200 text-slate-600 bg-slate-50';
                   if (isCorrectOpt) cls = 'border-emerald-400 text-emerald-800 bg-emerald-50 font-semibold';
-                  if (isGivenOpt && !isRight) cls = 'border-rose-400 text-rose-800 bg-rose-50 font-semibold line-through';
+                  if (isGivenOpt && !isCorrectOpt) cls = 'border-rose-400 text-rose-800 bg-rose-50 font-semibold line-through';
                 %>
                 <div class="flex items-start gap-2 border rounded-lg px-3 py-2 text-xs <%= cls %>">
                   <span class="font-bold shrink-0"><%= key %>.</span>
                   <span class="math-content leading-relaxed"><%= val %></span>
                 </div>
                 <% }) %>
-              </div>
+              </div><% } %>
               <div class="flex flex-wrap gap-2 text-xs mb-2">
-                <span class="font-semibold text-<%= clr %>-600"><%= isSkip?'Not Attempted':isRight?'Correct':'Wrong' %></span>
-                <% if (!isSkip) { %><span class="text-slate-500">Your: <strong><%= given %></strong></span><% } %>
-                <span class="text-slate-500">Correct: <strong class="text-emerald-600"><%= correct %></strong></span>
+                <span class="font-semibold text-<%= clr %>-600"><%= statusLabel %></span>
+                <% if (review.attempted) { %><span class="text-slate-500">Your: <strong><%= review.answerLabel %></strong></span><% } %>
+                <span class="text-slate-500">Correct: <strong class="text-emerald-600"><%= review.correctLabel %></strong></span>
+                <% if (Number.isFinite(review.awarded)) { %><span class="text-slate-500">Awarded: <strong><%= review.awarded %>/<%= review.maxScore %></strong></span><% } %>
               </div>
               <% if (q.explanation) { %>
               <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 leading-relaxed">

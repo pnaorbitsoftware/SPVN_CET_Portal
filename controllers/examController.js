@@ -27,6 +27,7 @@ const {
   validateAccessAttempt,
 } = require('../services/testAccessService');
 const { resultAvailability, safeSubmission } = require('../services/resultReleaseService');
+const { questionReview, questionsInAttemptOrder } = require('../services/answerReviewService');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
@@ -497,7 +498,10 @@ exports.getResult = async (req, res) => {
     const visibleTrend = viewer.role === 'student'
       ? trend.filter(item => item.testId && resultAvailability(item.testId).available).slice(-10)
       : trend.slice(-10);
-    res.render('exam/result', { title: 'Exam Result', result, percentage, topperResult, trend:visibleTrend, totalAttempted });
+    res.render('exam/result', {
+      title:'Exam Result', result, percentage, topperResult, trend:visibleTrend, totalAttempted,
+      questionReview, reviewQuestions:questionsInAttemptOrder(result),
+    });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/dashboard'); }
 };
 
@@ -518,8 +522,7 @@ exports.downloadResultPDF = async (req, res) => {
     (test.questions || []).forEach(q => { questionMap[q._id.toString()] = q; });
     const orderedIds  = result.questionOrder?.length ? result.questionOrder : Object.keys(questionMap);
     const questions   = orderedIds.map(id => questionMap[id.toString()]).filter(Boolean);
-    const answers     = result.answers || {};
-    const safe        = str => (str || '').replace(/<[^>]*>/g, '').trim();
+    const safe        = str => String(str ?? '').replace(/<[^>]*>/g, '').trim();
     const COLLEGE     = process.env.COLLEGE_NAME || 'College';
     const pct         = result.totalMarks > 0 ? ((result.score / result.totalMarks) * 100).toFixed(1) : '0.0';
 
@@ -572,20 +575,27 @@ exports.downloadResultPDF = async (req, res) => {
 
     questions.forEach((q, idx) => {
       if (doc.y > 700) doc.addPage();
-      const ans = answers[String(q._id)] || {};
-      const given = ans.answer || null;
-      const isCorrect = given && given === q.correctAnswer;
-      const statusColor = isCorrect ? '#16a34a' : given ? '#dc2626' : '#b45309';
+      const review = questionReview(result, q);
+      const statusColor = review.status === 'correct' ? '#16a34a'
+        : review.status === 'partial' ? '#d97706'
+          : review.status === 'bonus' ? '#7c3aed'
+            : review.attempted ? '#dc2626' : '#b45309';
       const optMap = { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
 
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e1f5e').text(`Q${idx+1}. `, { continued: true });
       doc.font('Helvetica').fillColor('#1e293b').text(safe(q.question));
-      ['A','B','C','D'].forEach(key => {
-        const isC = q.correctAnswer === key, isG = given === key;
-        const col = isC ? '#16a34a' : (isG && !isC) ? '#dc2626' : '#374151';
-        doc.fontSize(8).font(isC||isG?'Helvetica-Bold':'Helvetica').fillColor(col)
-           .text(`   ${isC?'✓':isG?'✗':' '} ${key}) ${safe(optMap[key]||'')}`, { width: 480 });
-      });
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(statusColor)
+        .text(`${review.status.toUpperCase()} · Your answer: ${safe(review.answerLabel)} · Correct answer: ${safe(review.correctLabel)}`);
+      if (q.questionType !== 'NUMERICAL') {
+        ['A','B','C','D'].forEach(key => {
+          if (!optMap[key]) return;
+          const isC = review.correctOptionKeys.includes(key);
+          const isG = review.selectedOptionKeys.includes(key);
+          const col = isC ? '#16a34a' : (isG && !isC) ? '#dc2626' : '#374151';
+          doc.fontSize(8).font(isC||isG?'Helvetica-Bold':'Helvetica').fillColor(col)
+             .text(`   ${isC?'✓':isG?'✗':' '} ${key}) ${safe(optMap[key])}`, { width: 480 });
+        });
+      }
       if (q.explanation) {
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#6d28d9').text('Explanation: ', { continued: true });
         doc.font('Helvetica').fillColor('#4b5563').text(safe(q.explanation));

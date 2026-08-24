@@ -4,9 +4,45 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 
-import { assetUrl, mobileApi, type ResultDetail } from '../../src/api';
+import { assetUrl, mobileApi, type ExamAnswer, type MobileQuestion, type OptionKey, type ResultDetail } from '../../src/api';
 import { Badge, Body, Button, Card, DataLine, Empty, Loading, Row, Screen, SectionTitle, Stat, Title } from '../../src/ui';
 import { colors } from '../../src/theme';
+
+const hasAnswer = (answer: ExamAnswer) => Array.isArray(answer) ? answer.length > 0 : answer !== null && answer !== undefined && answer !== '';
+const optionText = (question: MobileQuestion, key: string) => ({ A:question.optionA, B:question.optionB, C:question.optionC, D:question.optionD }[key as OptionKey] || '');
+const displayAnswer = (question: MobileQuestion, answer: ExamAnswer) => {
+  if (!hasAnswer(answer)) return 'Not answered';
+  if (Array.isArray(answer)) return answer.map((key) => `${key}) ${optionText(question, key)}`).join(' · ');
+  if (question.questionType === 'NUMERICAL') return String(answer);
+  if (question.questionType === 'TRUE_FALSE') return answer === 'A' ? 'True' : answer === 'B' ? 'False' : String(answer);
+  return `${answer}) ${optionText(question, String(answer))}`;
+};
+const correctAnswer = (question: MobileQuestion) => {
+  if (question.questionType === 'MULTIPLE_CORRECT') return displayAnswer(question, question.correctAnswers || []);
+  if (question.questionType === 'NUMERICAL') {
+    const answer = question.numericalAnswer || {};
+    if (Number.isFinite(answer.value)) return String(answer.value);
+    if (Number.isFinite(answer.min) && Number.isFinite(answer.max)) return `${answer.min}–${answer.max}`;
+    return 'Not configured';
+  }
+  return displayAnswer(question, question.correctAnswer);
+};
+const answerMatches = (question:MobileQuestion, answer:ExamAnswer) => {
+  if (!hasAnswer(answer)) return false;
+  if (question.questionType === 'MULTIPLE_CORRECT') {
+    const given = Array.isArray(answer) ? [...answer].sort() : [String(answer)];
+    const expected = [...(question.correctAnswers || [])].sort();
+    return given.length === expected.length && given.every((key,index) => key === expected[index]);
+  }
+  if (question.questionType === 'NUMERICAL') {
+    const value = Number(answer);
+    const expected = question.numericalAnswer || {};
+    if (!Number.isFinite(value)) return false;
+    if (Number.isFinite(expected.min) && Number.isFinite(expected.max) && value >= Number(expected.min) && value <= Number(expected.max)) return true;
+    return Number.isFinite(expected.value) && Math.abs(value - Number(expected.value)) <= Number(expected.tolerance || 0);
+  }
+  return answer === question.correctAnswer;
+};
 
 export default function ResultRoute() {
   const params = useLocalSearchParams<{ 'result-id': string }>();
@@ -55,9 +91,11 @@ export default function ResultRoute() {
     <SectionTitle>Question-by-question review</SectionTitle>
     {questions.length ? questions.map((question, index) => {
       if (!question) return null;
-      const given = result.answers?.[question._id]?.answer || null;
-      const correct = given === question.correctAnswer;
-      return <Card key={question._id}><Row><Badge tone={!given ? 'warning' : correct ? 'primary' : 'danger'}>Q{index + 1} · {!given ? 'Skipped' : correct ? 'Correct' : 'Wrong'}</Badge><Body muted>{question.marks} mark(s)</Body></Row><Text selectable style={{ color: colors.label, fontWeight: '800', fontSize: 16, lineHeight: 23 }}>{question.question}</Text>{assetUrl(question.questionImage) ? <Image source={assetUrl(question.questionImage)!} style={{ height: 190, width: '100%' }} contentFit="contain" /> : null}<DataLine label="Your Answer" value={given ? `${given}) ${question[`option${given}` as 'optionA']}` : 'Not answered'} /><DataLine label="Correct Answer" value={`${question.correctAnswer}) ${question[`option${question.correctAnswer}` as 'optionA']}`} />{question.explanation ? <Body muted>{question.explanation}</Body> : null}</Card>;
+      const given = result.answers?.[question._id]?.answer ?? null;
+      const recorded = result.perQuestionScore?.[question._id];
+      const status = recorded?.status || (answerMatches(question, given) ? 'correct' : hasAnswer(given) ? 'incorrect' : 'skipped');
+      const label = status === 'correct' ? 'Correct' : status === 'partial' ? 'Partially Correct' : status === 'bonus' ? 'Bonus' : status === 'skipped' ? 'Skipped' : 'Wrong';
+      return <Card key={question._id}><Row><Badge tone={status === 'skipped' || status === 'partial' ? 'warning' : status === 'correct' || status === 'bonus' ? 'primary' : 'danger'}>Q{index + 1} · {label}</Badge><Body muted>{recorded ? `${recorded.awarded}/${recorded.maxScore}` : question.marks} mark(s)</Body></Row><Text selectable style={{ color: colors.label, fontWeight: '800', fontSize: 16, lineHeight: 23 }}>{question.question}</Text>{assetUrl(question.questionImage) ? <Image source={assetUrl(question.questionImage)!} style={{ height: 190, width: '100%' }} contentFit="contain" /> : null}<DataLine label="Your Answer" value={displayAnswer(question, given)} /><DataLine label="Correct Answer" value={correctAnswer(question)} />{question.explanation ? <Body muted>{question.explanation}</Body> : null}</Card>;
     }) : <Empty message="Detailed question review is unavailable for this PDF-style test." />}
   </Screen>;
 }
