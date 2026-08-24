@@ -11,7 +11,7 @@
           <a href="/admin/tests" class="text-slate-400 hover:text-slate-600">←</a>
           <div>
             <h1 class="text-lg font-bold text-slate-900"><%= test.title %></h1>
-            <p class="text-sm text-slate-500"><%= test.duration %> mins · <%= test.totalMarks %> marks<% if(test.course){%> · <%= test.course %><% } %><% if(test.subject){%> / <%= test.subject %><% } %></p>
+            <p class="text-sm text-slate-500"><%= timingLabel(test) %> · <%= test.totalMarks %> marks<% if(test.course){%> · <%= test.course %><% } %><% if(test.subject){%> / <%= test.subject %><% } %></p>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -34,7 +34,7 @@
       <%- include('../partials/flash') %>
       <!-- Stats -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <% [{icon:'❓',label:'Questions',val:test.questions.length},{icon:'⏱',label:'Duration',val:test.duration+' min'},{icon:'👨‍🎓',label:'Attempts',val:results.length},{icon:'📊',label:'Avg Score',val:results.length?(results.reduce((s,r)=>s+r.score,0)/results.length).toFixed(1)+'/'+test.totalMarks:'N/A'}].forEach(c=>{ %>
+        <% [{icon:'❓',label:'Questions',val:test.questions.length},{icon:'⏱',label:'Timing',val:timingLabel(test)},{icon:'👨‍🎓',label:'Attempts',val:results.length},{icon:'📊',label:'Avg Score',val:results.length?(results.reduce((s,r)=>s+r.score,0)/results.length).toFixed(1)+'/'+test.totalMarks:'N/A'}].forEach(c=>{ %>
         <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
           <p class="text-xl mb-2"><%= c.icon %></p>
           <p class="text-xl font-bold text-slate-900"><%= c.val %></p>

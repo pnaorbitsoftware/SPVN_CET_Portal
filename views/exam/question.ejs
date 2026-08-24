@@ -310,20 +310,24 @@ let focusLossCount  = <%= (result && result.cheatingFlags && result.cheatingFlag
 
 // ── Timer ──────────────────────────────────────────────────────────────────
 const fmt = s => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-let remaining = <%= remaining %>;
+const IS_UNTIMED = <%- remaining === null ? 'true' : 'false' %>;
+let remaining = <%= remaining === null ? 0 : remaining %>;
 const timerEl = document.getElementById('timer');
 const timerDisplay = document.getElementById('timerDisplay');
-timerDisplay.textContent = fmt(remaining);
+timerDisplay.textContent = IS_UNTIMED ? 'No limit' : fmt(remaining);
 
-const countdown = setInterval(() => {
-  remaining--;
-  timerDisplay.textContent = fmt(Math.max(0, remaining));
-  // Reset timer classes cleanly before setting new ones
-  timerEl.classList.remove('warning', 'urgent');
-  if (remaining <= 60)       timerEl.classList.add('urgent');
-  else if (remaining <= 300) timerEl.classList.add('warning');
-  if (remaining <= 0) { clearInterval(countdown); allowLeave(); document.getElementById('autoSubmitForm').submit(); }
-}, 1000);
+let countdown = null;
+if (!IS_UNTIMED) {
+  countdown = setInterval(() => {
+    remaining--;
+    timerDisplay.textContent = fmt(Math.max(0, remaining));
+    // Reset timer classes cleanly before setting new ones
+    timerEl.classList.remove('warning', 'urgent');
+    if (remaining <= 60)       timerEl.classList.add('urgent');
+    else if (remaining <= 300) timerEl.classList.add('warning');
+    if (remaining <= 0) { clearInterval(countdown); allowLeave(); document.getElementById('autoSubmitForm').submit(); }
+  }, 1000);
+}
 
 // Per-question timer
 const qTimerEl = document.getElementById('qTimer');

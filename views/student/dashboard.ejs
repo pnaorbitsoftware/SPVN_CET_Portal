@@ -39,7 +39,7 @@
         <div class="flex-1 min-w-0">
           <p class="text-xs text-white/60 font-medium uppercase tracking-wider mb-0.5">Upcoming Test</p>
           <p class="font-bold text-base truncate"><%= upcomingTest.title %></p>
-          <p class="text-xs text-white/70 mt-0.5"><%= upcomingTest.duration %> mins &middot; <%= upcomingTest.totalMarks %> marks
+          <p class="text-xs text-white/70 mt-0.5"><%= timingLabel(upcomingTest) %> &middot; <%= upcomingTest.totalMarks %> marks
             <% if (upcomingTest.startTime) { %>
             &middot; Starts <span id="countdown" class="font-semibold text-amber-300"></span>
             <% } %>
@@ -205,9 +205,9 @@
           <ul class="divide-y divide-slate-50">
             <% pendingTests.slice(0, 5).forEach(test => {
               const now = new Date();
-              const hasWindow = test.startTime && test.endTime;
-              const started   = !test.startTime || new Date(test.startTime) <= now;
-              const expired   = test.endTime && new Date(test.endTime) < now;
+              const availability = availabilityFor(test, { now, hasInProgressAttempt:inProgressIds.has(test._id.toString()) });
+              const started   = availability.canStart || availability.canResume;
+              const expired   = availability.state === 'expired';
             %>
             <li class="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors">
               <div class="w-10 h-10 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
@@ -216,7 +216,7 @@
               <div class="flex-1 min-w-0">
                 <p class="font-medium text-slate-900 text-sm truncate"><%= test.title %></p>
                 <div class="flex items-center gap-2 mt-0.5">
-                  <p class="text-xs text-slate-400"><%= test.duration %> mins &middot; <%= test.totalMarks %> marks</p>
+                  <p class="text-xs text-slate-400"><%= timingLabel(test) %> &middot; <%= test.totalMarks %> marks</p>
                   <% if (test.subject) { %><span class="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium"><%= test.subject %></span><% } %>
                 </div>
                 <% if (test.startTime && !started) { %>
@@ -231,7 +231,7 @@
               </div>
               <% if (!expired && started) { %>
               <a href="/exam/<%= test.id %>/instructions" class="shrink-0 bg-navy-950 text-white text-xs font-semibold px-3.5 py-2 rounded-lg hover:bg-navy-800 transition-colors flex items-center gap-1.5">
-                Start <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                <%= availability.canResume ? 'Resume' : 'Start' %> <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
               </a>
               <% } else if (expired) { %>
               <span class="shrink-0 text-xs text-rose-400 font-semibold bg-rose-50 px-3 py-2 rounded-lg">Expired</span>

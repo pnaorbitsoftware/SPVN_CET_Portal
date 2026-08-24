@@ -10,6 +10,14 @@ const {
 const { finalizeAttempt } = require('../services/examSubmissionService');
 const { hasSubmittedAnswer, normalizeSubmittedAnswer } = require('../services/questionService');
 const { effectiveQuestionConfig } = require('../services/testConfigurationService');
+const {
+  availabilityFor,
+  deadlineForAttempt,
+  deadlineForResult,
+  remainingSeconds,
+  timingLabel,
+  timingModeOf,
+} = require('../services/timingService');
 
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
@@ -24,6 +32,11 @@ exports.getInstructions = async (req, res) => {
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
     if (submitted) { req.flash('info','Already submitted.'); return res.redirect(`/results/${submitted._id}`); }
+    const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
+    if (!availability.canStart && !availability.canResume) {
+      req.flash('error', availability.message);
+      return res.redirect('/student/tests');
+    }
     const cetSectionFlow = isCetSectionTest(test, test.questions);
     const sectionSummary = cetSectionFlow
       ? orderedSectionNames(test.questions).map(subject => {
@@ -42,6 +55,8 @@ exports.getInstructions = async (req, res) => {
       inProgress: !!inProgress,
       cetSectionFlow,
       sectionSummary,
+      timingLabel:timingLabel(test),
+      timingMode:timingModeOf(test),
     });
   } catch (e) { console.error(e); req.flash('error','Failed.'); res.redirect('/student/tests'); }
 };
@@ -50,22 +65,35 @@ exports.startExam = async (req, res) => {
   try {
     const studentId = req.session.user.id;
     const { testId } = req.params;
-    const [test, submitted] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions', '_id subject'),
+    const [test, submitted, inProgress] = await Promise.all([
+      Test.findOne({ _id: testId, status: { $in: ['published','active'] }, isActive:{ $ne:false } }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted','auto_submitted'] } }),
+      Result.findOne({ studentId, testId, status:'in_progress' }),
     ]);
     if (!test) { req.flash('error','Test not available.'); return res.redirect('/student/tests'); }
     if (submitted) { req.flash('info','Already submitted.'); return res.redirect(`/results/${submitted._id}`); }
 
-    let result = await Result.findOne({ studentId, testId, status: 'in_progress' });
+    const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
+    if (!availability.canStart && !availability.canResume) {
+      if (inProgress && timingModeOf(test) === 'FIXED_WINDOW') {
+        const finalized = await finalizeAttempt({ result:inProgress, test, isAutoSubmit:true });
+        return res.redirect(`/results/${finalized._id}`);
+      }
+      req.flash('error',availability.message);
+      return res.redirect('/student/tests');
+    }
+
+    let result = inProgress;
     if (!result) {
       const questionIds = buildQuestionOrder(test, test.questions);
+      const startedAt = new Date();
       result = await Result.create({
         organization:test.organization || null,
         studentId, testId, score: 0, totalMarks: test.totalMarks, fullTotalMarks: test.totalMarks,
         answers: {}, questionTimings: {},
         cheatingFlags: { tabSwitches:0, fullscreenExits:0, focusLosses:0 },
-        violationCount: 0, status: 'in_progress', startedAt: new Date(), lastActivityAt:new Date(),
+        violationCount: 0, status: 'in_progress', startedAt, lastActivityAt:startedAt,
+        deadlineAt:deadlineForAttempt(test, startedAt),
         questionOrder: questionIds, markedForReview: [],
       });
     }
@@ -91,9 +119,12 @@ exports.getQuestion = async (req, res) => {
     }
     if (!test) { req.flash('error','Test not found.'); return res.redirect('/student/tests'); }
 
-    const startedAt = new Date(result.startedAt);
-    const remaining = Math.max(0, Math.floor((test.duration * 60 * 1000 - (Date.now() - startedAt.getTime())) / 1000));
-    if (remaining <= 0) { req.body = { auto:'true' }; return exports.submitExam(req, res); }
+    const remaining = remainingSeconds(test, result);
+    if (remaining !== null && remaining <= 0) { req.body = { auto:'true' }; return exports.submitExam(req, res); }
+    if (!result.deadlineAt && timingModeOf(test) !== 'UNTIMED') {
+      result.deadlineAt = deadlineForResult(test, result);
+      await result.save();
+    }
 
     const questionIds = result.questionOrder;
     const totalQuestions = questionIds.length;
@@ -200,11 +231,16 @@ exports.saveAnswer = async (req, res) => {
     }
 
     const [test, questionRows] = await Promise.all([
-      Test.findById(testId).select('course'),
+      Test.findById(testId).select('course timingMode duration endTime'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
     if (!test || !currentQuestion) return res.status(404).json({ success:false, message:'Question not found.' });
+    if (remainingSeconds(test, result) === 0) {
+      const scoringTest = await Test.findById(testId).populate('questions');
+      await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
+      return res.status(409).json({ success:false, autoSubmitted:true, message:'Time is over. The test was submitted.' });
+    }
     const cetSectionFlow = isCetSectionTest(test, questionRows);
     const sectionState = cetSectionFlow
       ? buildSectionState(result.questionOrder, questionRows, result.answers || {}, result.visitedQuestionIds || [])

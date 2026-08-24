@@ -17,6 +17,7 @@ const { hasSubmittedAnswer, normalizeSubmittedAnswer, questionInputFromBody } = 
 const { finalizeAttempt } = require('../services/examSubmissionService');
 const { buildQuestionConfigs, effectiveQuestionConfig, totalMarksFromConfigs } = require('../services/testConfigurationService');
 const { TEST_TYPES, ensureDefaultExamConfigurations, resolveExamConfiguration, validateQuestionsForPattern } = require('../services/examConfigurationService');
+const { availabilityFor, deadlineForAttempt, remainingSeconds, timingInput, timingLabel } = require('../services/timingService');
 
 const router = express.Router();
 const tokenSecret = process.env.MOBILE_API_SECRET || process.env.SESSION_SECRET || 'svpn_mobile_dev_secret';
@@ -359,9 +360,7 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
     if (!test.groups.some((groupId) => membershipIds.has(groupId.toString()))) {
       return res.status(403).json({ error: 'This test is not assigned to your batch.' });
     }
-    const now = Date.now();
-    const isUpcoming = test.startTime && new Date(test.startTime).getTime() > now;
-    const isExpired = test.endTime && new Date(test.endTime).getTime() < now && !inProgress;
+    const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
     const sectionSummary = Object.values(test.questions.reduce((summary, question) => {
       const subject = question.subject || 'General';
       summary[subject] ||= { subject, questionCount: 0, totalMarks: 0 };
@@ -369,22 +368,15 @@ router.get('/student/tests/:testId/instructions', requireMobileUser, requireRole
       summary[subject].totalMarks += effectiveQuestionConfig(test, question).positiveMarks;
       return summary;
     }, {}));
-    const questionPayload = questionForMobile(question, options);
-    const marking = effectiveQuestionConfig(test, question);
-    questionPayload.marks = marking.positiveMarks;
-    questionPayload.marking = {
-      positiveMarks:marking.positiveMarks,
-      negativeMarks:marking.negativeMarks,
-      partialMarks:marking.partialMarks,
-      markingMode:marking.markingMode,
-    };
     return res.json({
       test,
       questionCount: test.questions.length,
       inProgress: Boolean(inProgress),
       submittedResultId: submitted?._id || null,
-      canStart: !submitted && !isUpcoming && !isExpired,
-      availability: submitted ? 'completed' : inProgress ? 'in_progress' : isUpcoming ? 'upcoming' : isExpired ? 'expired' : 'available',
+      canStart: !submitted && (availability.canStart || availability.canResume),
+      availability: submitted ? 'completed' : availability.state,
+      timingMode:test.timingMode || 'PERSONAL_DURATION',
+      timingLabel:timingLabel(test),
       cetSectionFlow: isCetSectionTest(test, test.questions),
       sectionSummary,
     });
@@ -398,10 +390,11 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
   try {
     const { testId } = req.params;
     const studentId = req.mobileUser._id;
-    const [test, submitted, memberships] = await Promise.all([
-      Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions', '_id subject'),
+    const [test, submitted, memberships, inProgress] = await Promise.all([
+      Test.findOne({ _id: testId, status: { $in: ['published', 'active'] }, isActive: { $ne: false } }).populate('questions'),
       Result.findOne({ studentId, testId, status: { $in: ['submitted', 'auto_submitted'] } }),
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
+      Result.findOne({ studentId, testId, status:'in_progress' }),
     ]);
     if (!test) return res.status(404).json({ error: 'Test is not available.' });
     if (submitted) return res.status(409).json({ error: 'This test is already submitted.', resultId: submitted._id });
@@ -411,12 +404,18 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
       return res.status(403).json({ error: 'This test is not assigned to your batch.' });
     }
 
-    const now = Date.now();
-    if (test.startTime && new Date(test.startTime).getTime() > now) return res.status(409).json({ error: 'This test has not opened yet.' });
+    const availability = availabilityFor(test, { hasInProgressAttempt:Boolean(inProgress) });
+    if (!availability.canStart && !availability.canResume) {
+      if (inProgress) {
+        const submittedResult = await finalizeAttempt({ result:inProgress, test, isAutoSubmit:true });
+        return res.status(409).json({ error:'The fixed test window ended and your attempt was submitted.', resultId:submittedResult._id, autoSubmitted:true });
+      }
+      return res.status(409).json({ error:availability.message });
+    }
 
-    let result = await Result.findOne({ studentId, testId, status: 'in_progress' });
-    if (!result && test.endTime && new Date(test.endTime).getTime() < now) return res.status(409).json({ error: 'This test has expired.' });
+    let result = inProgress;
     if (!result) {
+      const startedAt = new Date();
       result = await Result.create({
         organization: test.organization || req.organization?._id || null,
         studentId,
@@ -428,8 +427,9 @@ router.post('/student/tests/:testId/start', requireMobileUser, requireRole('stud
         questionTimings: {},
         cheatingFlags: { tabSwitches: 0, fullscreenExits: 0, focusLosses: 0 },
         status: 'in_progress',
-        startedAt: new Date(),
-        lastActivityAt: new Date(),
+        startedAt,
+        lastActivityAt: startedAt,
+        deadlineAt:deadlineForAttempt(test, startedAt),
         questionOrder: buildQuestionOrder(test, test.questions),
         markedForReview: [],
         visitedQuestionIds: [],
@@ -453,8 +453,12 @@ router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser
     ]);
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!test) return res.status(404).json({ error: 'Test not found.' });
-    const remainingSeconds = Math.max(0, Math.floor((test.duration * 60 * 1000 - (Date.now() - new Date(result.startedAt).getTime())) / 1000));
-    if (!remainingSeconds) return res.status(408).json({ error: 'Test time is over. Submit the test now.' });
+    const remaining = remainingSeconds(test, result);
+    if (remaining !== null && remaining <= 0) {
+      const scoringTest = await Test.findById(testId).populate('questions');
+      const submitted = await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
+      return res.status(408).json({ error:'Test time is over. Your attempt was submitted automatically.', autoSubmitted:true, resultId:submitted._id });
+    }
     if (!Number.isInteger(questionNumber) || questionNumber < 1 || questionNumber > result.questionOrder.length) {
       return res.status(400).json({ error: 'Invalid question number.' });
     }
@@ -481,13 +485,22 @@ router.get('/student/tests/:testId/questions/:questionNumber', requireMobileUser
       { key: 'D', value: question.optionD, image: question.optionDImage || null },
     ];
     if (test.shuffleOptions) options.sort(() => Math.random() - 0.5);
+    const questionPayload = questionForMobile(question, options);
+    const marking = effectiveQuestionConfig(test, question);
+    questionPayload.marks = marking.positiveMarks;
+    questionPayload.marking = {
+      positiveMarks:marking.positiveMarks,
+      negativeMarks:marking.negativeMarks,
+      partialMarks:marking.partialMarks,
+      markingMode:marking.markingMode,
+    };
     const visited = new Set([...(result.visitedQuestionIds || []).map(String), questionId]);
     const answers = result.answers || {};
     const marked = new Set((result.markedForReview || []).map(String));
     return res.json({
       questionNumber,
       totalQuestions: result.questionOrder.length,
-      remainingSeconds,
+      remainingSeconds:remaining,
       question: questionPayload,
       selectedAnswer: answers[questionId]?.answer ?? null,
       markedForReview: marked.has(questionId),
@@ -510,10 +523,15 @@ router.post('/student/tests/:testId/answers', requireMobileUser, requireRole('st
     if (!result) return res.status(409).json({ error: 'No active test session.' });
     if (!result.questionOrder.map(String).includes(String(questionId))) return res.status(400).json({ error: 'Question does not belong to this test.' });
     const [test, questionRows] = await Promise.all([
-      Test.findById(req.params.testId).select('course'),
+      Test.findById(req.params.testId).select('course timingMode duration endTime'),
       Question.find({ _id: { $in: result.questionOrder } }, '_id subject questionType'),
     ]);
     if (!test) return res.status(404).json({ error: 'Test not found.' });
+    if (remainingSeconds(test, result) === 0) {
+      const scoringTest = await Test.findById(req.params.testId).populate('questions');
+      const submitted = await finalizeAttempt({ result, test:scoringTest, isAutoSubmit:true });
+      return res.status(409).json({ error:'Test time is over. Your attempt was submitted automatically.', autoSubmitted:true, resultId:submitted._id });
+    }
     const currentQuestion = questionRows.find(question => String(question._id) === String(questionId));
     if (!currentQuestion) return res.status(404).json({ error:'Question not found.' });
     const sectionState = isCetSectionTest(test, questionRows)
@@ -1111,7 +1129,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     const questionPdf = req.files?.questionPdf;
     if (!questionPdf || Array.isArray(questionPdf)) return res.status(400).json({ error: 'Question PDF is required.' });
     if (path.extname(questionPdf.name || '').toLowerCase() !== '.pdf') return res.status(400).json({ error: 'Question paper must be a PDF.' });
-    const { title, description, duration = 180, negativeMarking = 0.25, startTime, endTime, instructions, marksPerQuestion = 1 } = req.body;
+    const { title, description, timingMode, duration = 180, negativeMarking = 0.25, startTime, endTime, instructions, marksPerQuestion = 1 } = req.body;
     if (!String(title || '').trim()) return res.status(400).json({ error: 'Test title is required.' });
     const maxSize = Number(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024;
     if (questionPdf.size > maxSize) return res.status(413).json({ error: 'Question PDF is too large.' });
@@ -1129,13 +1147,12 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
     const countMatch = source.match(/\/Count\s+(\d+)/);
     const pageCount = pageMatches?.length || Number(countMatch?.[1]) || 0;
     const perQuestion = Math.max(0.25, Number(marksPerQuestion) || 1);
-    const parsedStart = startTime ? new Date(startTime) : null;
-    const parsedEnd = endTime ? new Date(endTime) : null;
-    if (parsedStart && parsedEnd && parsedEnd <= parsedStart) return res.status(400).json({ error: 'Test end time must be after start time.' });
+    const timing = timingInput({ timingMode, duration, startTime, endTime });
     const test = await Test.create({
       title: String(title).trim(), description: String(description || '').trim() || null,
-      duration: Math.max(5, Number(duration) || 180), negativeMarking: Math.max(0, Number(negativeMarking) || 0),
-      startTime: parsedStart, endTime: parsedEnd, instructions: String(instructions || '').trim() || null,
+      organization:organizationIdForWrite(req), duration:timing.duration, timingMode:timing.timingMode,
+      negativeMarking: Math.max(0, Number(negativeMarking) || 0),
+      startTime: timing.startTime, endTime: timing.endTime, instructions: String(instructions || '').trim() || null,
       totalMarks: Math.max(1, pageCount) * perQuestion, marksPerQuestion: perQuestion,
       createdBy: req.mobileUser._id, status: 'draft', course: cleanList(req.body.course || req.body.courses),
       subject: cleanList(req.body.subject || req.body.subjects), groups: cleanList(req.body.groupIds),
@@ -1153,7 +1170,7 @@ router.post('/admin/tests/upload-pdf', requireMobileUser, requireRole('admin'), 
 
 router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req, res) => {
   try {
-    const { title, questionIds, groupIds = [], course = [], subject = [], description, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false, testPattern, rankingSchema, testType } = req.body;
+    const { title, questionIds, groupIds = [], course = [], subject = [], description, timingMode, duration = 180, negativeMarking = 0.25, passingMarks, shuffleQuestions = true, shuffleOptions = false, startTime, endTime, instructions, topic, subtopic, autoSubmitOnViolation = false, maxTabSwitches = 3, maxFocusLosses = 5, blockCopyPaste = true, requireFullscreen = false, testPattern, rankingSchema, testType } = req.body;
     const selectedQuestionIds = Array.isArray(questionIds) ? questionIds : questionIds ? [questionIds] : [];
     if (!title?.trim() || !selectedQuestionIds.length) return res.status(400).json({ error: 'Test title and at least one question are required.' });
     const questionRows = await Question.find({ _id: { $in: selectedQuestionIds }, isActive: true, ...organizationScope(req.organization) });
@@ -1162,17 +1179,17 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
     if (questions.length !== selectedQuestionIds.length) return res.status(400).json({ error: 'One or more selected questions are unavailable.' });
     const examConfiguration = await resolveExamConfiguration(req.organization?._id, testPattern, rankingSchema);
     validateQuestionsForPattern(questions, examConfiguration.pattern);
-    if (startTime && endTime && new Date(endTime) <= new Date(startTime)) return res.status(400).json({ error: 'Test end time must be after start time.' });
+    const timing = timingInput({ timingMode, duration, startTime, endTime });
     const groups = Array.isArray(groupIds) ? groupIds : [groupIds];
     const parsedNegativeMarking = Math.max(0, Number(negativeMarking) || 0);
     const questionConfigs = buildQuestionConfigs(questions, req.body, { negativeMarking:parsedNegativeMarking });
     const test = await Test.create({
-      title: title.trim(), description: description?.trim() || null, duration: Math.max(5, Number(duration) || 180),
+      title: title.trim(), description: description?.trim() || null, duration:timing.duration, timingMode:timing.timingMode,
       organization:organizationIdForWrite(req), testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
       testPattern:examConfiguration.pattern._id, patternSnapshot:examConfiguration.patternSnapshot,
       rankingSchema:examConfiguration.ranking._id, rankingSchemaSnapshot:examConfiguration.rankingSnapshot,
       totalMarks:totalMarksFromConfigs(questionConfigs), negativeMarking:parsedNegativeMarking, passingMarks: passingMarks ? Number(passingMarks) : null,
-      shuffleQuestions: Boolean(shuffleQuestions), shuffleOptions: Boolean(shuffleOptions), startTime: startTime ? new Date(startTime) : null, endTime: endTime ? new Date(endTime) : null,
+      shuffleQuestions: Boolean(shuffleQuestions), shuffleOptions: Boolean(shuffleOptions), startTime:timing.startTime, endTime:timing.endTime,
       instructions: instructions?.trim() || null, createdBy: req.mobileUser._id, status: 'draft', course: Array.isArray(course) ? course : [course], subject: Array.isArray(subject) ? subject : [subject], topic: topic || null, subtopic: subtopic || null,
       questions:selectedQuestionIds, questionConfigs, groups, autoSubmitOnViolation: Boolean(autoSubmitOnViolation), maxTabSwitches: Number(maxTabSwitches) || 3, maxFocusLosses: Number(maxFocusLosses) || 5, blockCopyPaste: Boolean(blockCopyPaste), requireFullscreen: Boolean(requireFullscreen),
     });
@@ -1184,21 +1201,32 @@ router.post('/admin/tests', requireMobileUser, requireRole('admin'), async (req,
 });
 
 router.patch('/admin/tests/:testId', requireMobileUser, requireRole('admin'), async (req, res) => {
-  const allowed = ['title', 'description', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'groupIds', 'questions', 'questionIds', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
+  const existingTest = await Test.findOne({ _id:req.params.testId, ...organizationScope(req.organization) });
+  if (!existingTest) return res.status(404).json({ error: 'Test not found.' });
+  const allowed = ['title', 'description', 'timingMode', 'duration', 'negativeMarking', 'passingMarks', 'shuffleQuestions', 'shuffleOptions', 'startTime', 'endTime', 'instructions', 'course', 'subject', 'topic', 'subtopic', 'groups', 'groupIds', 'questions', 'questionIds', 'autoSubmitOnViolation', 'maxTabSwitches', 'maxFocusLosses', 'blockCopyPaste', 'requireFullscreen'];
   const update = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
   if (update.groupIds !== undefined) { update.groups = cleanList(update.groupIds); delete update.groupIds; }
   if (update.questionIds !== undefined) { update.questions = cleanList(update.questionIds); delete update.questionIds; }
   if (update.questions !== undefined) {
     update.questions = cleanList(update.questions);
-    const questions = await Question.find({ _id: { $in: update.questions }, isActive: true });
+    const questions = await Question.find({ _id: { $in: update.questions }, isActive: true, ...organizationScope(req.organization) });
     if (questions.length !== update.questions.length) return res.status(400).json({ error: 'One or more selected questions are unavailable.' });
     update.totalMarks = questions.reduce((total, question) => total + Number(question.marks || 0), 0);
   }
-  if (update.startTime) update.startTime = new Date(update.startTime);
-  if (update.endTime) update.endTime = new Date(update.endTime);
-  if (update.startTime && update.endTime && update.endTime <= update.startTime) return res.status(400).json({ error: 'Test end time must be after start time.' });
-  const test = await Test.findByIdAndUpdate(req.params.testId, update, { new: true });
-  if (!test) return res.status(404).json({ error: 'Test not found.' });
+  if (['timingMode','duration','startTime','endTime'].some(field => Object.hasOwn(req.body, field))) {
+    try {
+      const timing = timingInput({
+        timingMode:req.body.timingMode ?? existingTest.timingMode,
+        duration:req.body.duration ?? existingTest.duration,
+        startTime:Object.hasOwn(req.body,'startTime') ? req.body.startTime : existingTest.startTime,
+        endTime:Object.hasOwn(req.body,'endTime') ? req.body.endTime : existingTest.endTime,
+      });
+      Object.assign(update, timing);
+    } catch (error) {
+      return res.status(400).json({ error:error.message });
+    }
+  }
+  const test = await Test.findByIdAndUpdate(existingTest._id, update, { new: true });
   return res.json({ test });
 });
 
@@ -1208,7 +1236,7 @@ router.post('/admin/tests/:testId/publish', requireMobileUser, requireRole('admi
   test.status = 'published';
   await test.save();
   const memberships = await GroupMember.find({ groupId: { $in: test.groups }, role: 'student' }, 'userId');
-  if (memberships.length) await Notification.insertMany(memberships.map((member) => ({ userId: member.userId, title: 'New Exam Published', message: `"${test.title}" is now available. Duration: ${test.duration} mins.`, type: 'exam', link: '/student/tests' })));
+  if (memberships.length) await Notification.insertMany(memberships.map((member) => ({ userId: member.userId, title: 'New Exam Published', message: `"${test.title}" is now available. Timing: ${timingLabel(test)}.`, type: 'exam', link: '/student/tests' })));
   return res.json({ test, notifiedStudents: memberships.length });
 });
 

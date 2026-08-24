@@ -29,7 +29,7 @@ export function Button({ title, onPress, variant = 'primary', disabled = false, 
   >{busy ? <ActivityIndicator color={variant === 'primary' || variant === 'danger' ? colors.white : colors.primary} /> : <Text style={[styles.buttonText, styles[`${variant}ButtonText`]]}>{title}</Text>}</Pressable>;
 }
 
-export function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, multiline = false, autoCapitalize = 'sentences' }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; keyboardType?: KeyboardTypeOptions; multiline?: boolean; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters' }) {
+export function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, multiline = false, autoCapitalize = 'sentences', editable = true }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; keyboardType?: KeyboardTypeOptions; multiline?: boolean; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; editable?: boolean }) {
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput
     value={value}
     onChangeText={onChangeText}
@@ -39,7 +39,8 @@ export function Field({ label, value, onChangeText, placeholder, secureTextEntry
     keyboardType={keyboardType}
     multiline={multiline}
     autoCapitalize={autoCapitalize}
-    style={[styles.input, multiline && styles.multiline]}
+    editable={editable}
+    style={[styles.input, multiline && styles.multiline, !editable && styles.disabled]}
   /></View>;
 }
 

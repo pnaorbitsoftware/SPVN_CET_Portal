@@ -19,6 +19,7 @@ const { parseLocalDateTime, formatDateTimeLocal } = require('../utils/dateTime')
 const { organizationIdForWrite } = require('../services/organizationService');
 const { questionInputFromBody } = require('../services/questionService');
 const { buildQuestionConfigs, totalMarksFromConfigs } = require('../services/testConfigurationService');
+const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS = require('../config/subjects.json');
@@ -71,6 +72,7 @@ function testDefaultsFrom(body) {
   return {
     title: String(body.testTitle || '').trim(),
     description: String(body.testDescription || '').trim(),
+    timingMode: TIMING_MODES.includes(body.testTimingMode) ? body.testTimingMode : 'PERSONAL_DURATION',
     duration: Math.max(5, Number.parseInt(body.testDuration, 10) || 180),
     negativeMarking: Math.max(0, Number(body.testNegativeMarking) || 0),
     startTime: parseLocalDateTime(body.testStartTime),
@@ -162,6 +164,7 @@ exports.getSmartImportReview = async (req, res) => {
       COURSES,
       SUBJECTS,
       formatDateTimeLocal,
+      TIMING_MODES,
     });
   } catch (error) {
     req.flash('error', `Unable to open review: ${error.message}`);
@@ -236,11 +239,12 @@ exports.commitSmartImport = async (req, res) => {
       throw new Error('Test title is required.');
     }
 
-    const startTime = createTest ? parseLocalDateTime(req.body.startTime) : null;
-    const endTime = createTest ? parseLocalDateTime(req.body.endTime) : null;
-    if (startTime && endTime && endTime <= startTime) {
-      throw new Error('Test end time must be after start time.');
-    }
+    const timing = createTest ? timingInput({
+      timingMode:req.body.timingMode,
+      duration:req.body.duration,
+      startTime:parseLocalDateTime(req.body.startTime),
+      endTime:parseLocalDateTime(req.body.endTime),
+    }) : null;
 
     let createdTest = null;
     const session = await mongoose.startSession();
@@ -284,15 +288,16 @@ exports.commitSmartImport = async (req, res) => {
             organization:organizationIdForWrite(req),
             title: String(req.body.testTitle).trim(),
             description: String(req.body.testDescription || '').trim() || null,
-            duration: Math.max(5, Number.parseInt(req.body.duration, 10) || 180),
+            duration: timing.duration,
+            timingMode:timing.timingMode,
             totalMarks,
             negativeMarking,
             passingMarks: req.body.passingMarks ? Math.max(0, Number(req.body.passingMarks)) : null,
             shuffleQuestions: req.body.shuffleQuestions === 'on',
             shuffleOptions: req.body.shuffleOptions === 'on',
             status: publishNow ? 'published' : 'draft',
-            startTime,
-            endTime,
+            startTime:timing.startTime,
+            endTime:timing.endTime,
             createdBy: req.session.user.id,
             instructions: String(req.body.instructions || '').trim() || null,
             course: courses,
@@ -315,7 +320,7 @@ exports.commitSmartImport = async (req, res) => {
               await Notification.insertMany(userIds.map(userId => ({
                 userId,
                 title: 'New Exam Published',
-                message: `"${createdTest.title}" is now available. Duration: ${createdTest.duration} mins.`,
+                message: `"${createdTest.title}" is now available. Timing: ${timingLabel(createdTest)}.`,
                 type: 'exam',
                 link: '/student/tests',
               })), { session });

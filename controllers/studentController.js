@@ -2,6 +2,7 @@
 const { User, Test, Question, Group, GroupMember, Result, Notification, StudentDocument } = require('../models');
 const fs   = require('fs');
 const path = require('path');
+const { availabilityFor, timingLabel } = require('../services/timingService');
 const DOC_DIR = path.join(__dirname, '../public/uploads/documents');
 if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });
 
@@ -12,7 +13,7 @@ exports.getDashboard = async (req, res) => {
     const [memberships, allResults, notifications] = await Promise.all([
       GroupMember.find({ userId: studentId, role: 'student' }, 'groupId'),
       Result.find({ studentId, status: { $in: ['submitted','auto_submitted'] } })
-        .populate('testId', 'title totalMarks subject course duration')
+        .populate('testId', 'title totalMarks subject course duration timingMode')
         .sort({ submittedAt: -1 }),
       Notification.find({ userId: studentId, isRead: false }).sort({ createdAt: -1 }).limit(8),
     ]);
@@ -22,14 +23,18 @@ exports.getDashboard = async (req, res) => {
     // Fetch tests for those groups + in-progress in parallel
     const [availableTests, inProgressResults] = await Promise.all([
       groupIds.length
-        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] }, isActive:{ $ne:false } }, 'id title duration totalMarks subject startTime endTime').sort({ startTime: 1 })
+        ? Test.find({ groups: { $in: groupIds }, status: { $in: ['published','active'] }, isActive:{ $ne:false } }, 'id title duration timingMode totalMarks subject startTime endTime').sort({ startTime: 1 })
         : Promise.resolve([]),
       Result.find({ studentId, status: 'in_progress' }, 'testId'),
     ]);
 
     const completedIds  = new Set(allResults.map(r => r.testId?._id?.toString()));
     const inProgressIds = new Set(inProgressResults.map(r => r.testId?.toString()));
-    const pendingTests  = availableTests.filter(t => !completedIds.has(t._id.toString()) && !inProgressIds.has(t._id.toString()));
+    const pendingTests  = availableTests.filter(test => {
+      const testId = test._id.toString();
+      if (completedIds.has(testId)) return false;
+      return availabilityFor(test, { hasInProgressAttempt:inProgressIds.has(testId) }).state !== 'expired';
+    });
 
     // Chart data (last 10 chronological)
     const chartResults = [...allResults].reverse().slice(-10);
@@ -66,7 +71,10 @@ exports.getDashboard = async (req, res) => {
     const accuracy = totalAttempted > 0 ? parseFloat(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0;
 
     const now = new Date();
-    const upcomingTest = pendingTests.find(t => t.startTime && new Date(t.startTime) > now) || null;
+    const upcomingTest = pendingTests.find(test => availabilityFor(test, {
+      now,
+      hasInProgressAttempt:inProgressIds.has(test._id.toString()),
+    }).state === 'upcoming') || null;
 
     res.render('student/dashboard', {
       title: 'My Dashboard', pendingTests,
@@ -74,6 +82,7 @@ exports.getDashboard = async (req, res) => {
       allResultsCount: allResults.length,
       notifications, chartData: JSON.stringify(chartData),
       subjectStats, upcomingTest, bestResult: null,
+      availabilityFor, timingLabel, inProgressIds,
       stats: { pending: pendingTests.length, completed: allResults.length, avgScore, scoreTrend, accuracy, totalCorrect, totalAttempted },
     });
   } catch (err) { console.error(err); req.flash('error', 'Failed to load dashboard.'); res.redirect('/auth/login'); }
@@ -107,23 +116,22 @@ exports.getTests = async (req, res) => {
       const result   = resultMap[test._id.toString()];
       const isDone   = result && ['submitted','auto_submitted'].includes(result.status);
       const isInProg = result && result.status === 'in_progress';
-      const isExpired = test.endTime && new Date(test.endTime) < now;
-      const isOpen   = !test.startTime || new Date(test.startTime) <= now;
+      const availability = availabilityFor(test, { now, hasInProgressAttempt:Boolean(isInProg) });
 
       if (isDone) {
         solvedTests.push({ test, result });
-      } else if (isExpired && !isInProg) {
+      } else if (availability.state === 'expired') {
         expiredTests.push({ test, result: result || null });
       } else if (isInProg) {
         pendingTests.push({ test, result });          // resume
-      } else if (isOpen) {
+      } else if (availability.state === 'available') {
         newTests.push({ test, result: null });        // ready to start
       } else {
         upcomingTests.push({ test, result: null });   // not open yet
       }
     });
 
-    res.render('student/tests', { title: 'My Tests', newTests, pendingTests, expiredTests, solvedTests, upcomingTests, resultMap });
+    res.render('student/tests', { title: 'My Tests', newTests, pendingTests, expiredTests, solvedTests, upcomingTests, resultMap, timingLabel });
   } catch (err) { req.flash('error', 'Failed to load tests.'); res.redirect('/student/dashboard'); }
 };
 
@@ -140,7 +148,7 @@ exports.getNotifications = async (req, res) => {
 exports.getResults = async (req, res) => {
   try {
     const results = await Result.find({ studentId: req.session.user.id, status: { $in: ['submitted','auto_submitted'] } })
-      .populate('testId', 'title totalMarks duration subject')
+      .populate('testId', 'title totalMarks duration timingMode subject')
       .sort({ submittedAt: -1 });
     res.render('student/results', { title: 'My Results', results });
   } catch (err) { req.flash('error', 'Failed.'); res.redirect('/student/dashboard'); }

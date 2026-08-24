@@ -24,6 +24,7 @@ const testSchema = new mongoose.Schema({
   rankingSchemaSnapshot:{ type:mongoose.Schema.Types.Mixed, default:null },
   description:     { type: String, default: null },
   duration:        { type: Number, default: 180 },   // minutes
+  timingMode:      { type:String, enum:['PERSONAL_DURATION','FIXED_WINDOW','UNTIMED'], default:'PERSONAL_DURATION', index:true },
   totalMarks:      { type: Number, default: 0 },
   negativeMarking: { type: Number, default: 0.25 },
   passingMarks:    { type: Number, default: null },

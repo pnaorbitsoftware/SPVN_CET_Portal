@@ -74,7 +74,7 @@
           <!-- Meta -->
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
             <span class="font-semibold text-indigo-600"><%= (test.testType||'CUSTOM').replaceAll('_',' ') %></span>
-            <span><%= test.duration %> mins</span>
+            <span><%= timingLabel(test) %></span>
             <span><%= test.totalMarks %> marks</span>
             <span><%= (test.questions||[]).length %> Qs</span>
             <% if (Array.isArray(test.subject) ? test.subject.length : test.subject) { %>

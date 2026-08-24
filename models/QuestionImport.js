@@ -17,6 +17,7 @@ const importDefaultsSchema = new mongoose.Schema({
 const testDefaultsSchema = new mongoose.Schema({
   title:           { type: String, default: '' },
   description:     { type: String, default: '' },
+  timingMode:      { type: String, enum: ['PERSONAL_DURATION','FIXED_WINDOW','UNTIMED'], default: 'PERSONAL_DURATION' },
   duration:        { type: Number, default: 180 },
   negativeMarking: { type: Number, default: 0.25 },
   startTime:       { type: Date, default: null },

@@ -49,14 +49,15 @@
                 <% }) %>
               </div>
             </div>
-            <div><label class="block text-sm font-semibold mb-1.5">Duration (minutes) *</label>
-              <input type="number" name="duration" value="<%= test.duration %>" min="5" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
+            <div><label class="block text-sm font-semibold mb-1.5">Timing Mode *</label><select id="timingMode" name="timingMode" onchange="updateTimingFields()" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><% TIMING_MODES.forEach(mode=>{ %><option value="<%= mode %>" <%= (test.timingMode||'PERSONAL_DURATION')===mode?'selected':'' %>><%= mode.replaceAll('_',' ') %></option><% }) %></select></div>
+            <div id="durationField"><label class="block text-sm font-semibold mb-1.5">Personal Duration (minutes) *</label>
+              <input id="durationInput" type="number" name="duration" value="<%= test.duration||180 %>" min="1" max="1440" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
             <div><label class="block text-sm font-semibold mb-1.5">Negative Marking</label>
               <input type="number" name="negativeMarking" value="<%= test.negativeMarking %>" step="0.25" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/></div>
             <div><label class="block text-sm font-semibold mb-1.5">Start Time</label>
-              <input type="datetime-local" name="startTime" value="<%= formatDateTimeLocal(test.startTime) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
+              <input id="startTimeInput" type="datetime-local" name="startTime" value="<%= formatDateTimeLocal(test.startTime) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
             <div><label class="block text-sm font-semibold mb-1.5">End Time</label>
-              <input type="datetime-local" name="endTime" value="<%= formatDateTimeLocal(test.endTime) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/></div>
+              <input id="endTimeInput" type="datetime-local" name="endTime" value="<%= formatDateTimeLocal(test.endTime) %>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"/><p id="timingHint" class="mt-1 text-[10px] text-slate-400"></p></div>
             <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1.5">Instructions</label>
               <textarea name="instructions" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="Instructions for students..."><%= test.instructions||'' %></textarea></div>
           </div>
@@ -396,6 +397,7 @@ function applyPatternDefaults(patternId) {
   document.querySelector('input[name="shuffleQuestions"]').checked = pattern.shuffleQuestionsDefault;
   document.querySelector('input[name="shuffleOptions"]').checked = pattern.shuffleOptionsDefault;
   if (pattern.rankingSchemaId) document.getElementById('rankingSchemaSelect').value = pattern.rankingSchemaId;
+  if (pattern.timingMode) { document.getElementById('timingMode').value = pattern.timingMode; updateTimingFields(); }
   document.querySelectorAll('.marking-grid').forEach(grid => {
     grid.querySelector('.mark-positive').value = pattern.defaultPositiveMarks;
     grid.querySelector('.mark-negative').value = pattern.defaultNegativeMarks;
@@ -404,6 +406,21 @@ function applyPatternDefaults(patternId) {
     if (mode) mode.value = pattern.partialMarkPolicy;
   });
   updCount();
+}
+function updateTimingFields() {
+  const mode = document.getElementById('timingMode').value;
+  const duration = document.getElementById('durationInput');
+  const start = document.getElementById('startTimeInput');
+  const end = document.getElementById('endTimeInput');
+  duration.disabled = mode !== 'PERSONAL_DURATION';
+  duration.required = mode === 'PERSONAL_DURATION';
+  start.required = mode === 'FIXED_WINDOW';
+  end.required = mode === 'FIXED_WINDOW';
+  document.getElementById('durationField').classList.toggle('opacity-50', mode !== 'PERSONAL_DURATION');
+  document.getElementById('timingHint').textContent = mode === 'FIXED_WINDOW'
+    ? 'Hard cutoff: every active attempt auto-submits at the end time.'
+    : mode === 'UNTIMED' ? 'No countdown. Start/end only control when new attempts may begin.'
+      : 'Each student receives the full personal duration after starting within the access window.';
 }
 // ── Counter ───────────────────────────────────────────────────────────────
 function updCount() {
@@ -688,6 +705,8 @@ document.querySelectorAll('.diff-chip').forEach(b => {
   const t = b.textContent.trim();
   b.dataset.diff = t === 'All' ? '' : t;
 });
+updCount();
+updateTimingFields();
 </script>
 
 <script>

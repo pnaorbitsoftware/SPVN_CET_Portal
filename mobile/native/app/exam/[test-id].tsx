@@ -14,7 +14,7 @@ export default function ExamRoute() {
   const [state, setState] = useState<ExamQuestionState | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [markedForReview, setMarkedForReview] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [violations, setViolations] = useState(0);
@@ -43,7 +43,14 @@ export default function ExamRoute() {
       const next = await mobileApi.getStudentQuestion(testId, number);
       setState(next); setSelectedAnswer(next.selectedAnswer); setMarkedForReview(next.markedForReview); setRemainingSeconds(next.remainingSeconds); questionOpenedAt.current = Date.now();
     } catch (error) {
-      if (error instanceof ApiError && error.status === 408) return autoSubmit('Time ended, so the exam was submitted automatically.');
+      if (error instanceof ApiError && error.status === 408) {
+        const resultId = String(error.details?.resultId || '');
+        if (resultId) {
+          Alert.alert('Exam submitted', 'Time ended, so the exam was submitted automatically.', [{ text:'Continue', onPress:() => router.replace({ pathname:'/result/[result-id]', params:{ 'result-id':resultId } }) }]);
+          return;
+        }
+        return autoSubmit('Time ended, so the exam was submitted automatically.');
+      }
       Alert.alert('Question unavailable', error instanceof Error ? error.message : 'Please try again.');
     } finally { setLoading(false); }
   }, [autoSubmit, testId]);
@@ -53,7 +60,7 @@ export default function ExamRoute() {
   }, [loadQuestion, testId]);
 
   useEffect(() => {
-    const timer = setInterval(() => setRemainingSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    const timer = setInterval(() => setRemainingSeconds((seconds) => seconds === null ? null : Math.max(0, seconds - 1)), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -115,7 +122,7 @@ export default function ExamRoute() {
   return <SafeAreaView style={styles.safe}>
     <View style={styles.header}>
       <Pressable onPress={() => Alert.alert('Leave exam?', 'Progress is saved and the timer continues.', [{ text: 'Stay', style: 'cancel' }, { text: 'Leave', onPress: async () => { await persist().catch(() => {}); router.back(); } }])}><Text style={styles.headerAction}>Exit</Text></Pressable>
-      <Text selectable style={styles.timer}>Q {state.questionNumber}/{state.totalQuestions} · {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, '0')}</Text>
+      <Text selectable style={styles.timer}>Q {state.questionNumber}/{state.totalQuestions} · {remainingSeconds === null ? 'No limit' : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`}</Text>
       <Pressable onPress={submit}><Text style={styles.submit}>Submit</Text></Pressable>
     </View>
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>

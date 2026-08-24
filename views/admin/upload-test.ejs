@@ -45,8 +45,12 @@
                 class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500 resize-none"></textarea>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Duration (minutes) *</label>
-              <input type="number" name="duration" value="180" min="5" required
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Timing Mode *</label>
+              <select id="timingMode" name="timingMode" onchange="updateTimingFields()" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"><% TIMING_MODES.forEach(mode => { %><option value="<%= mode %>"><%= mode.replaceAll('_',' ') %></option><% }) %></select>
+            </div>
+            <div id="durationField">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Personal Duration (minutes) *</label>
+              <input id="durationInput" type="number" name="duration" value="180" min="1" max="1440" required
                 class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/>
             </div>
             <div>
@@ -61,8 +65,13 @@
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Start Time</label>
-              <input type="datetime-local" name="startTime"
+              <input id="startTimeInput" type="datetime-local" name="startTime"
                 class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">End Time</label>
+              <input id="endTimeInput" type="datetime-local" name="endTime" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"/>
+              <p id="timingHint" class="mt-1 text-[10px] text-slate-400"></p>
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Course</label>
@@ -220,6 +229,23 @@
 </div>
 
 <script>
+function updateTimingFields() {
+  const mode = document.getElementById('timingMode').value;
+  const duration = document.getElementById('durationInput');
+  const start = document.getElementById('startTimeInput');
+  const end = document.getElementById('endTimeInput');
+  document.getElementById('durationField').classList.toggle('opacity-50', mode !== 'PERSONAL_DURATION');
+  duration.disabled = mode !== 'PERSONAL_DURATION';
+  duration.required = mode === 'PERSONAL_DURATION';
+  start.required = mode === 'FIXED_WINDOW';
+  end.required = mode === 'FIXED_WINDOW';
+  document.getElementById('timingHint').textContent = mode === 'FIXED_WINDOW'
+    ? 'Required. Every attempt ends at this closing time.'
+    : mode === 'UNTIMED'
+      ? 'Optional access window; no countdown is shown.'
+      : 'Optional access window; an existing attempt keeps its personal deadline.';
+}
+
 function selectPdf(input, prefix) {
   const file = input.files[0];
   if (!file) return;
@@ -255,6 +281,7 @@ document.querySelector('form').addEventListener('submit', function(e) {
   btn.disabled = true;
   btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg> Uploading...';
 });
+updateTimingFields();
 </script>
 </body>
 </html>

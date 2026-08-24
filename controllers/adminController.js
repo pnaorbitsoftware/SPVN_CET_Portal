@@ -25,6 +25,7 @@ const {
   validateQuestionsForPattern,
 } = require('../services/examConfigurationService');
 const { updateRanks } = require('../services/rankingService');
+const { TIMING_MODES, timingInput, timingLabel } = require('../services/timingService');
 
 const COURSES = ['JEE','CET','NEET'];
 const SUBJECTS_BY_COURSE = { JEE:['Physics','Chemistry','Mathematics'], CET:['Physics','Chemistry','Mathematics','Biology'], NEET:['Physics','Chemistry','Biology'] };
@@ -598,7 +599,7 @@ exports.getTests = async (req, res) => {
     if (subject) q.subject = subject;
     if (course)  q.course  = course;
     const tests = await Test.find(q).populate('groups','name').sort({ createdAt:-1 });
-    res.render('admin/tests', { title:'Tests', tests, COURSES, SUBJECTS:ALL_SUBJECTS, filterSubject:subject||'', filterCourse:course||'' });
+    res.render('admin/tests', { title:'Tests', tests, COURSES, SUBJECTS:ALL_SUBJECTS, filterSubject:subject||'', filterCourse:course||'', timingLabel });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/dashboard'); }
 };
 
@@ -624,12 +625,14 @@ exports.getCreateTest = async (req, res) => {
       title:'Create Test', groups, questions, COURSES, SUBJECTS:ALL_SUBJECTS, topics,
       filterSubject:subject||'', filterCourse:course||'', sourcePaper, selectedQuestionIds,
       TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
+      TIMING_MODES,
       patternOptions:examConfigurations.patterns.map(pattern => ({
         id:String(pattern._id), code:pattern.code,
         defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
         defaultPartialMarks:pattern.defaultPartialMarks, partialMarkPolicy:pattern.partialMarkPolicy,
         shuffleQuestionsDefault:pattern.shuffleQuestionsDefault, shuffleOptionsDefault:pattern.shuffleOptionsDefault,
         rankingSchemaId:String(pattern.rankingSchema?._id || pattern.rankingSchema || ''),
+        timingMode:pattern.timingMode,
       })),
       aiEnabled:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
     });
@@ -666,11 +669,9 @@ exports.createTest = async (req, res) => {
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
-    const parsedStartTime = parseLocalDateTime(startTime);
-    const parsedEndTime = parseLocalDateTime(endTime);
-    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
+    const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
     const test = await Test.create({
-      title, description, duration:parseInt(duration)||180,
+      title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
       testPattern:examConfiguration.pattern._id,
       patternSnapshot:examConfiguration.patternSnapshot,
@@ -679,7 +680,7 @@ exports.createTest = async (req, res) => {
       organization:organizationIdForWrite(req),
       negativeMarking:parsedNegativeMarking, passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
-      startTime:parsedStartTime, endTime:parsedEndTime, instructions,
+      startTime:timing.startTime, endTime:timing.endTime, instructions,
       totalMarks, createdBy:req.session.user.id, status:'draft',
       course: courseArr, subject: subjectArr, topic:topic||null, subtopic:subtopic||null,
       marksPerQuestion:parseFloat(marksPerQuestion)||1,
@@ -705,7 +706,7 @@ exports.getTestDetail = async (req, res) => {
         .populate('studentId','name rollNo').sort({ rank:1, score:-1, timeTaken:1 }),
     ]);
     if (!test) { req.flash('error','Not found.'); return res.redirect('/admin/tests'); }
-    res.render('admin/test-detail', { title:test.title, test, results });
+    res.render('admin/test-detail', { title:test.title, test, results, timingLabel });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -717,7 +718,7 @@ exports.publishTest = async (req, res) => {
     // Notify all students in assigned groups
     const memberships = await GroupMember.find({ groupId:{ $in:test.groups }, role:'student' });
     await Promise.all(memberships.map(m =>
-      Notification.create({ userId:m.userId, title:'New Exam Published', message:`"${test.title}" is now available. Duration: ${test.duration} mins.`, type:'exam', link:'/student/tests' })
+      Notification.create({ userId:m.userId, title:'New Exam Published', message:`"${test.title}" is now available. Timing: ${timingLabel(test)}.`, type:'exam', link:'/student/tests' })
     ));
     req.flash('success','Test published and students notified!');
     res.redirect(`/admin/tests/${test._id}`);
@@ -962,12 +963,14 @@ exports.getEditTest = async (req, res) => {
       formatDateTimeLocal,
       questionConfigMap:configsByQuestionId(test),
       TEST_TYPES, patterns:examConfigurations.patterns, rankingSchemas:examConfigurations.rankingSchemas,
+      TIMING_MODES,
       patternOptions:examConfigurations.patterns.map(pattern => ({
         id:String(pattern._id), code:pattern.code,
         defaultPositiveMarks:pattern.defaultPositiveMarks, defaultNegativeMarks:pattern.defaultNegativeMarks,
         defaultPartialMarks:pattern.defaultPartialMarks, partialMarkPolicy:pattern.partialMarkPolicy,
         shuffleQuestionsDefault:pattern.shuffleQuestionsDefault, shuffleOptionsDefault:pattern.shuffleOptionsDefault,
         rankingSchemaId:String(pattern.rankingSchema?._id || pattern.rankingSchema || ''),
+        timingMode:pattern.timingMode,
       })),
     });
   } catch (e) { req.flash('error','Failed.'); res.redirect('/admin/tests'); }
@@ -993,11 +996,9 @@ exports.updateTest = async (req, res) => {
     const groups = Array.isArray(groupIds) ? groupIds : (groupIds ? [groupIds] : []);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
-    const parsedStartTime = parseLocalDateTime(startTime);
-    const parsedEndTime = parseLocalDateTime(endTime);
-    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
+    const timing = timingInput({ timingMode:req.body.timingMode, duration, startTime:parseLocalDateTime(startTime), endTime:parseLocalDateTime(endTime) });
     await Test.findByIdAndUpdate(req.params.id, {
-      title, description, duration:parseInt(duration)||180,
+      title, description, duration:timing.duration, timingMode:timing.timingMode,
       testType:TEST_TYPES.includes(testType) ? testType : 'CUSTOM',
       testPattern:examConfiguration.pattern._id,
       patternSnapshot:examConfiguration.patternSnapshot,
@@ -1006,7 +1007,7 @@ exports.updateTest = async (req, res) => {
       negativeMarking:parsedNegativeMarking,
       passingMarks:parseFloat(passingMarks)||null,
       shuffleQuestions:shuffleQuestions==='on', shuffleOptions:shuffleOptions==='on',
-      startTime:parsedStartTime, endTime:parsedEndTime, instructions,
+      startTime:timing.startTime, endTime:timing.endTime, instructions,
       course: courseArr, subject: subjectArr, groups, totalMarks,
       autoSubmitOnViolation:req.body.autoSubmitOnViolation==='on',
       maxTabSwitches:parseInt(req.body.maxTabSwitches)||3,
@@ -1056,7 +1057,7 @@ exports.downloadQuestionTemplate = (req, res) => {
 exports.getUploadTest = async (req, res) => {
   try {
     const groups = await Group.find({ isActive: true });
-    res.render('admin/upload-test', { title: 'Upload Test via PDF', groups, COURSES, SUBJECTS: ALL_SUBJECTS });
+    res.render('admin/upload-test', { title: 'Upload Test via PDF', groups, COURSES, SUBJECTS: ALL_SUBJECTS, TIMING_MODES });
   } catch (e) { req.flash('error', 'Failed.'); res.redirect('/admin/tests'); }
 };
 
@@ -1083,12 +1084,15 @@ exports.uploadPdfTest = async (req, res) => {
     const groups=Array.isArray(groupIds)?groupIds:(groupIds?[groupIds]:[]);
     const courseArr  = Array.isArray(courses)  ? courses  : (courses  ? [courses]  : []);
     const subjectArr = Array.isArray(subjects) ? subjects : (subjects ? [subjects] : []);
-    const parsedStartTime = parseLocalDateTime(startTime);
-    const parsedEndTime = parseLocalDateTime(endTime);
-    if (parsedStartTime && parsedEndTime && parsedEndTime <= parsedStartTime) throw new Error('Test end time must be after start time.');
+    const timing = timingInput({
+      timingMode:req.body.timingMode,
+      duration,
+      startTime:parseLocalDateTime(startTime),
+      endTime:parseLocalDateTime(endTime),
+    });
     const test = await Test.create({
-      title:title.trim(), description:description||null, duration:parseInt(duration)||180,
-      negativeMarking:parseFloat(negativeMarking)||0.25, startTime:parsedStartTime, endTime:parsedEndTime,
+      title:title.trim(), description:description||null, duration:timing.duration, timingMode:timing.timingMode,
+      negativeMarking:parseFloat(negativeMarking)||0.25, startTime:timing.startTime, endTime:timing.endTime,
       instructions:instructions||null, totalMarks, createdBy:req.session.user.id, status:'draft',
       course:courseArr, subject:subjectArr, marksPerQuestion:mpq,
       questionPdfPath, solutionPdfPath, groups,
